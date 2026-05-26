@@ -1,0 +1,25 @@
+enum RequestStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model PurchaseRequest {
+  id          String                @id @default(cuid())
+  status      RequestStatus         @default(PENDING)
+  requestedBy String
+  user        User                  @relation(fields: [requestedBy], references: [id])
+  items       PurchaseRequestItem[]
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+}
+
+model PurchaseRequestItem {
+  id          String          @id @default(cuid())
+  requestId   String
+  request     PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product         @relation(fields: [productId], references: [id])
+  quantity    Int
+}

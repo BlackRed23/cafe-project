@@ -1,0 +1,24 @@
+enum Role {
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+model User {
+  id               String            @id @default(cuid())
+  email            String            @unique
+  password         String
+  name             String
+  phone            String?
+  avatar           String?
+  role             Role              @default(STAFF)
+  isActive         Boolean           @default(true)
+
+  orders           Order[]
+  purchaseRequests PurchaseRequest[]
+
+  lastLoginAt      DateTime?
+
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+}

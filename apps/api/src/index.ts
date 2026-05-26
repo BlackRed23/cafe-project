@@ -1,40 +1,51 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import authRoutes from './routes/auth.routes';
-import { prisma } from '@cafe-project/database';
-// Import trực tiếp từ package database của bạn
-
-dotenv.config();
+import authRoutes from './modules/auth/auth.route';
+import categoryRoutes from './modules/category/category.route';
+import productRoutes from './modules/product/product.route';
+import { env } from './common/env';
+import { errorHandler } from './common/error-handler';
+import { prisma } from './common/prisma';
+import { sendError, sendSuccess } from './common/response';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = env.port;
+const SERVER_URL = `http://localhost:${PORT}`;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
+app.use('/auth', authRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/products', productRoutes);
 
-// API kiểm tra trạng thái Server
-app.get('/health', (req: Request, res: Response) => {
-    res.json({ status: 'OK', message: 'Cafe AI Server is running!' });
+app.get('/health', (_req: Request, res: Response) => {
+    sendSuccess(res, 200, 'Cafe API server is running.', { status: 'OK' });
 });
 
-// API test kết nối Database (Lấy danh sách người dùng)
-app.get('/test-db', async (req: Request, res: Response) => {
+app.get('/test-db', async (_req: Request, res: Response) => {
     try {
         const users = await prisma.user.findMany();
-        res.json({
-            message: 'Kết nối Database thành công!',
-            data: users
-        });
+        sendSuccess(res, 200, 'Database connection successful.', users);
     } catch (error) {
-        console.error('Database connection error:', error);
-        res.status(500).json({ error: 'Lỗi kết nối cơ sở dữ liệu' });
+        console.error('[api] Database connection error:', error);
+        sendError(res, 500, 'Database connection failed.');
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
+app.use(errorHandler);
+
+const server = app.listen(PORT, () => {
+    console.log(`[api] Server is running at ${SERVER_URL}`);
+    console.log(`[api] Health check: ${SERVER_URL}/health`);
+});
+
+server.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+        console.error(`[api] Port ${PORT} is already in use. Stop the existing process or set a different PORT.`);
+        return;
+    }
+
+    console.error('[api] Server failed to start:', error);
 });

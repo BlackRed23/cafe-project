@@ -1,0 +1,14 @@
+// Bảng nhật ký AI Agent
+model AgentLog {
+  id           String   @id @default(uuid())
+  action       String
+  result       String
+  triggered_at DateTime @default(now())
+}
+
+// Bảng cấu hình hệ thống
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
