@@ -1,25 +1,51 @@
-enum RequestStatus {
-  DRAFT
+enum PurchaseRequestStatus {
   PENDING
   APPROVED
+  SENT
+  RECEIVED
+  COMPLETED
   REJECTED
 }
 
 model PurchaseRequest {
-  id          String                @id @default(cuid())
-  status      RequestStatus         @default(PENDING)
-  requestedBy String
-  user        User                  @relation(fields: [requestedBy], references: [id])
-  items       PurchaseRequestItem[]
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  id            String                @id @default(cuid())
+  requestNumber String                @unique
+  status        PurchaseRequestStatus @default(PENDING)
+  supplierId    String
+  supplier      Supplier              @relation(fields: [supplierId], references: [id])
+  notes         String?
+  aiGenerated   Boolean               @default(false)
+  totalAmount   Decimal               @default(0) @db.Decimal(12, 2)
+  requestedBy   String
+  requester     User                  @relation("RequestedBy", fields: [requestedBy], references: [id])
+  approvedBy    String?
+  approver      User?                 @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  approvedAt    DateTime?
+  emailSentAt   DateTime?
+  emailContent  String?
+  retryCount    Int                   @default(0)
+  lastEmailError String?
+  receivedAt    DateTime?
+  items         PurchaseRequestItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model PurchaseRequestItem {
-  id          String          @id @default(cuid())
-  requestId   String
-  request     PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product         @relation(fields: [productId], references: [id])
-  quantity    Int
+  id               String          @id @default(cuid())
+  requestId        String
+  request          PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  inventoryId      String
+  inventory        Inventory       @relation(fields: [inventoryId], references: [id])
+  productId        String
+  product          Product         @relation(fields: [productId], references: [id])
+  quantity         Int
+  quantityReceived Int             @default(0)
+  unitPrice        Decimal?        @db.Decimal(12, 2)
+  notes            String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([requestId, productId])
 }

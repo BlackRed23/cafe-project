@@ -1,12 +1,6 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { sendSuccess } from '../../common/response';
-import {
-    createCategory,
-    deleteCategory,
-    getCategories,
-    getCategoryById,
-    updateCategory
-} from './category.service';
+import { createCategory, deleteCategory, getCategories, getCategoryById, updateCategory } from './category.service';
 import type { CreateCategoryInput, UpdateCategoryInput } from './category.validator';
 
 export const listCategories = async (_req: Request, res: Response): Promise<void> => {

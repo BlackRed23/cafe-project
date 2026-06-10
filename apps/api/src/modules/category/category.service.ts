@@ -1,9 +1,26 @@
-import { Prisma } from '@cafe-project/database';
+﻿import { Prisma, type Category } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
-import { categoryRepository, type CategoryRecord } from './category.repository';
+import { categoryRepository } from './category.repository';
 import type { CreateCategoryInput, UpdateCategoryInput } from './category.validator';
 
-const ensureCategoryExists = async (id: string): Promise<CategoryRecord> => {
+export type CategoryDto = Pick<Category, 'id' | 'name' | 'description' | 'createdAt' | 'updatedAt'>;
+
+const toCategoryDto = (category: Category): CategoryDto => ({
+    id: category.id,
+    name: category.name,
+    description: category.description,
+    createdAt: category.createdAt,
+    updatedAt: category.updatedAt
+});
+
+const normalizeDescription = (description: string | null | undefined): string | null | undefined => {
+    if (description === undefined) return undefined;
+    if (description === null || description === '') return null;
+
+    return description;
+};
+
+const ensureCategoryExists = async (id: string): Promise<Category> => {
     const category = await categoryRepository.findById(id);
 
     if (!category) {
@@ -21,34 +38,26 @@ const ensureUniqueName = async (name: string, ignoreId?: string): Promise<void> 
     }
 };
 
-const normalizeDescription = (description: string | null | undefined): string | null | undefined => {
-    if (description === undefined) {
-        return undefined;
-    }
+export const getCategories = async (): Promise<CategoryDto[]> => {
+    const categories = await categoryRepository.findMany();
 
-    if (description === null || description === '') {
-        return null;
-    }
-
-    return description;
+    return categories.map(toCategoryDto);
 };
 
-export const getCategories = async (): Promise<CategoryRecord[]> => {
-    return categoryRepository.findMany();
+export const getCategoryById = async (id: string): Promise<CategoryDto> => {
+    return toCategoryDto(await ensureCategoryExists(id));
 };
 
-export const getCategoryById = async (id: string): Promise<CategoryRecord> => {
-    return ensureCategoryExists(id);
-};
-
-export const createCategory = async (input: CreateCategoryInput): Promise<CategoryRecord> => {
+export const createCategory = async (input: CreateCategoryInput): Promise<CategoryDto> => {
     await ensureUniqueName(input.name);
 
     try {
-        return await categoryRepository.create({
+        const category = await categoryRepository.create({
             name: input.name,
             description: normalizeDescription(input.description)
         });
+
+        return toCategoryDto(category);
     } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             throw new HttpError(409, 'Category name already exists.');
@@ -58,7 +67,7 @@ export const createCategory = async (input: CreateCategoryInput): Promise<Catego
     }
 };
 
-export const updateCategory = async (id: string, input: UpdateCategoryInput): Promise<CategoryRecord> => {
+export const updateCategory = async (id: string, input: UpdateCategoryInput): Promise<CategoryDto> => {
     const category = await ensureCategoryExists(id);
 
     if (input.name) {
@@ -66,10 +75,12 @@ export const updateCategory = async (id: string, input: UpdateCategoryInput): Pr
     }
 
     try {
-        return await categoryRepository.update(id, {
-            ...input,
-            description: normalizeDescription(input.description)
+        const updatedCategory = await categoryRepository.update(id, {
+            ...(input.name !== undefined ? { name: input.name } : {}),
+            ...(input.description !== undefined ? { description: normalizeDescription(input.description) } : {})
         });
+
+        return toCategoryDto(updatedCategory);
     } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             throw new HttpError(409, 'Category name already exists.');
@@ -79,14 +90,13 @@ export const updateCategory = async (id: string, input: UpdateCategoryInput): Pr
     }
 };
 
-export const deleteCategory = async (id: string): Promise<CategoryRecord> => {
-    await ensureCategoryExists(id);
+export const deleteCategory = async (id: string): Promise<CategoryDto> => {
+    const category = await ensureCategoryExists(id);
+    const productCount = await categoryRepository.countProducts(category.id);
 
-    const hasProducts = await categoryRepository.hasProducts(id);
-
-    if (hasProducts) {
-        throw new HttpError(409, 'Cannot delete category with active products.');
+    if (productCount > 0) {
+        throw new HttpError(400, 'Không thể xóa danh mục vì vẫn còn sản phẩm thuộc danh mục này.');
     }
 
-    return categoryRepository.delete(id);
+    return toCategoryDto(await categoryRepository.delete(category.id));
 };

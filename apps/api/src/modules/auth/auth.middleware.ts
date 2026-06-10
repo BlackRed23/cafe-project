@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import type { Role } from '@cafe-project/types';
+import type { UserRole } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
 import { sendError } from '../../common/response';
 import { verifyAuthToken, type JwtUserPayload } from './auth.service';
@@ -18,7 +18,7 @@ const getBearerToken = (authorizationHeader: string | undefined): string | null 
     return token || null;
 };
 
-export const authenticate = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+export const authMiddleware = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
     const token = getBearerToken(req.headers.authorization);
 
     if (!token) {
@@ -37,14 +37,14 @@ export const authenticate = (req: AuthenticatedRequest, res: Response, next: Nex
     }
 };
 
-export const requireRole = (roles: Role[]) => {
+export const roleMiddleware = (...allowedRoles: UserRole[]) => {
     return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
         if (!req.user) {
             sendError(res, 401, 'Authentication is required.');
             return;
         }
 
-        if (!roles.includes(req.user.role)) {
+        if (!allowedRoles.includes(req.user.role)) {
             sendError(res, 403, 'Forbidden.');
             return;
         }
@@ -52,3 +52,6 @@ export const requireRole = (roles: Role[]) => {
         next();
     };
 };
+
+export const authenticate = authMiddleware;
+export const requireRole = (roles: UserRole[]) => roleMiddleware(...roles);

@@ -1,29 +1,30 @@
 import type { Response } from 'express';
-import type { AuthResponse, UserResponse } from '@cafe-project/types';
-import { sendError, sendSuccess } from '../../common/response';
+import { sendError } from '../../common/response';
 import type { AuthenticatedRequest } from './auth.middleware';
-import { getCurrentUser, loginUser, registerUser } from './auth.service';
-import type { LoginInput, RegisterInput } from './auth.validator';
+import { getCurrentUser, loginUser, registerUser, type AuthResponse, type AuthUser } from './auth.service';
+import type { LoginInput, RegisterInput } from './auth.validation';
 
 export const register = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const user = await registerUser(req.body as RegisterInput);
 
-    sendSuccess<UserResponse>(res, 201, 'Register successfully.', { user });
+    res.status(201).json({ user });
 };
 
 export const login = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const data = await loginUser(req.body as LoginInput);
 
-    sendSuccess<AuthResponse>(res, 200, 'Login successfully.', data);
+    res.status(200).json(data satisfies AuthResponse);
 };
 
-export const profile = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+export const me = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     if (!req.user) {
         sendError(res, 401, 'Authentication is required.');
         return;
     }
 
-    const user = await getCurrentUser(req.user.userId);
+    const user = await getCurrentUser(req.user.id);
 
-    sendSuccess<UserResponse>(res, 200, 'Get profile successfully.', { user });
+    res.status(200).json(user satisfies AuthUser);
 };
+
+export const profile = me;

@@ -1,24 +1,26 @@
-enum Role {
+enum UserRole {
   ADMIN
-  MANAGER
   STAFF
+  CUSTOMER
 }
 
 model User {
-  id               String            @id @default(cuid())
-  email            String            @unique
-  password         String
-  name             String
-  phone            String?
-  avatar           String?
-  role             Role              @default(STAFF)
-  isActive         Boolean           @default(true)
+  id       String   @id @default(cuid())
+  email    String   @unique
+  password String
+  name     String
+  phone    String?
+  avatar   String?
+  role     UserRole @default(CUSTOMER)
+  isActive Boolean  @default(true)
 
-  orders           Order[]
-  purchaseRequests PurchaseRequest[]
+  orders                    Order[]
+  inventoryTransactions     InventoryTransaction[]
+  requestedPurchaseRequests PurchaseRequest[]      @relation("RequestedBy")
+  approvedPurchaseRequests  PurchaseRequest[]      @relation("ApprovedBy")
+  agentLogs                 AgentLog[]             @relation("AgentLogCreatedBy")
 
-  lastLoginAt      DateTime?
-
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }

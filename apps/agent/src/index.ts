@@ -1,83 +1,59 @@
-import cron from 'node-cron';
 import dotenv from 'dotenv';
-import { prisma } from '@cafe-project/database';
+import path from 'path';
 
+// Load environmental config
 dotenv.config();
 
-const apiKeys = [
-    process.env.GEMINI_API_KEY1,
-    process.env.GEMINI_API_KEY2,
-    process.env.GEMINI_API_KEY3
-].filter(Boolean) as string[];
+import { env } from './config/env';
+import { prisma } from '@cafe-project/database';
+import { logger } from './utils/logger';
+import { initInventoryScanJob } from './jobs/inventory-scan.job';
+import { agentService } from './services/agent.service';
 
-if (apiKeys.length === 0) {
-    console.error('❌ Lỗi: Chưa cấu hình ít nhất một GEMINI_API_KEY (1, 2, 3) trong file apps/agent/.env');
-    process.exit(1);
-}
+const main = async () => {
+    logger.info('AI Agent starting...');
 
-console.log('🤖 AI Agent Worker đang khởi động (Chế độ Caching)...');
+    // 1. Connect Prisma
+    try {
+        await prisma.$connect();
+        logger.info('Connected to database successfully.');
+    } catch (err) {
+        logger.error('❌ Failed to connect to database:', err);
+        process.exit(1);
+    }
 
-const fetchSlogan = async () => {
-    console.log(`\n[${new Date().toLocaleTimeString()}] ⏳ Đang gọi Google REST API v1 để tạo slogan...`);
+    // 2. Print required startup log exactly
+    console.log('AI Agent started');
 
-    const fallbackSlogan = "Cà phê pha máy, sảng khoái cả ngày! Chào mừng bạn trở lại làm việc.";
-    let finalSlogan = fallbackSlogan;
-    let isSuccess = false;
+    // 3. Check for manual run through startup flag or argv
+    const scanOnce = process.argv.includes('--scan-once') || env.RUN_ON_START;
 
-    for (const currentKey of apiKeys) {
+    if (scanOnce) {
+        logger.info('Immediate scan requested.');
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${currentKey}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{
-                            text: "Viết đúng 1 câu slogan thật ngắn gọn, hài hước và tràn đầy năng lượng (dưới 20 chữ) bằng tiếng Việt để chào mừng nhân viên quản trị quán cafe bắt đầu ca làm việc ngày mới."
-                        }]
-                    }]
-                })
-            });
+            await agentService.runScan('MANUAL');
+        } catch (err) {
+            logger.error('Error running manual scan:', err);
+        }
 
-            if (!response.ok) {
-                throw new Error(`Google API responded with status ${response.status}`);
+        // If manual command support requested scan-once, exit immediately
+        if (process.argv.includes('--scan-once')) {
+            logger.info('Manual run completed. Exiting.');
+            try {
+                await prisma.$disconnect();
+            } catch (disError) {
+                logger.error('Error disconnecting Prisma:', disError);
             }
-
-            const data = await response.json();
-            
-            if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
-                finalSlogan = data.candidates[0].content.parts[0].text.trim();
-                isSuccess = true;
-                break;
-            }
-            
-        } catch (error: any) {
-            console.warn('❌ Lỗi khi gọi Gemini API với key hiện tại:', error.message || error);
+            process.exit(0);
         }
     }
 
-    if (!isSuccess) {
-        console.log('⚠️ Tất cả các key đều lỗi. Đang sử dụng câu slogan mặc định.');
-        finalSlogan = fallbackSlogan;
-    }
-
-    try {
-        await prisma.systemSetting.upsert({
-            where: { key: 'DAILY_SLOGAN' },
-            update: { value: finalSlogan },
-            create: { key: 'DAILY_SLOGAN', value: finalSlogan }
-        });
-        console.log(`✅ Đã cập nhật slogan vào DB: "${finalSlogan}"`);
-    } catch (dbError: any) {
-        console.error('❌ Lỗi khi lưu vào Database:', dbError.message || dbError);
-    }
+    // 4. Start scheduled cron jobs
+    initInventoryScanJob();
 };
 
-// Chạy ngay lập tức 1 lần khi server vừa khởi động
-fetchSlogan();
-
-// Lên lịch chạy lúc 00:00 mỗi đêm
-cron.schedule('0 0 * * *', fetchSlogan);
-
-console.log('✅ AI Agent đã kết nối thành công và sẽ tạo slogan mới vào 00:00 mỗi đêm!');
+main().catch((err) => {
+    logger.error('Fatal crash on AI Agent startup:', err);
+    process.exit(1);
+});
+export {};

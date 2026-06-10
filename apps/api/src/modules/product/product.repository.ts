@@ -1,7 +1,16 @@
-import type { Prisma, Product } from '@cafe-project/database';
+import type { Category, Inventory, Prisma, Product } from '@cafe-project/database';
 import { prisma } from '../../common/prisma';
 
-export type ProductRecord = Product;
+export type ProductRecord = Product & {
+    category: Category;
+    inventory: Inventory | null;
+};
+
+export type ProductDeleteBlockers = {
+    orderItems: number;
+    purchaseRequestItems: number;
+    inventoryTransactions: number;
+};
 
 const productInclude = {
     category: true,
@@ -9,41 +18,38 @@ const productInclude = {
 } satisfies Prisma.ProductInclude;
 
 export const productRepository = {
-    async findMany(): Promise<ProductRecord[]> {
+    async findMany(includeInactive = false): Promise<ProductRecord[]> {
         return prisma.product.findMany({
-            where: {
-                isActive: true
-            },
+            where: includeInactive ? undefined : { isActive: true },
             include: productInclude,
-            orderBy: {
-                createdAt: 'desc'
-            }
+            orderBy: { createdAt: 'desc' }
         });
     },
 
-    async findById(id: string): Promise<ProductRecord | null> {
-        return prisma.product.findUnique({
-            where: {
-                id,
-                isActive: true
-            },
+    async findById(id: string, includeInactive = false): Promise<ProductRecord | null> {
+        return prisma.product.findFirst({
+            where: includeInactive ? { id } : { id, isActive: true },
             include: productInclude
+        });
+    },
+
+    async findBySku(sku: string): Promise<Pick<Product, 'id'> | null> {
+        return prisma.product.findUnique({
+            where: { sku },
+            select: { id: true }
         });
     },
 
     async create(data: Prisma.ProductUncheckedCreateInput): Promise<ProductRecord> {
         return prisma.$transaction(async (tx) => {
-            const product = await tx.product.create({
-                data,
-                include: productInclude
-            });
+            const product = await tx.product.create({ data });
 
             await tx.inventory.create({
                 data: {
                     productId: product.id,
                     quantity: 0,
                     minThreshold: 10,
-                    unit: 'unit'
+                    unit: product.unit
                 }
             });
 
@@ -68,13 +74,25 @@ export const productRepository = {
         });
     },
 
+    async getDeleteBlockers(productId: string): Promise<ProductDeleteBlockers> {
+        const [orderItems, purchaseRequestItems, inventoryTransactions] = await Promise.all([
+            prisma.orderItem.count({ where: { productId } }),
+            prisma.purchaseRequestItem.count({ where: { productId } }),
+            prisma.inventoryTransaction.count({ where: { productId } })
+        ]);
+
+        return { orderItems, purchaseRequestItems, inventoryTransactions };
+    },
+
     async delete(id: string): Promise<ProductRecord> {
-        return prisma.product.update({
-            where: { id },
-            data: {
-                isActive: false
-            },
-            include: productInclude
+        return prisma.$transaction(async (tx) => {
+            await tx.inventory.deleteMany({ where: { productId: id } });
+            await tx.supplierProduct.deleteMany({ where: { productId: id } });
+
+            return tx.product.delete({
+                where: { id },
+                include: productInclude
+            });
         });
     },
 

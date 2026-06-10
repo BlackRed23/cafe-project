@@ -1,19 +1,32 @@
 model Supplier {
-  id               String            @id @default(cuid())
-  name             String
-  contact          String?           
-  address          String?
-  products         SupplierProduct[] // Giữ lại dòng này
-  // Đã xóa dòng purchase_requests bị sai ở đây
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id       String            @id @default(cuid())
+  name     String
+  email    String?
+  contact  String?
+  address  String?
+  status   String            @default("ACTIVE")
+  deletedAt DateTime?
+  products SupplierProduct[]
+  purchaseRequests PurchaseRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SupplierProduct {
-  id          String   @id @default(cuid())
-  supplierId  String
-  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  price       Float    
+  id               String   @id @default(cuid())
+  supplierId       String
+  supplier         Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  price            Decimal  @db.Decimal(12, 2)
+  supplierSku      String?
+  minOrderQuantity Int      @default(1)
+  leadTimeDays     Int      @default(3)
+  isPreferred      Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([supplierId, productId])
 }

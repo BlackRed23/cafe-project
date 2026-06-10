@@ -1,16 +1,11 @@
-import type { Request, Response } from 'express';
+﻿import type { Request, Response } from 'express';
 import { sendSuccess } from '../../common/response';
-import {
-    createProduct,
-    deleteProduct,
-    getProductById,
-    getProducts,
-    updateProduct
-} from './product.service';
+import { createProduct, deleteProduct, getProductById, getProducts, updateProduct } from './product.service';
 import type { CreateProductInput, UpdateProductInput } from './product.validator';
 
-export const listProducts = async (_req: Request, res: Response): Promise<void> => {
-    const products = await getProducts();
+export const listProducts = async (req: Request, res: Response): Promise<void> => {
+    const includeInactive = req.query.includeInactive === 'true';
+    const products = await getProducts(includeInactive);
 
     sendSuccess(res, 200, 'Get products successfully.', { products });
 };
@@ -22,13 +17,13 @@ export const findProduct = async (req: Request, res: Response): Promise<void> =>
 };
 
 export const storeProduct = async (req: Request, res: Response): Promise<void> => {
-    const product = await createProduct(req.body as CreateProductInput, req.file);
+    const product = await createProduct(req.body as CreateProductInput);
 
     sendSuccess(res, 201, 'Create product successfully.', { product });
 };
 
 export const patchProduct = async (req: Request, res: Response): Promise<void> => {
-    const product = await updateProduct(req.params.id, req.body as UpdateProductInput, req.file);
+    const product = await updateProduct(req.params.id, req.body as UpdateProductInput);
 
     sendSuccess(res, 200, 'Update product successfully.', { product });
 };

@@ -1,0 +1,18 @@
+﻿import { z } from 'zod';
+
+export const inventoryIdSchema = z.string().trim().min(1, 'Mã tồn kho là bắt buộc.');
+
+export const importInventorySchema = z.object({
+    inventoryId: inventoryIdSchema,
+    quantity: z.coerce.number().int('Số lượng phải là số nguyên.').positive('Số lượng phải lớn hơn 0.'),
+    note: z.string().trim().max(1000, 'Ghi chú tối đa 1000 ký tự.').optional().nullable()
+});
+
+export const adjustInventorySchema = z.object({
+    inventoryId: inventoryIdSchema,
+    quantity: z.coerce.number().int('Số lượng phải là số nguyên.').refine((value) => value !== 0, 'Số lượng điều chỉnh không được bằng 0.'),
+    note: z.string().trim().max(1000, 'Ghi chú tối đa 1000 ký tự.').optional().nullable()
+});
+
+export type ImportInventoryInput = z.infer<typeof importInventorySchema>;
+export type AdjustInventoryInput = z.infer<typeof adjustInventorySchema>;

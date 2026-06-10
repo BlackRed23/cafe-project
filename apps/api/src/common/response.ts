@@ -14,9 +14,9 @@ export const errorResponse = (message: string): ApiResponse<null> => ({
 });
 
 export const sendSuccess = <T>(res: Response, statusCode: number, message: string, data: T): void => {
-    res.status(statusCode).json(successResponse(message, data));
+    res.type('application/json; charset=utf-8').status(statusCode).json(successResponse(message, data));
 };
 
 export const sendError = (res: Response, statusCode: number, message: string): void => {
-    res.status(statusCode).json(errorResponse(message));
+    res.type('application/json; charset=utf-8').status(statusCode).json(errorResponse(message));
 };

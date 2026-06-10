@@ -1,8 +1,18 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import authRoutes from './modules/auth/auth.route';
+import agentRoutes from './modules/agent/agent.route';
+import authRoutes from './modules/auth/auth.routes';
 import categoryRoutes from './modules/category/category.route';
+import { inventoryRoutes, inventoryTransactionRoutes } from './modules/inventory/inventory.route';
+import orderRoutes from './modules/order/order.route';
+import paymentRoutes from './modules/payment/payment.route';
 import productRoutes from './modules/product/product.route';
+import purchaseRoutes from './modules/purchase/purchase.route';
+import simulateSaleRoutes from './modules/simulate-sale/simulate-sale.route';
+import systemSettingRoutes from './modules/system-setting/system-setting.route';
+import { productSupplierRoutes, supplierProductRoutes, supplierRoutes } from './modules/supplier/supplier.route';
+import dashboardRoutes from './modules/dashboard/dashboard.route';
+import uploadRoutes from './modules/upload/upload.route';
 import { env } from './common/env';
 import { errorHandler } from './common/error-handler';
 import { prisma } from './common/prisma';
@@ -15,10 +25,22 @@ const SERVER_URL = `http://localhost:${PORT}`;
 app.use(cors());
 app.use(express.json());
 
-app.use('/auth', authRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/agent', agentRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/inventories', inventoryRoutes);
+app.use('/api/inventory-transactions', inventoryTransactionRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/purchase-requests', purchaseRoutes);
+app.use('/api/suppliers', supplierRoutes);
+app.use('/api/supplier-products', supplierProductRoutes);
+app.use('/api/products', productSupplierRoutes);
+app.use('/api/simulate-sale', simulateSaleRoutes);
+app.use('/api/system-settings', systemSettingRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/upload', uploadRoutes);
 
 app.get('/health', (_req: Request, res: Response) => {
     sendSuccess(res, 200, 'Cafe API server is running.', { status: 'OK' });

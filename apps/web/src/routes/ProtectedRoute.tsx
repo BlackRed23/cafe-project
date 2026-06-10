@@ -1,17 +1,22 @@
-import type { ReactNode } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { getToken } from '../utils/auth';
+import React from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { Loading } from "../components/common/Loading";
 
-type ProtectedRouteProps = {
-    children: ReactNode;
-};
-
-export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-    const location = useLocation();
-
-    if (!getToken()) {
-        return <Navigate to="/login" replace state={{ from: location }} />;
-    }
-
-    return children;
+interface ProtectedRouteProps {
+  children: React.ReactNode;
 }
+
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <Loading message="Đang xác thực thông tin..." fullPage />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+};
