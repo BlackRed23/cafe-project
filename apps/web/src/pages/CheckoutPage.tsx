@@ -174,8 +174,7 @@ export const CheckoutPage: React.FC = () => {
               </label>
               <div className="grid sm:grid-cols-3 gap-4">
                 {[
-                  { id: "COD", title: "COD", desc: "Thanh toán khi nhận hàng" },
-                  { id: "CASH", title: "Tiền mặt", desc: "Trả tiền mặt tại cửa hàng" },
+                  { id: "CASH", title: "Tiền mặt", desc: "Trả tiền mặt" },
                   { id: "BANK_TRANSFER", title: "Chuyển khoản", desc: "Chuyển khoản ngân hàng" },
                 ].map((method) => (
                   <label

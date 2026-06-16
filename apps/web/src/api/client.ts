@@ -5,10 +5,10 @@ import { MockDB } from "./mockDb";
 MockDB.init();
 
 // Toggle mock mode. When true, all API modules route locally.
-export const USE_MOCK = true;
+export const USE_MOCK = false;
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:4000/api",
+  baseURL: '/api',
 });
 
 apiClient.interceptors.request.use((config) => {

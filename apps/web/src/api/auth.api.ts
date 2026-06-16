@@ -29,7 +29,7 @@ export const authApi = {
       }
       throw new Error("Không có phiên đăng nhập");
     }
-    const response = await apiClient.get<AuthResponse>("/auth/me");
-    return response.data;
+    const response = await apiClient.get("/auth/me");
+    return { user: response.data } as AuthResponse;
   },
 };

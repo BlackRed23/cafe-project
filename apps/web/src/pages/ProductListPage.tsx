@@ -139,7 +139,7 @@ export const ProductListPage: React.FC = () => {
         <p className="font-bold mb-2">Đã xảy ra lỗi</p>
         <p className="text-sm mb-6">{error}</p>
         <button
-          onClick={fetchProducts}
+          onClick={fetchData}
           className="px-6 py-2.5 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-sm font-bold transition-all shadow-md active:scale-95"
         >
           Thử lại

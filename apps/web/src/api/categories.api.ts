@@ -7,8 +7,8 @@ export const categoriesApi = {
     if (USE_MOCK) {
       return MockDB.getCategories();
     }
-    const response = await apiClient.get<Category[]>("/categories");
-    return response.data;
+    const response = await apiClient.get("/categories");
+    return response.data.data.categories;
   },
 
   getCategoryById: async (id: string): Promise<Category> => {
@@ -17,8 +17,8 @@ export const categoriesApi = {
       if (cat) return cat;
       throw new Error("Không tìm thấy danh mục");
     }
-    const response = await apiClient.get<Category>(`/categories/${id}`);
-    return response.data;
+    const response = await apiClient.get(`/categories/${id}`);
+    return response.data.data.category;
   },
 
   createCategory: async (payload: Partial<Category>): Promise<Category> => {

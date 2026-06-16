@@ -7,8 +7,8 @@ export const productsApi = {
     if (USE_MOCK) {
       return MockDB.getProducts();
     }
-    const response = await apiClient.get<Product[]>("/products");
-    return response.data;
+    const response = await apiClient.get("/products");
+    return response.data.data.products;
   },
 
   getProductById: async (id: string): Promise<Product> => {
@@ -17,8 +17,8 @@ export const productsApi = {
       if (prod) return prod;
       throw new Error("Không tìm thấy sản phẩm");
     }
-    const response = await apiClient.get<Product>(`/products/${id}`);
-    return response.data;
+    const response = await apiClient.get(`/products/${id}`);
+    return response.data.data.product;
   },
 
   createProduct: async (payload: Partial<Product>): Promise<Product> => {
