@@ -1,47 +1,28 @@
-import { apiClient, USE_MOCK } from "./client";
+﻿import { apiClient, unwrapApiField, unwrapApiList } from "./client";
 import type { Category } from "../types/category.types";
-import { MockDB } from "./mockDb";
 
 export const categoriesApi = {
   getCategories: async (): Promise<Category[]> => {
-    if (USE_MOCK) {
-      return MockDB.getCategories();
-    }
-    const response = await apiClient.get<Category[]>("/categories");
-    return response.data;
+    const response = await apiClient.get("/categories");
+    return unwrapApiList<Category>(response.data, "categories");
   },
 
   getCategoryById: async (id: string): Promise<Category> => {
-    if (USE_MOCK) {
-      const cat = MockDB.getCategory(id);
-      if (cat) return cat;
-      throw new Error("Không tìm thấy danh mục");
-    }
-    const response = await apiClient.get<Category>(`/categories/${id}`);
-    return response.data;
+    const response = await apiClient.get(`/categories/${id}`);
+    return unwrapApiField<Category>(response.data, "category");
   },
 
   createCategory: async (payload: Partial<Category>): Promise<Category> => {
-    if (USE_MOCK) {
-      return MockDB.createCategory(payload);
-    }
-    const response = await apiClient.post<Category>("/categories", payload);
-    return response.data;
+    const response = await apiClient.post("/categories", payload);
+    return unwrapApiField<Category>(response.data, "category");
   },
 
   updateCategory: async (id: string, payload: Partial<Category>): Promise<Category> => {
-    if (USE_MOCK) {
-      return MockDB.updateCategory(id, payload);
-    }
-    const response = await apiClient.put<Category>(`/categories/${id}`, payload);
-    return response.data;
+    const response = await apiClient.put(`/categories/${id}`, payload);
+    return unwrapApiField<Category>(response.data, "category");
   },
 
   deleteCategory: async (id: string): Promise<void> => {
-    if (USE_MOCK) {
-      MockDB.deleteCategory(id);
-      return;
-    }
     await apiClient.delete(`/categories/${id}`);
   },
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { productsApi } from "../../api/products.api";
 import { inventoryApi } from "../../api/inventory.api";
@@ -8,24 +8,81 @@ import type { Inventory } from "../../types/inventory.types";
 import { Button } from "../../components/common/Button";
 import { Loading } from "../../components/common/Loading";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
-import { Play, Sparkles, Terminal, Mail, RefreshCw, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Play, Sparkles, Terminal, Mail, RefreshCw, AlertTriangle, ShieldCheck, X, CheckCircle, Info, AlertOctagon } from "lucide-react";
+
+/* ─── Inline Toast System ─── */
+type ToastType = "success" | "error" | "warning" | "info";
+interface Toast {
+  id: string;
+  type: ToastType;
+  message: string;
+}
+
+const TOAST_DURATION = 6000;
+let _toastId = 0;
+
+const toastStyles: Record<ToastType, { bg: string; border: string; text: string; icon: React.ReactNode }> = {
+  success: {
+    bg: "bg-emerald-50",
+    border: "border-emerald-300",
+    text: "text-emerald-900",
+    icon: <CheckCircle size={18} className="text-emerald-600 shrink-0" />,
+  },
+  error: {
+    bg: "bg-rose-50",
+    border: "border-rose-300",
+    text: "text-rose-900",
+    icon: <AlertOctagon size={18} className="text-rose-600 shrink-0" />,
+  },
+  warning: {
+    bg: "bg-amber-50",
+    border: "border-amber-300",
+    text: "text-amber-900",
+    icon: <AlertTriangle size={18} className="text-amber-600 shrink-0" />,
+  },
+  info: {
+    bg: "bg-sky-50",
+    border: "border-sky-300",
+    text: "text-sky-900",
+    icon: <Info size={18} className="text-sky-600 shrink-0" />,
+  },
+};
+/* ─── End Toast System Types ─── */
 
 export const AdminSimulateSalePage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [inventories, setInventories] = useState<Inventory[]>([]);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [sellQuantity, setSellQuantity] = useState(5);
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
+  // Toast state
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const addToast = useCallback((type: ToastType, message: string) => {
+    const id = `toast-${++_toastId}`;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, TOAST_DURATION);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
   // Result state
   const [result, setResult] = useState<{
     success: boolean;
+    productId?: string;
+    productName?: string;
     stockBefore: number;
     stockAfter: number;
+    decreasedQuantity: number;
     statusAfter: "OK" | "WARNING" | "NEED_RESTOCK";
     minThreshold: number;
     prCreated: boolean;
@@ -57,7 +114,7 @@ export const AdminSimulateSalePage: React.FC = () => {
 
   const currentQty = selectedInventory?.quantity ?? 0;
   const threshold = selectedInventory?.minThreshold ?? selectedInventory?.min_threshold ?? 0;
-  
+
   // Suggest a quantity to drop below threshold
   const suggestedQuantity = currentQty > threshold ? currentQty - threshold + 1 : 1;
 
@@ -73,28 +130,89 @@ export const AdminSimulateSalePage: React.FC = () => {
         quantity: sellQuantity,
       });
 
-      // Calculate post-simulation status
-      const postQty = currentQty - sellQuantity;
+      const affected = res?.affectedProduct ?? res?.affectedProducts?.[0] ?? {};
+      const stockBefore = affected.stockBefore ?? res?.stockBefore ?? currentQty;
+      const stockAfter = affected.stockAfter ?? res?.stockAfter ?? stockBefore;
+      const decreasedQuantity = affected.decreasedQuantity ?? res?.decreasedQuantity ?? sellQuantity;
+      const minThreshold = affected.minThreshold ?? res?.minThreshold ?? threshold;
       let status: "OK" | "WARNING" | "NEED_RESTOCK" = "OK";
-      if (postQty < threshold) {
+      if (stockAfter < minThreshold) {
         status = "NEED_RESTOCK";
-      } else if (postQty === threshold) {
+      } else if (stockAfter === minThreshold) {
         status = "WARNING";
       }
 
       setResult({
         success: true,
-        stockBefore: currentQty,
-        stockAfter: Math.max(0, postQty),
+        productId: affected.productId ?? res?.productId ?? selectedProductId,
+        productName: affected.productName ?? res?.productName ?? selectedProduct?.name,
+        stockBefore,
+        stockAfter,
+        decreasedQuantity,
         statusAfter: status,
-        minThreshold: threshold,
+        minThreshold,
         prCreated: !!(res?.purchaseRequestId || res?.purchaseRequest || res?.prCreated),
         prId: res?.purchaseRequestId || res?.purchaseRequest?.id || undefined,
       });
 
+      /* ─── Toast notifications based on response ─── */
+
+      const createdPRs = res?.createdPurchaseRequests ?? [];
+      const logs: any[] = res?.agentLogs ?? res?.agentResults ?? [];
+
+      const hasDuplicateSkip = logs.some((log: any) => {
+        const output = typeof log?.output === "string"
+          ? (() => { try { return JSON.parse(log.output); } catch { return null; } })()
+          : log?.output;
+        return (
+          log?.result === "SKIPPED_DUPLICATE" ||
+          output?.reason === "ACTIVE_PR_EXISTS" ||
+          log?.reasonCode === "ACTIVE_PR_EXISTS"
+        );
+      });
+
+      const hasNoSupplierSkip = logs.some((log: any) => {
+        const output = typeof log?.output === "string"
+          ? (() => { try { return JSON.parse(log.output); } catch { return null; } })()
+          : log?.output;
+        return (
+          log?.result === "NO_SUPPLIER" ||
+          log?.result === "SUPPLIER_NOT_FOUND" ||
+          log?.result === "SUPPLIER_PRODUCTS_EMPTY" ||
+          output?.reason === "NO_SUPPLIERS_MAPPED" ||
+          output?.reason === "SUPPLIERS_INACTIVE" ||
+          log?.reasoning?.includes("Sản phẩm chưa được liên kết với nhà cung cấp") ||
+          log?.reasoning?.includes("Nhà cung cấp của sản phẩm đang bị vô hiệu hóa") ||
+          output?.reason === "SUPPLIER_MISSING"
+        );
+      });
+
+      if (createdPRs.length > 0) {
+        const prNumber = createdPRs[0]?.requestNumber || createdPRs[0]?.id || "";
+        addToast("success", `AI Agent đã tạo yêu cầu nhập hàng: ${prNumber}.`);
+      } else if (hasNoSupplierSkip) {
+        addToast("warning", "Sản phẩm chưa được liên kết với nhà cung cấp nên AI Agent không thể tạo yêu cầu nhập hàng.");
+      } else if (hasDuplicateSkip) {
+        addToast("info", "Sản phẩm đã có yêu cầu nhập hàng đang chờ xử lý.");
+      } else if (stockAfter <= minThreshold) {
+        addToast("info", "Mô phỏng bán hàng thành công, nhưng AI Agent chưa tạo yêu cầu nhập hàng.");
+      } else {
+        addToast("success", `Mô phỏng bán hàng thành công. Tồn kho còn ${stockAfter}.`);
+      }
+
       // Refresh inventory stock values locally
       await loadData();
     } catch (err: any) {
+      // Case 6 & 7: Error toasts
+      const status = err.response?.status;
+      const message = err.response?.data?.message || err.message || "";
+
+      if (status === 400 && (message.toLowerCase().includes("not enough") || message.toLowerCase().includes("inventory") || message.toLowerCase().includes("stock"))) {
+        addToast("error", "Không đủ tồn kho để mô phỏng bán hàng.");
+      } else {
+        addToast("error", "Không thể mô phỏng bán hàng. Vui lòng thử lại.");
+      }
+
       setApiError(err.response?.data?.message || err.message || "Lỗi khi chạy giả lập bán hàng.");
     } finally {
       setIsSimulating(false);
@@ -108,6 +226,45 @@ export const AdminSimulateSalePage: React.FC = () => {
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
+      {/* ─── Toast Container (fixed top-right) ─── */}
+      {toasts.length > 0 && (
+        <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm" style={{ pointerEvents: "none" }}>
+          {toasts.map((t) => {
+            const s = toastStyles[t.type];
+            return (
+              <div
+                key={t.id}
+                className={`flex items-start gap-2.5 px-4 py-3 rounded-xl border shadow-lg ${s.bg} ${s.border} ${s.text} text-sm font-medium animate-[slideInRight_0.3s_ease-out]`}
+                style={{ pointerEvents: "auto" }}
+              >
+                {s.icon}
+                <span className="flex-1 leading-snug">{t.message}</span>
+                <button
+                  onClick={() => removeToast(t.id)}
+                  className="shrink-0 p-0.5 rounded hover:bg-black/5 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ─── Toast animation keyframes ─── */}
+      <style>{`
+        @keyframes slideInRight {
+          from {
+            opacity: 0;
+            transform: translateX(100%);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+      `}</style>
+
       {apiError && (
         <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-semibold rounded-2xl">
           {apiError}
@@ -218,7 +375,10 @@ export const AdminSimulateSalePage: React.FC = () => {
       {result && (
         <div className="bg-white border border-slate-100 rounded-3xl p-6 sm:p-8 shadow-md space-y-5">
           <h4 className="font-bold text-slate-800 border-b border-slate-100 pb-2">Kết quả mô phỏng bán</h4>
-          
+          <p className="text-xs text-slate-500">
+            {result.productName ? `${result.productName} - ` : ""}Đã trừ {result.decreasedQuantity} sản phẩm từ dữ liệu backend.
+          </p>
+
           <div className="grid grid-cols-3 gap-4 text-center">
             <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl">
               <span className="text-[10px] text-slate-400 block font-medium">Kho trước bán</span>

@@ -7,7 +7,7 @@ import { useAuth } from "../contexts/AuthContext";
 
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, loadMe } = useAuth();
+  const { user } = useAuth();
   
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -46,20 +46,6 @@ export const ProfilePage: React.FC = () => {
         const updatedUser = { ...user, name, email, phone };
         localStorage.setItem("user", JSON.stringify(updatedUser));
         
-        // Try to update mock users if possible
-        try {
-          const usersRaw = localStorage.getItem("mock_users");
-          if (usersRaw) {
-            const users = JSON.parse(usersRaw);
-            const idx = users.findIndex((u: any) => u.id === user.id);
-            if (idx !== -1) {
-              users[idx] = { ...users[idx], name, email, phone };
-              localStorage.setItem("mock_users", JSON.stringify(users));
-            }
-          }
-        } catch (e) {
-          // Ignore
-        }
       }
       
       // Auto redirect

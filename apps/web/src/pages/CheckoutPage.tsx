@@ -13,13 +13,10 @@ export const CheckoutPage: React.FC = () => {
   const { items, totalAmount, clearCart } = useCart();
   const navigate = useNavigate();
   
-  const [shippingName, setShippingName] = useState("");
-  const [shippingPhone, setShippingPhone] = useState("");
-  const [shippingAddress, setShippingAddress] = useState("");
   const [note, setNote] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("BANK_TRANSFER");
   
-  const [errors, setErrors] = useState<{ shippingName?: string; shippingPhone?: string; shippingAddress?: string }>({});
+  const [errors, setErrors] = useState<{}>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -27,21 +24,6 @@ export const CheckoutPage: React.FC = () => {
     e.preventDefault();
     setApiError(null);
     const newErrors: typeof errors = {};
-
-    if (!shippingName.trim()) {
-      newErrors.shippingName = "Họ và tên người nhận không được để trống";
-    }
-    if (!shippingPhone.trim()) {
-      newErrors.shippingPhone = "Số điện thoại nhận hàng không được để trống";
-    }
-    if (!shippingAddress.trim()) {
-      newErrors.shippingAddress = "Địa chỉ nhận hàng không được để trống";
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
 
     setErrors({});
     setIsLoading(true);
@@ -52,9 +34,6 @@ export const CheckoutPage: React.FC = () => {
         quantity: item.quantity,
       })),
       paymentMethod,
-      shippingName,
-      shippingPhone,
-      shippingAddress,
       note: note.trim() || undefined,
     };
 
@@ -125,34 +104,6 @@ export const CheckoutPage: React.FC = () => {
                 <span>{apiError}</span>
               </div>
             )}
-
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Input
-                label="Họ và tên người nhận"
-                type="text"
-                placeholder="Nguyen Van A"
-                value={shippingName}
-                onChange={(e) => setShippingName(e.target.value)}
-                error={errors.shippingName}
-              />
-              <Input
-                label="Số điện thoại"
-                type="text"
-                placeholder="09xxxxxxxx"
-                value={shippingPhone}
-                onChange={(e) => setShippingPhone(e.target.value)}
-                error={errors.shippingPhone}
-              />
-            </div>
-
-            <Input
-              label="Địa chỉ giao hàng"
-              type="text"
-              placeholder="Địa chỉ cụ thể (Số nhà, đường, phường, quận...)"
-              value={shippingAddress}
-              onChange={(e) => setShippingAddress(e.target.value)}
-              error={errors.shippingAddress}
-            />
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">

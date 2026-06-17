@@ -25,8 +25,8 @@ export const sendEmail = async (req: AuthenticatedRequest, res: Response): Promi
             return sendError(res, 400, validation.error.issues[0]?.message || 'Invalid input.');
         }
 
-        const { subject, body } = validation.data;
-        const request = await emailService.sendEmail(req.params.id, subject, body, req.user.id);
+        const { to, subject, body } = validation.data;
+        const request = await emailService.sendEmail(req.params.id, subject, body, req.user.id, to);
         sendSuccess(res, 200, 'Email sent to supplier successfully.', { purchaseRequest: request });
     } catch (error: any) {
         const status = error.status || 500;
@@ -45,8 +45,8 @@ export const retryEmail = async (req: AuthenticatedRequest, res: Response): Prom
             return sendError(res, 400, validation.error.issues[0]?.message || 'Invalid input.');
         }
 
-        const { subject, body } = validation.data;
-        const request = await emailService.retryEmail(req.params.id, subject, body, req.user.id);
+        const { to, subject, body } = validation.data;
+        const request = await emailService.retryEmail(req.params.id, subject, body, req.user.id, to);
         sendSuccess(res, 200, 'Email retried successfully.', { purchaseRequest: request });
     } catch (error: any) {
         const status = error.status || 500;

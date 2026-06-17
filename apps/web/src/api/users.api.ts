@@ -1,37 +1,21 @@
-import { apiClient, USE_MOCK } from "./client";
+﻿import { apiClient, unwrapApiData } from "./client";
 import type { User } from "../types/auth.types";
-import { MockDB } from "./mockDb";
 
 export const usersApi = {
   getUsers: async (): Promise<User[]> => {
-    if (USE_MOCK) {
-      return MockDB.getUsers();
-    }
-    const response = await apiClient.get<User[]>("/users");
-    return response.data;
+    const response = await apiClient.get<User>("/auth/me");
+    return [unwrapApiData<User>(response.data)];
   },
 
-  createUser: async (payload: Partial<User>): Promise<User> => {
-    if (USE_MOCK) {
-      return MockDB.createUser(payload);
-    }
-    const response = await apiClient.post<User>("/users", payload);
-    return response.data;
+  createUser: async (_payload: Partial<User>): Promise<User> => {
+    throw new Error("Backend hiện tại chưa hỗ trợ API quản lý người dùng.");
   },
 
-  updateUser: async (id: string, payload: Partial<User>): Promise<User> => {
-    if (USE_MOCK) {
-      return MockDB.updateUser(id, payload);
-    }
-    const response = await apiClient.put<User>(`/users/${id}`, payload);
-    return response.data;
+  updateUser: async (_id: string, _payload: Partial<User>): Promise<User> => {
+    throw new Error("Backend hiện tại chưa hỗ trợ API cập nhật người dùng.");
   },
 
-  deleteUser: async (id: string): Promise<void> => {
-    if (USE_MOCK) {
-      MockDB.deleteUser(id);
-      return;
-    }
-    await apiClient.delete(`/users/${id}`);
+  deleteUser: async (_id: string): Promise<void> => {
+    throw new Error("Backend hiện tại chưa hỗ trợ API xóa người dùng.");
   },
 };

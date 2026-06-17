@@ -15,6 +15,7 @@ export const findSystemSetting = async (req: AuthenticatedRequest, res: Response
 };
 
 export const patchSystemSetting = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    const setting = await upsertSetting(req.params.key, (req.body as UpdateSystemSettingInput).value);
-    sendSuccess(res, 200, 'Cập nhật cấu hình thành công.', { setting });
+    const { value } = req.body as UpdateSystemSettingInput;
+    const setting = await upsertSetting(req.params.key, value);
+    sendSuccess(res, 200, 'Cập nhật cấu hình hệ thống thành công.', { setting });
 };

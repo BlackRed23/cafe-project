@@ -17,6 +17,7 @@ import {
   Boxes,
   Users,
   LayoutGrid,
+  Settings,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -35,6 +36,7 @@ const MENU_GROUPS = [
     label: "Cấu hình & Hệ thống",
     items: [
       { label: "Thành viên", path: "/admin/users", icon: Users },
+      { label: "Cài đặt hệ thống", path: "/admin/system-settings", icon: Settings },
     ],
   },
   {
@@ -66,7 +68,7 @@ const MENU_GROUPS = [
 export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const isActive = (path: string) => {

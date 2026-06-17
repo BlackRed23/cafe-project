@@ -1,0 +1,18 @@
+[
+  {
+    "id": "log_111",
+    "agentId": "agent_01",
+    "action": "CREATE_ORDER",
+    "status": "SUCCESS",
+    "details": "Tạo đơn hàng thành công",
+    "createdAt": "2026-06-16T10:00:00Z"
+  },
+  {
+    "id": "log_112",
+    "agentId": "agent_01",
+    "action": "PROCESS_PAYMENT",
+    "status": "FAILED",
+    "details": "Không thể tải thông tin thanh toán",
+    "createdAt": "2026-06-16T10:05:00Z"
+  }
+]

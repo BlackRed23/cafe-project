@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Search, Edit2, Trash2, LayoutGrid, Info, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, LayoutGrid, Info } from "lucide-react";
 import { categoriesApi } from "../../api/categories.api";
 import type { Category } from "../../types/category.types";
 import { Button } from "../../components/common/Button";
 import { Input } from "../../components/common/Input";
 import { Loading } from "../../components/common/Loading";
+import { getErrorMessage } from "../../api/client";
 
 export const AdminCategoriesPage: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -20,21 +21,24 @@ export const AdminCategoriesPage: React.FC = () => {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    isActive: true,
   });
+  const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Delete modal states
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const fetchCategories = async () => {
     try {
       setIsLoading(true);
+      setError(null);
       const data = await categoriesApi.getCategories();
       setCategories(data);
     } catch (err) {
-      setError("Không thể tải danh sách danh mục");
+      setError("Không thể tải danh sách danh mục.");
     } finally {
       setIsLoading(false);
     }
@@ -44,20 +48,27 @@ export const AdminCategoriesPage: React.FC = () => {
     fetchCategories();
   }, []);
 
+  // Auto-dismiss success message
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
+
   const handleOpenModal = (category?: Category) => {
+    setFormError(null);
     if (category) {
       setEditingCategory(category);
       setFormData({
         name: category.name,
         description: category.description || "",
-        isActive: category.isActive !== false,
       });
     } else {
       setEditingCategory(null);
       setFormData({
         name: "",
         description: "",
-        isActive: true,
       });
     }
     setIsModalOpen(true);
@@ -66,24 +77,36 @@ export const AdminCategoriesPage: React.FC = () => {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingCategory(null);
+    setFormError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) return;
+    setFormError(null);
+
+    if (!formData.name.trim()) {
+      setFormError("Tên danh mục không được để trống.");
+      return;
+    }
+
+    const payload = {
+      name: formData.name.trim(),
+      description: formData.description.trim() || undefined,
+    };
 
     try {
       setIsSubmitting(true);
       if (editingCategory) {
-        await categoriesApi.updateCategory(editingCategory.id, formData);
+        await categoriesApi.updateCategory(editingCategory.id, payload);
+        setSuccessMessage("Đã cập nhật danh mục thành công.");
       } else {
-        await categoriesApi.createCategory(formData);
+        await categoriesApi.createCategory(payload);
+        setSuccessMessage("Đã thêm danh mục mới thành công.");
       }
       handleCloseModal();
       fetchCategories();
     } catch (err) {
-      console.error(err);
-      alert("Đã có lỗi xảy ra");
+      setFormError(getErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -91,21 +114,29 @@ export const AdminCategoriesPage: React.FC = () => {
 
   const handleOpenDeleteModal = (id: string) => {
     setCategoryToDelete(id);
+    setDeleteError(null);
     setIsDeleteModalOpen(true);
+  };
+
+  const handleCloseDeleteModal = () => {
+    setIsDeleteModalOpen(false);
+    setCategoryToDelete(null);
+    setDeleteError(null);
   };
 
   const handleDelete = async () => {
     if (!categoryToDelete) return;
+    setDeleteError(null);
     try {
       setIsSubmitting(true);
       await categoriesApi.deleteCategory(categoryToDelete);
-      setIsDeleteModalOpen(false);
+      setSuccessMessage("Đã xóa danh mục thành công.");
+      handleCloseDeleteModal();
       fetchCategories();
     } catch (err) {
-      alert("Không thể xóa danh mục này");
+      setDeleteError(getErrorMessage(err));
     } finally {
       setIsSubmitting(false);
-      setCategoryToDelete(null);
     }
   };
 
@@ -113,7 +144,7 @@ export const AdminCategoriesPage: React.FC = () => {
     (c) => c.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  if (isLoading) return <Loading />;
+  if (isLoading) return <Loading message="Đang tải danh sách danh mục..." />;
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -127,6 +158,14 @@ export const AdminCategoriesPage: React.FC = () => {
         </Button>
       </div>
 
+      {/* Success message */}
+      {successMessage && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-sm flex items-center gap-2 font-medium animate-in fade-in duration-200">
+          <Info size={18} className="flex-shrink-0" />
+          {successMessage}
+        </div>
+      )}
+
       {error && (
         <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm flex items-center gap-2">
           <Info size={18} className="flex-shrink-0" />
@@ -135,7 +174,7 @@ export const AdminCategoriesPage: React.FC = () => {
       )}
 
       {/* Toolbar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row gap-4">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row gap-4 items-center">
         <div className="relative flex-1">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -145,6 +184,12 @@ export const AdminCategoriesPage: React.FC = () => {
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-800/20 focus:border-amber-800 transition-all"
           />
+        </div>
+        <div className="flex items-center gap-2">
+          <LayoutGrid size={16} className="text-amber-800" />
+          <span className="text-sm font-semibold text-slate-600">
+            {categories.length} danh mục
+          </span>
         </div>
       </div>
 
@@ -156,7 +201,6 @@ export const AdminCategoriesPage: React.FC = () => {
               <tr>
                 <th className="px-6 py-4">Tên danh mục</th>
                 <th className="px-6 py-4">Mô tả</th>
-                <th className="px-6 py-4">Trạng thái</th>
                 <th className="px-6 py-4 text-right">Thao tác</th>
               </tr>
             </thead>
@@ -174,17 +218,6 @@ export const AdminCategoriesPage: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 text-slate-600 whitespace-normal min-w-[200px]">
                       {cat.description || <span className="text-slate-400 italic">Không có mô tả</span>}
-                    </td>
-                    <td className="px-6 py-4">
-                      {cat.isActive !== false ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
-                          <CheckCircle size={12} /> Hoạt động
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
-                          <XCircle size={12} /> Tạm ẩn
-                        </span>
-                      )}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -208,7 +241,7 @@ export const AdminCategoriesPage: React.FC = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={3} className="px-6 py-8 text-center text-slate-500">
                     Không tìm thấy danh mục nào
                   </td>
                 </tr>
@@ -229,12 +262,18 @@ export const AdminCategoriesPage: React.FC = () => {
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              {formError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-sm rounded-lg flex items-center gap-2">
+                  <Info size={16} className="flex-shrink-0" />
+                  {formError}
+                </div>
+              )}
+
               <Input
                 label="Tên danh mục"
                 placeholder="Ví dụ: Cà phê đóng chai"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
               />
               
               <div>
@@ -248,19 +287,6 @@ export const AdminCategoriesPage: React.FC = () => {
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm transition-colors duration-200 outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700 placeholder-slate-400 text-slate-900 resize-none"
                 />
-              </div>
-
-              <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.isActive}
-                    onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-800"></div>
-                  <span className="ml-3 text-sm font-medium text-slate-700">Trạng thái hoạt động</span>
-                </label>
               </div>
 
               <div className="pt-4 flex gap-3">
@@ -278,7 +304,7 @@ export const AdminCategoriesPage: React.FC = () => {
                   disabled={isSubmitting || !formData.name.trim()}
                   className="flex-1 bg-amber-800 hover:bg-amber-900 text-white border-none"
                 >
-                  {isSubmitting ? "Đang lưu..." : "Lưu thay đổi"}
+                  {isSubmitting ? "Đang lưu..." : (editingCategory ? "Cập nhật" : "Thêm mới")}
                 </Button>
               </div>
             </form>
@@ -294,14 +320,22 @@ export const AdminCategoriesPage: React.FC = () => {
               <Trash2 size={24} />
             </div>
             <h3 className="text-lg font-bold text-slate-800 text-center mb-2">Xóa danh mục này?</h3>
-            <p className="text-sm text-slate-500 text-center mb-6">
-              Hành động này không thể hoàn tác. Việc xóa danh mục có thể ảnh hưởng đến các sản phẩm đang thuộc danh mục này.
+            <p className="text-sm text-slate-500 text-center mb-4">
+              Hành động này không thể hoàn tác. Nếu danh mục còn sản phẩm, hệ thống sẽ không cho phép xóa.
             </p>
+
+            {deleteError && (
+              <div className="p-3 mb-4 bg-rose-50 border border-rose-200 text-rose-800 text-sm rounded-lg flex items-center gap-2">
+                <Info size={16} className="flex-shrink-0" />
+                {deleteError}
+              </div>
+            )}
+
             <div className="flex gap-3">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setIsDeleteModalOpen(false)}
+                onClick={handleCloseDeleteModal}
                 className="flex-1"
                 disabled={isSubmitting}
               >

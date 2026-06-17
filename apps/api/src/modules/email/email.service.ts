@@ -110,7 +110,7 @@ Cafe AI System`;
         };
     },
 
-    async sendEmail(id: string, subject: string, body: string, userId: string) {
+    async sendEmail(id: string, subject: string, body: string, userId: string, to?: string) {
         const request = await prisma.purchaseRequest.findUnique({
             where: { id },
             include: {
@@ -126,7 +126,7 @@ Cafe AI System`;
             throw new HttpError(400, 'Only approved purchase requests can be emailed.');
         }
 
-        const supplierEmail = request.supplier.email;
+        const supplierEmail = to || request.supplier.email;
         if (!supplierEmail || !EMAIL_REGEX.test(supplierEmail)) {
             throw new HttpError(400, 'Supplier does not have a valid email address.');
         }
@@ -205,7 +205,7 @@ Cafe AI System`;
         }
     },
 
-    async retryEmail(id: string, subject: string, body: string, userId: string) {
+    async retryEmail(id: string, subject: string, body: string, userId: string, to?: string) {
         const request = await prisma.purchaseRequest.findUnique({
             where: { id }
         });
@@ -222,6 +222,6 @@ Cafe AI System`;
             throw new HttpError(400, 'Maximum retry limit (3) exceeded. Cannot retry email.');
         }
 
-        return this.sendEmail(id, subject, body, userId);
+        return this.sendEmail(id, subject, body, userId, to);
     }
 };

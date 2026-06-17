@@ -1,4 +1,4 @@
-export interface Supplier {
+﻿export interface Supplier {
   id: string;
   name: string;
   email: string;

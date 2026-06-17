@@ -1,56 +1,69 @@
-import { apiClient, USE_MOCK } from "./client";
+import { apiClient, unwrapApiField, unwrapApiList } from "./client";
 import type { CreateOrderPayload, Order } from "../types/order.types";
-import { MockDB } from "./mockDb";
+
+const normalizeOrder = (order: any): Order => ({
+  ...order,
+  paymentMethod: order?.paymentMethod ?? order?.payment?.method ?? "CASH",
+  paymentStatus: order?.paymentStatus ?? order?.payment?.status ?? "PENDING",
+  createdAt: order?.createdAt ?? order?.created_at,
+  updatedAt: order?.updatedAt ?? order?.updated_at,
+  items: order?.items?.map((item: any) => ({
+    ...item,
+    price: item?.price ?? item?.unitPrice ?? 0,
+    productId: item?.productId ?? item?.product_id,
+    product: item?.product ?? {
+      id: item?.productId ?? item?.product_id,
+      name: item?.productName ?? "Sản phẩm",
+      unit: item?.unit,
+    },
+  })),
+});
+
+const normalizeOrderPayload = (payload: CreateOrderPayload) => ({
+  items: payload.items,
+  paymentMethod: payload.paymentMethod,
+  note: payload.note,
+});
 
 export const ordersApi = {
   createOrder: async (payload: CreateOrderPayload): Promise<Order> => {
-    if (USE_MOCK) {
-      return MockDB.createOrder(payload);
-    }
-    const response = await apiClient.post<Order>("/orders", payload);
-    return response.data;
+    const response = await apiClient.post("/orders", normalizeOrderPayload(payload));
+    return normalizeOrder(unwrapApiField<any>(response.data, "order"));
   },
 
   getMyOrders: async (): Promise<Order[]> => {
-    if (USE_MOCK) {
-      return MockDB.getOrders().filter((o) => o.userId === "u-customer");
-    }
-    const response = await apiClient.get<Order[]>("/orders/my");
-    return response.data;
+    const response = await apiClient.get("/orders/me");
+    return unwrapApiList<any>(response.data, "orders").map(normalizeOrder);
   },
 
   getOrderById: async (id: string): Promise<Order> => {
-    if (USE_MOCK) {
-      const ord = MockDB.getOrders().find((o) => o.id === id);
-      if (ord) return ord;
-      throw new Error("Không tìm thấy đơn hàng");
-    }
-    const response = await apiClient.get<Order>(`/orders/${id}`);
-    return response.data;
+    const response = await apiClient.get(`/orders/${id}`);
+    return normalizeOrder(unwrapApiField<any>(response.data, "order"));
   },
 
-  // Admin APIs
   getOrders: async (): Promise<Order[]> => {
-    if (USE_MOCK) {
-      return MockDB.getOrders();
-    }
-    const response = await apiClient.get<Order[]>("/orders");
-    return response.data;
+    const response = await apiClient.get("/orders");
+    return unwrapApiList<any>(response.data, "orders").map(normalizeOrder);
   },
 
   confirmOrder: async (id: string): Promise<Order> => {
-    if (USE_MOCK) {
-      return MockDB.confirmOrder(id) as any;
-    }
-    const response = await apiClient.put<Order>(`/orders/${id}/confirm`);
-    return response.data;
+    return ordersApi.updateOrderStatus(id, { status: "CONFIRMED" });
   },
 
   updateOrderStatus: async (id: string, payload: { status?: string; paymentStatus?: string }): Promise<Order> => {
-    if (USE_MOCK) {
-      return MockDB.updateOrderStatus(id, payload);
+    const response = await apiClient.patch(`/orders/${id}/status`, { status: payload.status });
+    let order = unwrapApiField<any>(response.data, "order");
+
+    if (payload.paymentStatus && order?.payment?.id) {
+      const paymentResponse = await apiClient.patch(`/payments/${order.payment.id}/status`, {
+        status: payload.paymentStatus,
+      });
+      order = {
+        ...order,
+        payment: unwrapApiField<any>(paymentResponse.data, "payment"),
+      };
     }
-    const response = await apiClient.put<Order>(`/orders/${id}/status`, payload);
-    return response.data;
+
+    return normalizeOrder(order);
   },
 };

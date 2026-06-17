@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { productsApi } from "../../api/products.api";
+import { getErrorMessage } from "../../api/client";
 import type { Product } from "../../types/product.types";
 import { formatCurrency } from "../../utils/formatCurrency";
 import { Button } from "../../components/common/Button";
@@ -16,8 +17,12 @@ export const AdminProductsPage: React.FC = () => {
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const [conflictProduct, setConflictProduct] = useState<Product | null>(null);
+  const [isDeactivating, setIsDeactivating] = useState(false);
 
   const fetchProducts = async () => {
     try {
@@ -42,10 +47,33 @@ export const AdminProductsPage: React.FC = () => {
       await productsApi.deleteProduct(deleteId);
       setProducts((prev) => prev.filter((p) => p.id !== deleteId));
       setDeleteId(null);
-    } catch {
-      alert("Lỗi khi xóa sản phẩm.");
+    } catch (err: any) {
+      if (err.response?.status === 409) {
+        const p = products.find((product) => product.id === deleteId);
+        if (p) setConflictProduct(p);
+        setDeleteId(null);
+      } else {
+        setError(getErrorMessage(err) || "Lỗi khi xóa sản phẩm.");
+        setDeleteId(null);
+      }
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleDeactivate = async () => {
+    if (!conflictProduct) return;
+    setIsDeactivating(true);
+    try {
+      await productsApi.updateProduct(conflictProduct.id, { isActive: false });
+      setProducts((prev) =>
+        prev.map((p) => (p.id === conflictProduct.id ? { ...p, isActive: false } : p))
+      );
+      setConflictProduct(null);
+    } catch (err: any) {
+      setError(getErrorMessage(err) || "Lỗi khi ngưng bán sản phẩm.");
+    } finally {
+      setIsDeactivating(false);
     }
   };
 
@@ -204,6 +232,18 @@ export const AdminProductsPage: React.FC = () => {
         cancelText="Hủy"
         type="danger"
         isLoading={isDeleting}
+      />
+
+      <ConfirmDialog
+        isOpen={!!conflictProduct}
+        onClose={() => setConflictProduct(null)}
+        onConfirm={handleDeactivate}
+        title="Không thể xóa sản phẩm"
+        message={`Không thể xoá sản phẩm "${conflictProduct?.name}" vì đã có lịch sử kho/đơn hàng liên quan. Hãy ngưng bán sản phẩm thay vì xoá.`}
+        confirmText="Ngưng bán"
+        cancelText="Đóng"
+        type="warning"
+        isLoading={isDeactivating}
       />
     </div>
   );

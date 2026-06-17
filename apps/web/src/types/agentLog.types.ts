@@ -1,4 +1,4 @@
-export interface AgentLog {
+﻿export interface AgentLog {
   id: string;
   action?: string;
   status?: string;

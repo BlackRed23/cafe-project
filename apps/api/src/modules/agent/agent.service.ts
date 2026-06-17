@@ -1,4 +1,4 @@
-﻿import { agentRepository, type AgentInventoryRecord } from './agent.repository';
+import { agentRepository, type AgentInventoryRecord } from './agent.repository';
 import type { ScanInventoryInput, RecommendReorderInput } from './agent.validator';
 import { prisma } from '../../common/prisma';
 import { recommendationService } from './recommendation.service';
@@ -20,7 +20,7 @@ const maskDatabaseUrl = (raw?: string): string => {
 const isSupplierActive = (supplier: { status?: string | null; deletedAt?: Date | null }): boolean =>
     supplier.status !== 'INACTIVE' && !supplier.deletedAt;
 const reasoningText = (inventory: AgentInventoryRecord, minThreshold: number, recommendedQty: number, supplierName?: string): string =>
-    `Sáº£n pháº©m ${inventory.product.name} cÃ²n ${inventory.quantity}, tháº¥p hÆ¡n hoáº·c báº±ng ngÆ°á»¡ng tá»‘i thiá»ƒu ${minThreshold}. Há»‡ thá»‘ng Ä‘á» xuáº¥t nháº­p thÃªm ${recommendedQty} sáº£n pháº©m Ä‘á»ƒ Ä‘áº¡t má»©c an toÃ n. NhÃ  cung cáº¥p ${supplierName ?? 'khÃ´ng xÃ¡c Ä‘á»‹nh'} Ä‘Æ°á»£c chá»n vÃ¬ cÃ³ giÃ¡ nháº­p phÃ¹ há»£p nháº¥t trong dá»¯ liá»‡u hiá»‡n cÃ³.`;
+    `Sản phẩm ${inventory.product.name} còn ${inventory.quantity}, thấp hơn hoặc bằng ngưỡng tối thiểu ${minThreshold}. Hệ thống đề xuất nhập thêm ${recommendedQty} sản phẩm để đạt mức an toàn. Nhà cung cấp ${supplierName ?? 'không xác định'} được chọn vì có giá nhập phù hợp nhất trong dữ liệu hiện có.`;
 
 const parseBooleanSetting = (value: string | null, defaultValue: boolean): boolean => {
     if (value === null) return defaultValue;

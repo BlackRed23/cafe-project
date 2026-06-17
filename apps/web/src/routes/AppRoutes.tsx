@@ -32,6 +32,7 @@ import { AdminPurchaseRequestDetailPage } from "../pages/admin/AdminPurchaseRequ
 import { AdminAgentLogsPage } from "../pages/admin/AdminAgentLogsPage";
 import { AdminUsersPage } from "../pages/admin/AdminUsersPage";
 import { AdminCategoriesPage } from "../pages/admin/AdminCategoriesPage";
+import { AdminSystemSettingsPage } from "../pages/admin/AdminSystemSettingsPage";
 
 const ScrollToTop: React.FC = () => {
   const { pathname } = useLocation();
@@ -118,6 +119,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="purchase-requests/:id" element={<AdminPurchaseRequestDetailPage />} />
           <Route path="agent-logs" element={<AdminAgentLogsPage />} />
           <Route path="users" element={<AdminUsersPage />} />
+          <Route path="system-settings" element={<AdminSystemSettingsPage />} />
         </Route>
 
         {/* Fallback route */}

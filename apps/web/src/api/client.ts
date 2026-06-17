@@ -1,15 +1,37 @@
-import axios from "axios";
-import { MockDB } from "./mockDb";
-
-// Initialize mock DB data in LocalStorage
-MockDB.init();
-
-// Toggle mock mode. When true, all API modules route locally.
-export const USE_MOCK = true;
+﻿import axios from "axios";
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:4000/api",
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
 });
+
+type ApiEnvelope<T> = {
+  success?: boolean;
+  message?: string;
+  data?: T;
+};
+
+export function unwrapApiData<T = any>(payload: T | ApiEnvelope<T>): T {
+  if (payload && typeof payload === "object" && "data" in payload) {
+    return (payload as ApiEnvelope<T>).data as T;
+  }
+
+  return payload as T;
+}
+
+export function unwrapApiField<T = any>(payload: any, field: string): T {
+  const data = unwrapApiData<any>(payload);
+
+  if (data && typeof data === "object" && field in data) {
+    return data[field] as T;
+  }
+
+  return data as T;
+}
+
+export function unwrapApiList<T = any>(payload: any, field: string): T[] {
+  const value = unwrapApiField<T[] | T>(payload, field);
+  return Array.isArray(value) ? value : [];
+}
 
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem("access_token");
@@ -37,7 +59,7 @@ apiClient.interceptors.response.use(
       error.response?.data?.error ||
       error.message ||
       "Đã có lỗi xảy ra. Vui lòng thử lại.";
-    
+
     if (error && typeof error === "object") {
       (error as any).friendlyMessage = message;
     }

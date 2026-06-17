@@ -17,9 +17,6 @@ export interface OrderItemPayload {
 export interface CreateOrderPayload {
   items: OrderItemPayload[];
   paymentMethod: PaymentMethod;
-  shippingName: string;
-  shippingPhone: string;
-  shippingAddress: string;
   note?: string;
 }
 
@@ -39,9 +36,6 @@ export interface Order {
   status: OrderStatus;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
-  shippingName: string;
-  shippingPhone: string;
-  shippingAddress: string;
   note?: string;
   createdAt: string;
   updatedAt: string;

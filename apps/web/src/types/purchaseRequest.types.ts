@@ -1,4 +1,4 @@
-export type PurchaseRequestStatus =
+﻿export type PurchaseRequestStatus =
   | "PENDING"
   | "APPROVED"
   | "SENT"
@@ -14,6 +14,15 @@ export interface PurchaseRequest {
   ai_reason?: string;
   emailContent?: string;
   email_content?: string;
+  emailTo?: string;
+  emailSubject?: string;
+  emailBody?: string;
+  emailStatus?: string;
+  emailSentAt?: string;
+  sentAt?: string;
+  supplierEmail?: string;
+  retryCount?: number;
+  lastEmailError?: string | null;
   suggestedQuantity?: number;
   suggested_quantity?: number;
   product?: {
@@ -27,4 +36,19 @@ export interface PurchaseRequest {
   };
   createdAt?: string;
   created_at?: string;
+}
+
+export interface PurchaseRequestEmailPreview {
+  to?: string;
+  emailTo?: string;
+  subject?: string;
+  emailSubject?: string;
+  body?: string;
+  emailBody?: string;
+  canSend?: boolean;
+  emailStatus?: string;
+  retryCount?: number;
+  lastEmailError?: string | null;
+  sentAt?: string;
+  emailSentAt?: string;
 }

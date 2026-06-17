@@ -1,4 +1,4 @@
-export type InventoryStatus = "OK" | "WARNING" | "NEED_RESTOCK";
+﻿export type InventoryStatus = "OK" | "WARNING" | "NEED_RESTOCK";
 
 export interface Inventory {
   id: string;

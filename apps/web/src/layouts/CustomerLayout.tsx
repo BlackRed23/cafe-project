@@ -4,6 +4,13 @@ import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { ShoppingCart, LogOut, Coffee, ShieldAlert, Heart, Menu, X, Send, Key, ChevronDown, User, Package } from "lucide-react";
 
+type NavItem = {
+  label: string;
+  path: string;
+  isHash?: boolean;
+  protected?: boolean;
+};
+
 export const CustomerLayout: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
   const { totalItems } = useCart();
@@ -25,14 +32,14 @@ export const CustomerLayout: React.FC = () => {
     };
   }, []);
 
-  const navItems = [
+  const navItems: NavItem[] = [
     { label: "Trang chủ", path: "/" },
     { label: "Sản phẩm", path: "/products" },
     { label: "Bộ sưu tập", path: "/#gallery", isHash: true },
     { label: "Liên hệ", path: "/#contact", isHash: true },
   ];
 
-  const handleNavClick = (item: typeof navItems[0], e: React.MouseEvent) => {
+  const handleNavClick = (item: NavItem, e: React.MouseEvent) => {
     if (item.isHash) {
       e.preventDefault();
       setMobileMenuOpen(false);
@@ -50,7 +57,7 @@ export const CustomerLayout: React.FC = () => {
     }
   };
 
-  const isActive = (item: typeof navItems[0]) => {
+  const isActive = (item: NavItem) => {
     if (item.isHash) return false;
     if (item.path === "/") {
       return location.pathname === "/";
