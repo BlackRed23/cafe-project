@@ -1346,3 +1346,15 @@ Thoi gian cap nhat: 2026-06-18 17:33:27 +07:00.
 - npm run build: pass.
 - npm run check-types: fail do Turbo khong co task check-types trong project.
 - npm run lint: con 193 problems trong @cafe-project/web, se xu ly sau.
+---
+
+## Merge Commit Completed - feature/postgresql-prisma into dateduy
+
+- Thoi gian commit: 2026-06-18 17:37:59 +07:00.
+- Branch: dateduy.
+- Commit message: Merge postgresql prisma integration into dateduy.
+- Build: pass.
+- check-types: chua pass vi Turbo khong co task check-types.
+- lint: con 193 problems trong frontend, se xu ly sau.
+- File env/test bi cam: khong duoc commit.
+- Ket luan: merge da hoan tat commit.
