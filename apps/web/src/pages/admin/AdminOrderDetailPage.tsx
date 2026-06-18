@@ -9,8 +9,8 @@ import { Loading } from "../../components/common/Loading";
 import { Button } from "../../components/common/Button";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { ArrowLeft, Check, Play, Ban, ShieldCheck, Mail } from "lucide-react";
-import { getErrorMessage } from "../../api/client";
 import { useToast } from "../../contexts/ToastContext";
+import { getOrderErrorMessage } from "../../api/orders.api";
 
 export const AdminOrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -46,6 +46,7 @@ export const AdminOrderDetailPage: React.FC = () => {
     setActionLoading(true);
     setSuccessInfo(null);
     setError(null);
+    toast.info("Đang cập nhật đơn hàng...");
 
     try {
       if (actionType === "confirm") {
@@ -54,28 +55,28 @@ export const AdminOrderDetailPage: React.FC = () => {
           message: "Đơn hàng đã xác nhận thành công. Tồn kho đã được trừ tương ứng.",
           prId: res?.purchaseRequestId || res?.purchaseRequest?.id || undefined,
         });
-        toast.success("Xác nhận thành công", "Đơn hàng đã được xác nhận và trừ tồn kho.");
       } else if (actionType === "processing") {
         await ordersApi.updateOrderStatus(id, { status: "PROCESSING" });
-        toast.success("Bắt đầu chế biến", "Đơn hàng đã chuyển sang trạng thái đang chế biến.");
       } else if (actionType === "completed") {
         await ordersApi.updateOrderStatus(id, { status: "COMPLETED", paymentStatus: "PAID" });
-        toast.success("Hoàn thành đơn hàng", "Đơn hàng đã được giao thành công.");
       } else if (actionType === "cancel") {
         await ordersApi.updateOrderStatus(id, { status: "CANCELLED" });
-        toast.info("Đã hủy đơn hàng", "Đơn hàng đã bị hủy bỏ.");
       }
       
       const updated = await ordersApi.getOrderById(id);
       setOrder(updated);
+      toast.success("Cập nhật trạng thái đơn hàng thành công.");
     } catch (err: any) {
-      const msg = getErrorMessage(err);
+      const msg = getOrderErrorMessage(
+        err,
+        "Không thể cập nhật trạng thái đơn hàng, vui lòng thử lại."
+      );
       if (msg.toLowerCase().includes("stock") || msg.toLowerCase().includes("tồn kho")) {
         setError("Không đủ tồn kho để xác nhận đơn hàng. AI Agent sẽ đề xuất tạo Purchase Request.");
         toast.error("Không đủ tồn kho", "AI Agent sẽ tự động tạo đề xuất nhập hàng.");
       } else {
         setError(msg);
-        toast.error("Thao tác thất bại", msg);
+        toast.error(msg);
       }
     } finally {
       setActionLoading(false);
@@ -152,19 +153,19 @@ export const AdminOrderDetailPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Client & Shipping info */}
+        {/* Order info */}
         <div className="grid sm:grid-cols-2 gap-6 bg-slate-50/50 p-5 rounded-2xl border border-slate-100/50">
           <div className="space-y-1.5 text-sm">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Khách hàng nhận</h4>
-            <p className="font-bold text-slate-800">{order.shippingName || (order as any).shipping_name || "Không rõ"}</p>
-            <p className="text-slate-500 font-medium">{order.shippingPhone || (order as any).shipping_phone || "Không rõ"}</p>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Khách hàng</h4>
+            <p className="font-bold text-slate-800">{order.customer?.name || "Không rõ"}</p>
+            <p className="text-slate-500 font-medium">{order.customer?.email || "Không rõ"}</p>
           </div>
           <div className="space-y-1.5 text-sm">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Địa chỉ nhận hàng</h4>
-            <p className="text-slate-700 leading-relaxed font-semibold">{order.shippingAddress || (order as any).shipping_address || "Không rõ"}</p>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ghi chú đơn hàng</h4>
             {order.note && (
-              <p className="text-xs text-slate-400 italic mt-1 block">Ghi chú: {order.note}</p>
+              <p className="text-slate-700 leading-relaxed font-semibold">{order.note}</p>
             )}
+            {!order.note && <p className="text-slate-500 font-medium">Không có ghi chú</p>}
           </div>
         </div>
 

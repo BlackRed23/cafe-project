@@ -6,9 +6,11 @@ import { useCart } from "../contexts/CartContext";
 import type { Product } from "../types/product.types";
 import { ProductCard } from "../components/product/ProductCard";
 import { Loading } from "../components/common/Loading";
+import { useToast } from "../contexts/ToastContext";
 
 export const HomePage: React.FC = () => {
   const { addToCart } = useCart();
+  const toast = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -29,7 +31,17 @@ export const HomePage: React.FC = () => {
   }, []);
 
   const handleAddToCart = (product: Product) => {
-    addToCart(product, 1);
+    const stockQuantity = product.inventory?.quantity;
+
+    if (typeof stockQuantity === "number" && stockQuantity <= 0) {
+      toast.warning("Sản phẩm hiện đã hết hàng.");
+      return;
+    }
+
+    const didAdd = addToCart(product, 1);
+    if (!didAdd) {
+      toast.warning("Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");
+    }
   };
 
   return (

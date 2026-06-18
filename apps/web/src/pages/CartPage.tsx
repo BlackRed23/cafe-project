@@ -5,13 +5,22 @@ import { formatCurrency } from "../utils/formatCurrency";
 import { Button } from "../components/common/Button";
 import { EmptyState } from "../components/common/EmptyState";
 import { Trash2, Plus, Minus, ArrowLeft, CreditCard, Sparkles } from "lucide-react";
+import { useToast } from "../contexts/ToastContext";
 
 export const CartPage: React.FC = () => {
   const { items, totalAmount, updateQuantity, removeFromCart } = useCart();
   const navigate = useNavigate();
+  const toast = useToast();
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     e.currentTarget.src = "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=400";
+  };
+
+  const handleQuantityChange = (productId: string, quantity: number) => {
+    const didUpdate = updateQuantity(productId, quantity);
+    if (!didUpdate) {
+      toast.warning("Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");
+    }
   };
 
   if (items.length === 0) {
@@ -79,7 +88,7 @@ export const CartPage: React.FC = () => {
                   {/* Quantity adjustments */}
                   <div className="flex items-center border border-amber-900/10 rounded-xl overflow-hidden bg-white">
                     <button
-                      onClick={() => updateQuantity(product.id, item.quantity - 1)}
+                      onClick={() => handleQuantityChange(product.id, item.quantity - 1)}
                       className="px-3 py-1.5 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors"
                     >
                       <Minus size={13} />
@@ -88,7 +97,7 @@ export const CartPage: React.FC = () => {
                       {item.quantity}
                     </span>
                     <button
-                      onClick={() => updateQuantity(product.id, item.quantity + 1)}
+                      onClick={() => handleQuantityChange(product.id, item.quantity + 1)}
                       className="px-3 py-1.5 text-slate-500 hover:bg-slate-50 hover:text-slate-850 transition-colors"
                     >
                       <Plus size={13} />

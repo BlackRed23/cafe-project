@@ -42,7 +42,9 @@ export const simulateSaleService = {
             }
 
             if (inventory.quantity < quantity) {
-                throw new HttpError(400, `Không đủ tồn kho để mô phỏng bán hàng. Tồn kho hiện tại: ${inventory.quantity}, yêu cầu: ${quantity}.`);
+                let unit = inventory.product?.unit || 'đơn vị';
+                if (unit.toLowerCase() === 'ly') unit = 'đơn vị';
+                throw new HttpError(400, `Không đủ tồn kho để mô phỏng bán hàng. Tồn kho hiện tại: ${inventory.quantity} ${unit}, yêu cầu: ${quantity} ${unit}.`);
             }
 
             const affectedProduct = await simulateSaleRepository.applyProductSale(inventory, quantity, input.note ?? null, userId);

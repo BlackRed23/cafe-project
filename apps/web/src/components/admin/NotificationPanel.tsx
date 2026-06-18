@@ -48,7 +48,7 @@ function buildNotifications(
       id: `order-${order.id}`,
       type: "new_order",
       title: order.status === "PENDING" ? "Đơn hàng mới chờ duyệt" : "Đơn hàng đang chờ xử lý",
-      description: `Đơn hàng của ${order.shippingName} trị giá ${order.totalAmount.toLocaleString()}đ`,
+      description: `Đơn hàng #${order.id.slice(-8).toUpperCase()} trị giá ${order.totalAmount.toLocaleString()}đ`,
       link: `/admin/orders/${order.id}`,
       time: order.createdAt
         ? new Date(order.createdAt).toLocaleTimeString("vi-VN", {

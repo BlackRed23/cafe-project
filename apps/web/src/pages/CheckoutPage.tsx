@@ -1,33 +1,59 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
-import { ordersApi } from "../api/orders.api";
-import { getErrorMessage } from "../api/client";
+import { getOrderErrorMessage, ordersApi } from "../api/orders.api";
 import type { PaymentMethod } from "../types/order.types";
 import { formatCurrency } from "../utils/formatCurrency";
 import { Button } from "../components/common/Button";
 import { ArrowLeft, ShoppingBag, Sparkles, AlertCircle } from "lucide-react";
+import { useToast } from "../contexts/ToastContext";
 
 export const CheckoutPage: React.FC = () => {
   const { items, totalAmount, clearCart } = useCart();
   const navigate = useNavigate();
+  const toast = useToast();
   
   const [note, setNote] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("BANK_TRANSFER");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "">("BANK_TRANSFER");
   
   const [apiError, setApiError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  const getCartProductId = (item: (typeof items)[number]) => {
+    return String(item.product.id ?? (item.product as any).product_id ?? "").trim();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setApiError(null);
 
+    if (items.length === 0) {
+      toast.warning("Giỏ hàng đang trống.");
+      return;
+    }
+
+    if (!paymentMethod) {
+      toast.warning("Vui lòng chọn phương thức thanh toán.");
+      return;
+    }
+
+    if (items.some((item) => !getCartProductId(item))) {
+      toast.warning("Sản phẩm trong giỏ hàng không hợp lệ.");
+      return;
+    }
+
+    if (items.some((item) => !Number.isInteger(Number(item.quantity)) || Number(item.quantity) <= 0)) {
+      toast.warning("Số lượng sản phẩm không hợp lệ.");
+      return;
+    }
+
     setIsLoading(true);
+    toast.info("Đang tạo đơn hàng...");
 
     const payload = {
       items: items.map((item) => ({
-        productId: item.product.id,
-        quantity: item.quantity,
+        productId: getCartProductId(item),
+        quantity: Number(item.quantity),
       })),
       paymentMethod,
       note: note.trim() || undefined,
@@ -35,11 +61,13 @@ export const CheckoutPage: React.FC = () => {
 
     try {
       await ordersApi.createOrder(payload);
+      toast.success("Tạo đơn hàng thành công.");
       clearCart();
       navigate("/my-orders?success=true");
     } catch (err: any) {
-      const message = getErrorMessage(err);
+      const message = getOrderErrorMessage(err, "Không thể tạo đơn hàng, vui lòng thử lại.");
       setApiError(message);
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -66,7 +94,7 @@ export const CheckoutPage: React.FC = () => {
             <Sparkles size={12} /> Hoàn tất đơn hàng
           </span>
           <h1 className="text-3xl sm:text-4xl font-extrabold font-serif">Thanh Toán Mô Phỏng</h1>
-          <p className="text-sm text-amber-200/60 font-light max-w-md">Nhập thông tin giao hàng để tiến hành mô phỏng thanh toán</p>
+          <p className="text-sm text-amber-200/60 font-light max-w-md">Kiểm tra giỏ hàng và chọn phương thức thanh toán</p>
         </div>
       </section>
 
@@ -87,7 +115,7 @@ export const CheckoutPage: React.FC = () => {
           {/* Left Form */}
           <form onSubmit={handleSubmit} className="lg:col-span-2 bg-white border border-amber-900/5 rounded-3xl p-6 sm:p-10 shadow-xl space-y-6">
             <h3 className="text-lg font-bold text-slate-800 border-b border-amber-900/5 pb-4 flex items-center gap-2 uppercase tracking-wider">
-              <ShoppingBag size={20} className="text-amber-800" /> Thông tin nhận hàng
+              <ShoppingBag size={20} className="text-amber-800" /> Thông tin đặt hàng
             </h3>
 
             {apiError && (

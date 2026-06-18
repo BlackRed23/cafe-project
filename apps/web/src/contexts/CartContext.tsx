@@ -10,36 +10,65 @@ interface CartContextType {
   items: CartItem[];
   totalItems: number;
   totalAmount: number;
-  addToCart: (product: Product, quantity: number) => void;
+  addToCart: (product: Product, quantity: number) => boolean;
   removeFromCart: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
+  updateQuantity: (productId: string, quantity: number) => boolean;
   clearCart: () => void;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
+const CART_STORAGE_KEY = "cart";
+
+const getInventoryQuantity = (product: Product): number | undefined => {
+  const quantity = product.inventory?.quantity;
+  return typeof quantity === "number" ? quantity : undefined;
+};
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<CartItem[]>(() => {
-    const saved = localStorage.getItem("cart");
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem(CART_STORAGE_KEY);
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      localStorage.removeItem(CART_STORAGE_KEY);
+      return [];
+    }
   });
 
   useEffect(() => {
-    localStorage.setItem("cart", JSON.stringify(items));
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
   const addToCart = (product: Product, quantity: number) => {
+    if (quantity <= 0) return false;
+
+    const stockQuantity = getInventoryQuantity(product);
+    if (stockQuantity !== undefined && stockQuantity <= 0) return false;
+
+    let didAdd = true;
+
     setItems((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
+      const nextQuantity = (existing?.quantity ?? 0) + quantity;
+
+      if (stockQuantity !== undefined && nextQuantity > stockQuantity) {
+        didAdd = false;
+        return prev;
+      }
+
       if (existing) {
         return prev.map((item) =>
           item.product.id === product.id
-            ? { ...item, quantity: item.quantity + quantity }
+            ? { ...item, quantity: nextQuantity }
             : item
         );
       }
       return [...prev, { product, quantity }];
     });
+
+    return didAdd;
   };
 
   const removeFromCart = (productId: string) => {
@@ -49,13 +78,20 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateQuantity = (productId: string, quantity: number) => {
     if (quantity <= 0) {
       removeFromCart(productId);
-      return;
+      return true;
     }
+
+    const item = items.find((cartItem) => cartItem.product.id === productId);
+    const stockQuantity = item ? getInventoryQuantity(item.product) : undefined;
+    if (stockQuantity !== undefined && quantity > stockQuantity) return false;
+
     setItems((prev) =>
       prev.map((item) =>
         item.product.id === productId ? { ...item, quantity } : item
       )
     );
+
+    return true;
   };
 
   const clearCart = () => {

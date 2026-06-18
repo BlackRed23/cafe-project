@@ -89,7 +89,7 @@ export const AdminNotificationsPage: React.FC = () => {
               id: `order-${o.id}`,
               type: "new_order",
               title: `Đơn hàng: ${o.status}`,
-              description: `Đơn hàng của ${o.shippingName} - ${o.totalAmount.toLocaleString()}đ`,
+              description: `Đơn hàng #${String(o.id).slice(-8).toUpperCase()} - ${o.totalAmount.toLocaleString()}đ`,
               link: `/admin/orders/${o.id}`,
               time: o.createdAt || o.created_at,
             });

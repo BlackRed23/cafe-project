@@ -8,6 +8,7 @@ import { EmptyState } from "../components/common/EmptyState";
 import { Search, Sparkles, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 
 import { categoriesApi } from "../api/categories.api";
+import { useToast } from "../contexts/ToastContext";
 
 const PRICE_RANGES = [
   { id: "all", name: "Mọi mức giá" },
@@ -30,6 +31,7 @@ export const ProductListPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { addToCart } = useCart();
+  const toast = useToast();
 
   const fetchData = async () => {
     try {
@@ -63,7 +65,17 @@ export const ProductListPage: React.FC = () => {
   }, [search, selectedCategory, selectedPriceRange, sortBy]);
 
   const handleAddToCart = (product: Product) => {
-    addToCart(product, 1);
+    const stockQuantity = product.inventory?.quantity;
+
+    if (typeof stockQuantity === "number" && stockQuantity <= 0) {
+      toast.warning("Sản phẩm hiện đã hết hàng.");
+      return;
+    }
+
+    const didAdd = addToCart(product, 1);
+    if (!didAdd) {
+      toast.warning("Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");
+    }
   };
 
   // Filter and Sort Logic

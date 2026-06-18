@@ -108,8 +108,12 @@ const assertTransition = (order: OrderRecord, next: OrderStatus): void => {
 const normalizeOrderError = (error: unknown, fallback: string): HttpError => {
     const message = error instanceof Error ? error.message : fallback;
 
-    if (message.includes('Not enough inventory')) {
-        return new HttpError(400, 'Không đủ tồn kho để xác nhận đơn hàng.');
+    if (
+        message.includes('Not enough inventory') ||
+        message.includes('không đủ hàng') ||
+        message.includes('vừa hết hàng')
+    ) {
+        return new HttpError(400, 'Không đủ tồn kho để tạo đơn hàng.');
     }
 
     return new HttpError(400, fallback);

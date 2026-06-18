@@ -1358,3 +1358,326 @@ Thoi gian cap nhat: 2026-06-18 17:33:27 +07:00.
 - lint: con 193 problems trong frontend, se xu ly sau.
 - File env/test bi cam: khong duoc commit.
 - Ket luan: merge da hoan tat commit.
+## 31. Order Checkout And Admin Order UX
+
+### 31.1 Mục tiêu
+
+Hoàn thiện luồng Order/Checkout/Admin Orders theo đúng contract backend và cải thiện UX thông báo.
+
+### 31.2 File đã scan/kiểm tra
+
+| File | Có tồn tại không | Đã dùng hay tạo mới | Ghi chú |
+| ---- | ---------------- | ------------------- | ------- |
+| docs/FRONTEND_BACKEND_INTEGRATION_LOG.md | Có | Đã dùng | Đọc trước khi sửa, chỉ append mục 31 ở cuối log. |
+| apps/web/src/pages/CheckoutPage.tsx | Có | Đã dùng | Checkout hiện có, sửa trực tiếp. |
+| apps/web/src/pages/CartPage.tsx | Có | Đã dùng | Cart hiện có, sửa trực tiếp. |
+| apps/web/src/pages/MyOrdersPage.tsx | Có | Đã dùng | My Orders hiện có, sửa trực tiếp. |
+| apps/web/src/pages/admin/AdminOrdersPage.tsx | Có | Đã dùng | Admin Orders hiện có, sửa trực tiếp. |
+| apps/web/src/pages/admin/AdminOrderDetailPage.tsx | Có | Đã dùng | Admin Order Detail hiện có, sửa trực tiếp. |
+| apps/web/src/api/orders.api.ts | Có | Đã dùng | Orders API hiện có, sửa trực tiếp. |
+| apps/web/src/types/order.types.ts | Có | Đã dùng | Order types hiện có, sửa trực tiếp. |
+| apps/web/src/contexts/CartContext.tsx | Có | Đã dùng | CartContext hiện có, sửa trực tiếp. |
+| apps/web/src/components/product/ProductCard.tsx | Có | Đã dùng | ProductCard hiện có, sửa trực tiếp. |
+| apps/api/src/modules/order/order.route.ts | Có | Đã dùng | Chỉ đọc để xác nhận endpoint. |
+| apps/api/src/modules/order/order.controller.ts | Có | Đã dùng | Chỉ đọc để xác nhận response wrapper. |
+| apps/api/src/modules/order/order.service.ts | Có | Đã dùng | Chỉ đọc để xác nhận status/error. |
+| apps/api/src/modules/order/order.validator.ts | Có | Đã dùng | Chỉ đọc để xác nhận create/status contract. |
+| apps/api/src/modules/payment/payment.controller.ts | Có | Đã dùng | Chỉ đọc để xác nhận payment response wrapper. |
+| apps/api/src/modules/payment/payment.route.ts | Có | Đã dùng | Chỉ đọc để xác nhận payment endpoint. |
+| apps/api/src/modules/payment/payment.validator.ts | Có | Đã dùng | Chỉ đọc để xác nhận payment status contract. |
+| apps/web/src/pages/HomePage.tsx | Có | Đã dùng | Có gọi addToCart nên sửa hẹp toast tồn kho. |
+| apps/web/src/pages/ProductDetailPage.tsx | Có | Đã dùng | Có gọi addToCart nên sửa hẹp toast tồn kho. |
+| apps/web/src/components/admin/NotificationPanel.tsx | Có | Đã dùng | Có hiển thị order bằng shippingName nên sửa hẹp. |
+| apps/web/src/pages/admin/AdminDashboardPage.tsx | Có | Đã dùng | Có hiển thị order bằng shippingName nên sửa hẹp. |
+| apps/web/src/pages/admin/AdminNotificationsPage.tsx | Có | Đã dùng | Có hiển thị order bằng shippingName nên sửa hẹp. |
+
+### 31.3 File đã sửa
+
+| File | Đã sửa gì | Lý do |
+| ---- | --------- | ----- |
+| apps/web/src/api/orders.api.ts | Giữ create payload chỉ gồm items, paymentMethod, note; unwrap `{ data: { order } }`; Việt hoá lỗi tồn kho; báo lỗi riêng khi payment update fail sau order update. | Đúng contract backend và không báo thành công khi cập nhật payment lỗi. |
+| apps/web/src/types/order.types.ts | Bỏ shipping fields khỏi CreateOrderPayload/Order type; bỏ COD khỏi PaymentMethod; thêm REFUNDED/SUCCESS vào PaymentStatus. | Không gửi/hiển thị shipping fields và khớp enum backend. |
+| apps/web/src/pages/CheckoutPage.tsx | Bỏ wording giao hàng; thêm validate cart/payment/quantity; thêm toast loading/success/error; giữ cart khi tạo đơn fail. | Hoàn thiện Checkout UX và payload đúng. |
+| apps/web/src/contexts/CartContext.tsx | Bọc đọc localStorage bằng try/catch; reset cart hỏng; add/update quantity trả boolean và chặn vượt tồn kho nếu biết inventory. | Tránh crash app và chặn số lượng không hợp lệ ở client khi có dữ liệu tồn kho. |
+| apps/web/src/pages/CartPage.tsx | Thêm toast khi tăng số lượng vượt tồn kho. | UX rõ ràng khi thao tác cart không hợp lệ. |
+| apps/web/src/components/product/ProductCard.tsx | Cho phép click sản phẩm hết hàng để component cha hiển thị toast, vẫn disable sản phẩm inactive. | Đảm bảo có toast hết hàng thay vì nút im lặng. |
+| apps/web/src/pages/ProductListPage.tsx | Thêm toast hết hàng/vượt tồn kho khi add cart. | ProductCard flow cần thông báo rõ. |
+| apps/web/src/pages/HomePage.tsx | Thêm toast hết hàng/vượt tồn kho khi add cart. | Home cũng dùng ProductCard/addToCart. |
+| apps/web/src/pages/ProductDetailPage.tsx | Thêm toast vượt tồn kho khi chọn/add số lượng. | Giữ các đường add cart nhất quán. |
+| apps/web/src/pages/MyOrdersPage.tsx | Bỏ hiển thị thông tin người nhận/địa chỉ; chỉ giữ ghi chú nếu có. | Không hiển thị shipping fields. |
+| apps/web/src/pages/admin/AdminOrdersPage.tsx | Bỏ cột người nhận shipping; tìm theo mã đơn hoặc khách hàng; giữ cột mã đơn, ngày, tổng tiền, phương thức, payment status, order status. | Danh sách order đúng dữ liệu backend hiện dùng. |
+| apps/web/src/pages/admin/AdminOrderDetailPage.tsx | Bỏ khối shipping; hiển thị khách hàng/note/items; thêm toast loading/success/error cho cập nhật status. | Admin detail đúng contract và UX rõ ràng. |
+| apps/web/src/components/admin/NotificationPanel.tsx | Bỏ shippingName khỏi mô tả order notification. | Không phụ thuộc shipping fields. |
+| apps/web/src/pages/admin/AdminDashboardPage.tsx | Bỏ shippingName khỏi recent orders, dùng customer hoặc mã đơn. | Không phụ thuộc shipping fields. |
+| apps/web/src/pages/admin/AdminNotificationsPage.tsx | Bỏ shippingName khỏi mô tả notification. | Không phụ thuộc shipping fields. |
+
+### 31.4 File mới nếu có
+
+Không tạo file mới. Chỉ cập nhật các file hiện có.
+
+### 31.5 Contract Order sau khi sửa
+
+* `POST /api/orders`
+* Payload frontend gửi chỉ gồm `items`, `paymentMethod`, `note`.
+* `items` gồm `productId` và `quantity`.
+* Response create/list/detail unwrap qua wrapper hiện có bằng `unwrapApiField(response.data, "order")` hoặc `unwrapApiList(response.data, "orders")`.
+* Không dùng/gửi/hiển thị `shippingName`, `shippingPhone`, `shippingAddress`.
+* Payment method backend nhận `CASH`, `BANK_TRANSFER`.
+* Order status update dùng `PATCH /api/orders/:id/status` với `PENDING`, `CONFIRMED`, `PROCESSING`, `COMPLETED`, `CANCELLED`; backend map `CONFIRMED` thành `PROCESSING`.
+* Payment status update dùng `PATCH /api/payments/:id/status` với `PENDING`, `SUCCESS`, `PAID`, `FAILED`, `REFUNDED`; backend map `SUCCESS` thành `PAID`.
+* Backend không có endpoint atomic order/payment status; frontend giữ 2 bước và báo rõ nếu payment update fail sau order update.
+
+### 31.6 Toast đã thêm/sửa
+
+| Trường hợp                           | Toast                | Kết quả |
+| ------------------------------------ | -------------------- | ------- |
+| Giỏ hàng trống                       | PASS | `Giỏ hàng đang trống.` |
+| Chưa chọn phương thức thanh toán     | PASS | `Vui lòng chọn phương thức thanh toán.` |
+| Tạo order loading                    | PASS | `Đang tạo đơn hàng...` |
+| Tạo order thành công                 | PASS | `Tạo đơn hàng thành công.` |
+| Tạo order thất bại                   | PASS | Fallback `Không thể tạo đơn hàng, vui lòng thử lại.` |
+| Không đủ tồn kho                     | PASS | Việt hoá sang `Không đủ tồn kho để tạo đơn hàng...` nếu parse được số, fallback tiếng Việt nếu không parse được. |
+| Cập nhật trạng thái order            | PASS | Loading/success/error theo yêu cầu. |
+| Payment update fail sau order update | PASS | `Đã cập nhật đơn hàng nhưng cập nhật thanh toán thất bại. Vui lòng kiểm tra lại trạng thái thanh toán.` |
+
+### 31.7 Kết quả test
+
+| Bước                               | Kết quả              | Ghi chú |
+| ---------------------------------- | -------------------- | ------- |
+| Add cart                           | NOT TESTED | Đã sửa validation/toast; chưa chạy manual browser. |
+| Cart localStorage hỏng không crash | NOT TESTED | Đã thêm try/catch và remove cart hỏng; chưa chạy manual browser. |
+| Checkout không còn shipping fields | PASS | Rà source không còn shipping fields trong frontend. |
+| POST /orders payload đúng          | PASS | `orders.api.ts` normalize chỉ gửi `items`, `paymentMethod`, `note`. |
+| Tạo order thành công clear cart    | NOT TESTED | Code giữ `clearCart()` sau create success; chưa chạy manual browser. |
+| Lỗi tồn kho hiển thị tiếng Việt    | PASS | Đã map lỗi tiếng Anh/thô sang tiếng Việt ở frontend. |
+| Admin order list load đúng         | NOT TESTED | Chưa chạy manual browser. |
+| Admin order detail load đúng       | NOT TESTED | Chưa chạy manual browser. |
+| Update status order/payment        | NOT TESTED | Code xử lý rõ partial failure; chưa chạy manual browser. |
+
+Build frontend: `npm run build -w @cafe-project/web` chưa pass vì lỗi TypeScript có sẵn trong `apps/web/src/pages/admin/AdminSimulateSalePage.tsx` (`useCallback`, `AlertTriangle`, `X`, `CheckCircle`, `AlertOctagon` unused). Không sửa file này vì ngoài phạm vi Order và đang có thay đổi sẵn.
+
+### 31.8 Việc không sửa
+
+* Không sửa Product/Category/Inventory/Purchase Request/Agent.
+* Không sửa backend vì contract endpoint thật đã tồn tại.
+* Không tạo endpoint giả.
+* Không refactor toàn dự án.
+* Không thêm shipping fields trở lại.
+* Không tạo file mới vì không bắt buộc.
+
+## 31. Fix Order Create 400 Bad Request
+
+### 31.1 Lỗi
+
+* API lỗi: `POST /api/orders`
+* Status: `400 Bad Request`
+* Response backend theo code hiện có:
+  * Nếu lỗi Zod validator: `{ success: false, message: <first zod issue>, data: null }` với các message như `Product is required.`, `Quantity must be greater than 0.`, `Order items cannot be empty.` hoặc lỗi enum `paymentMethod`.
+  * Nếu lỗi tồn kho trong repository trước khi sửa service: backend có thể trả fallback `Không thể tạo đơn hàng. Vui lòng kiểm tra lại thông tin đơn hàng.` thay vì nói rõ tồn kho.
+* Payload frontend gửi trước khi sửa theo source `CheckoutPage.tsx` + `orders.api.ts`:
+
+```json
+{
+  "items": [
+    {
+      "productId": "item.product.id",
+      "quantity": "item.quantity"
+    }
+  ],
+  "paymentMethod": "BANK_TRANSFER",
+  "note": undefined
+}
+```
+
+* Không còn các field shipping trong frontend source trước lần sửa này: `shippingName`, `shippingPhone`, `shippingAddress`, `shipping_address`, `shipping_phone`.
+* Chưa mở được browser Network trong phiên này; payload trên được xác định bằng scan source trực tiếp. Điểm lỗi thật trong code là nếu cart cũ/hỏng có `product.id` rỗng hoặc quantity không phải số nguyên dương thì frontend vẫn gọi API và backend trả 400.
+
+### 31.2 Nguyên nhân
+
+* Backend validator thật yêu cầu `items` là mảng không rỗng.
+* Mỗi item bắt buộc có `productId` dạng string non-empty và `quantity` là số nguyên dương.
+* `paymentMethod` phải thuộc enum Prisma `CASH` hoặc `BANK_TRANSFER`.
+* `note` là optional/null, không required.
+* Shipping fields không bắt buộc và frontend không gửi lại.
+* Frontend trước khi sửa chưa chặn case item thiếu `productId`, chưa kiểm tra integer cho `quantity`, và `orders.api.ts` vẫn tạo payload có `note: undefined` khi ghi chú rỗng.
+* Backend Order service trước khi sửa mask một số lỗi tồn kho tiếng Việt thành fallback chung nên UI khó xác định nguyên nhân 400.
+
+### 31.3 File đã kiểm tra
+
+| File | Kết quả scan |
+| ---- | ------------ |
+| docs/FRONTEND_BACKEND_INTEGRATION_LOG.md | Đã đọc trước khi sửa; chỉ append cuối file. |
+| apps/web/src/pages/CheckoutPage.tsx | Có tồn tại; là nơi map cart thành payload order và validate trước submit. |
+| apps/web/src/pages/CartPage.tsx | Có tồn tại; dùng CartContext update quantity, không gửi order API trực tiếp. |
+| apps/web/src/contexts/CartContext.tsx | Có tồn tại; lưu cart localStorage và có thể chứa cart cũ/hỏng từ phiên trước. |
+| apps/web/src/api/orders.api.ts | Có tồn tại; normalize payload và gọi `POST /orders`. |
+| apps/web/src/types/order.types.ts | Có tồn tại; type order hiện không còn shipping fields. |
+| apps/api/src/modules/order/order.validator.ts | Có tồn tại; xác nhận contract create order. |
+| apps/api/src/modules/order/order.controller.ts | Có tồn tại; response create unwrap `{ data: { order } }`. |
+| apps/api/src/modules/order/order.service.ts | Có tồn tại; xử lý lỗi create order. |
+| apps/api/src/modules/order/order.route.ts | Có tồn tại; `POST /` dùng `validateBody(createOrderSchema)`. |
+
+### 31.4 File đã sửa
+
+| File | Đã sửa gì | Lý do |
+| ---- | --------- | ----- |
+| apps/web/src/pages/CheckoutPage.tsx | Thêm validate item thiếu `productId`; kiểm tra `quantity` là số nguyên dương; map `product_id` fallback cho cart cũ trước khi gửi payload. | Chặn payload sai trước khi gọi `POST /api/orders`. |
+| apps/web/src/api/orders.api.ts | Normalize payload rõ ràng; trim `productId`; ép `quantity` thành number; chỉ thêm `note` khi có nội dung; map lỗi validator/payment/items/quantity/tồn kho sang tiếng Việt. | Không gửi field thừa/undefined và không hiển thị raw lỗi 400. |
+| apps/api/src/modules/order/order.service.ts | Nhận diện lỗi `không đủ hàng`/`vừa hết hàng` và trả `Không đủ tồn kho để tạo đơn hàng.` | Giữ lỗi tồn kho đúng ngữ nghĩa thay vì fallback chung. |
+
+### 31.5 File mới
+
+Không tạo file mới, chỉ cập nhật các file hiện có.
+
+### 31.6 Contract Order sau khi sửa
+
+Payload cuối cùng của `POST /api/orders`:
+
+```json
+{
+  "items": [
+    {
+      "productId": "string-non-empty",
+      "quantity": 1
+    }
+  ],
+  "paymentMethod": "CASH | BANK_TRANSFER",
+  "note": "optional non-empty string"
+}
+```
+
+* Không gửi `note` nếu ghi chú rỗng.
+* Không gửi `shippingName`, `shippingPhone`, `shippingAddress`, `shipping_address`, `shipping_phone`.
+* Frontend chặn giỏ rỗng, thiếu payment method, item thiếu productId, và quantity không hợp lệ trước khi gọi API.
+
+### 31.7 Kết quả test
+
+| Bước                                              | Kết quả   | Ghi chú |
+| ------------------------------------------------- | --------- | ------- |
+| POST /api/orders không còn 400 với payload hợp lệ | NOT TESTED | Chưa chạy manual browser/dev server trong phiên này. |
+| Payload không có shipping fields                  | PASS | Đã scan frontend source, không còn shipping fields/COD. |
+| Giỏ rỗng được chặn trước khi gọi API              | PASS | Checkout có toast `Giỏ hàng đang trống.` trước API. |
+| Thiếu paymentMethod được chặn trước khi gọi API   | PASS | Checkout có toast `Vui lòng chọn phương thức thanh toán.` trước API. |
+| Lỗi backend hiển thị toast tiếng Việt             | PASS | `orders.api.ts` map lỗi tồn kho/payment/items/quantity sang tiếng Việt. |
+| Không tạo file mới                                | PASS | Chỉ sửa file hiện có. |
+
+Kiểm tra đã chạy:
+* `Get-ChildItem apps/web/src ... Select-String shipping/COD`: không còn match.
+* `npm run build -w @cafe-project/api`: PASS.
+* `npm run build -w @cafe-project/web`: FAIL do lỗi có sẵn ngoài phạm vi Order trong `apps/web/src/pages/admin/AdminSimulateSalePage.tsx` unused imports (`useCallback`, `AlertTriangle`, `X`, `CheckCircle`, `AlertOctagon`). Không sửa file này vì ngoài phạm vi lỗi `POST /api/orders 400` và đang có thay đổi sẵn.
+
+## 32. Fix Orders 400 Bad Request
+
+### Method / Request kiểm tra
+
+* Không truy cập trực tiếp được DevTools/Network trong phiên terminal này.
+* Đã kiểm tra endpoint live bằng terminal:
+  * Method: `GET`
+  * URL: `http://localhost:5000/api/orders`
+  * Query trước khi sửa: không có query param.
+  * Response thực tế khi không có token: `401 {"success":false,"message":"Authorization token is required.","data":null}`.
+* Không reproduce được `400 Bad Request` cho `GET /api/orders` bằng terminal.
+* Source scan cho thấy `GET /api/orders` từ admin list không gửi query param, còn lỗi 400 nếu xảy ra ở `/api/orders` có khả năng nằm ở `POST /api/orders` tạo order khi payload cart không hợp lệ.
+
+### Payload / query trước khi sửa
+
+* `GET /api/orders`: không có query param từ `ordersApi.getOrders()`.
+* `POST /api/orders` theo source Checkout/API trước chuỗi sửa Order:
+
+```json
+{
+  "items": [
+    {
+      "productId": "item.product.id",
+      "quantity": "item.quantity"
+    }
+  ],
+  "paymentMethod": "BANK_TRANSFER",
+  "note": undefined
+}
+```
+
+* Không còn shipping fields trong frontend source: `shippingName`, `shippingPhone`, `shippingAddress`, `shipping_address`, `shipping_phone`.
+
+### Response backend trả gì
+
+* `GET /api/orders` không token trả `401 Authorization token is required.`.
+* Backend validator thật cho `POST /api/orders` trả `400` với `{ success:false, message:<zod issue>, data:null }` nếu:
+  * `items` rỗng.
+  * thiếu `productId`.
+  * `quantity` không phải integer dương.
+  * `paymentMethod` không thuộc enum backend.
+* Backend service trước đó có thể mask lỗi tồn kho thành fallback chung.
+
+### Nguyên nhân thật
+
+* Không xác nhận được 400 qua DevTools trong phiên này.
+* Với `GET /api/orders`: source không có query param sai; backend route không validate query; terminal không reproduce 400.
+* Với `POST /api/orders`: nguyên nhân 400 hợp lệ theo validator là cart item thiếu `productId`, `quantity` không hợp lệ, hoặc `paymentMethod` sai enum. Frontend đã được sửa để chặn/normalize các case này trước khi gọi API.
+* Đã bổ sung thêm safeguard cho `GET /api/orders`: nếu sau này truyền filter, frontend chỉ gửi `status`/`paymentStatus` hợp lệ, không gửi `undefined`, `null`, object rỗng hoặc status sai.
+
+### File đã scan
+
+| File | Kết quả scan |
+| ---- | ------------ |
+| docs/FRONTEND_BACKEND_INTEGRATION_LOG.md | Đã đọc trước khi sửa; chỉ append cuối file. |
+| apps/web/src/api/orders.api.ts | Có `POST /orders`, `GET /orders`, `GET /orders/me`, detail và status update. |
+| apps/web/src/pages/CheckoutPage.tsx | Tạo payload POST từ cart; đã có validate item/payment/quantity. |
+| apps/web/src/pages/admin/AdminOrdersPage.tsx | Gọi `ordersApi.getOrders()` không truyền query param. UI lỗi tiếng Việt `Không thể tải danh sách đơn hàng.` |
+| apps/web/src/pages/admin/AdminOrderDetailPage.tsx | Gọi detail/status update, không gọi list `/orders`. |
+| apps/web/src/types/order.types.ts | Không còn shipping fields/COD trong Order payload type. |
+| apps/api/src/modules/order/order.validator.ts | `POST` yêu cầu `items[].productId`, `items[].quantity`, `paymentMethod`; shipping optional. |
+| apps/api/src/modules/order/order.controller.ts | Create trả `{ data: { order } }`; list trả `{ data: { orders } }`. |
+| apps/api/src/modules/order/order.service.ts | Create/list/detail/status service; lỗi tồn kho đã được normalize tiếng Việt. |
+| apps/api/src/modules/order/order.route.ts | `GET /`, `POST /`, `GET /me`, `GET /:id`, `PATCH /:id/status`. |
+
+### File đã sửa
+
+| File | Đã sửa gì | Lý do |
+| ---- | --------- | ----- |
+| apps/web/src/api/orders.api.ts | Thêm sanitizer cho `getOrders(filters)` chỉ gửi `status`/`paymentStatus` hợp lệ; không gửi params rỗng/undefined/null/sai enum. | Nếu request là GET, loại trừ nguyên nhân query param gây 400. |
+| apps/web/src/pages/CheckoutPage.tsx | Giữ validate `productId`, `quantity`, `paymentMethod`; payload POST dùng `productId` non-empty và quantity number. | Nếu request là POST, chặn payload sai trước khi gọi API. |
+| apps/api/src/modules/order/order.service.ts | Giữ lỗi tồn kho trả `Không đủ tồn kho để tạo đơn hàng.` | Không để UI nhận raw/fallback khó hiểu khi backend 400 do tồn kho. |
+
+### File mới
+
+Không tạo file mới, chỉ cập nhật file hiện có.
+
+### Payload/query sau khi sửa
+
+* `GET /api/orders`: mặc định không gửi query param.
+* Nếu gọi `getOrders({ status, paymentStatus })`, frontend chỉ gửi:
+
+```json
+{
+  "status": "PENDING | CONFIRMED | PROCESSING | COMPLETED | CANCELLED",
+  "paymentStatus": "PENDING | SUCCESS | PAID | FAILED | REFUNDED"
+}
+```
+
+và bỏ toàn bộ giá trị không hợp lệ/undefined/null.
+
+* `POST /api/orders`:
+
+```json
+{
+  "items": [
+    {
+      "productId": "string-non-empty",
+      "quantity": 1
+    }
+  ],
+  "paymentMethod": "CASH | BANK_TRANSFER",
+  "note": "optional non-empty string"
+}
+```
+
+* Không gửi shipping fields.
+
+### Kết quả test còn 400 hay không
+
+* `GET http://localhost:5000/api/orders` bằng terminal không token: không còn/không gặp 400, response là 401 đúng auth middleware.
+* Chưa xác nhận được bằng DevTools browser và token thật trong phiên này.
+* `npm run build -w @cafe-project/api`: PASS.
+* `npm run build -w @cafe-project/web`: FAIL do lỗi có sẵn ngoài phạm vi Order ở `apps/web/src/pages/admin/AdminSimulateSalePage.tsx` unused imports (`useCallback`, `X`, `CheckCircle`, `AlertOctagon`).
+* Scan frontend source: không còn shipping fields/COD.

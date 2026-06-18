@@ -200,21 +200,12 @@ export const MyOrdersPage: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Delivery Info */}
-                      <div className="grid sm:grid-cols-2 gap-4 text-sm bg-white p-4 border border-amber-900/5 rounded-2xl shadow-sm">
-                        <div className="space-y-1.5">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Thông tin người nhận</p>
-                          <p className="font-bold text-slate-800">{order.shippingName || (order as any).shipping_name || "Không rõ"}</p>
-                          <p className="text-slate-500 font-light">{order.shippingPhone || (order as any).shipping_phone || "Không rõ"}</p>
+                      {order.note && (
+                        <div className="text-sm bg-white p-4 border border-amber-900/5 rounded-2xl shadow-sm">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú đơn hàng</p>
+                          <p className="text-slate-600 leading-relaxed font-bold mt-1">{order.note}</p>
                         </div>
-                        <div className="space-y-1.5">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Địa chỉ giao nhận</p>
-                          <p className="text-slate-600 leading-relaxed font-bold">{order.shippingAddress || (order as any).shipping_address || "Không rõ"}</p>
-                          {order.note && (
-                            <p className="text-xs text-slate-400 italic font-light">Ghi chú: {order.note}</p>
-                          )}
-                        </div>
-                      </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -47,8 +47,9 @@ export const AdminOrdersPage: React.FC = () => {
 
   const filteredOrders = orders.filter((order) => {
     const matchesStatus = statusFilter === "ALL" || order.status === statusFilter;
+    const customerText = `${order.customer?.name ?? ""} ${order.customer?.email ?? ""}`.toLowerCase();
     const matchesSearch =
-      (order.shippingName || "").toLowerCase().includes(search.toLowerCase()) ||
+      customerText.includes(search.toLowerCase()) ||
       order.id.toLowerCase().includes(search.toLowerCase());
     return matchesStatus && matchesSearch;
   });
@@ -68,12 +69,6 @@ export const AdminOrdersPage: React.FC = () => {
         <span className="font-bold text-slate-800 font-mono text-xs">
           #{order.id.slice(-8).toUpperCase()}
         </span>
-      ),
-    },
-    {
-      header: "Người nhận",
-      render: (order: Order) => (
-        <span className="font-semibold text-slate-700">{order.shippingName}</span>
       ),
     },
     {
@@ -175,7 +170,7 @@ export const AdminOrdersPage: React.FC = () => {
         <DataTable
           columns={columns}
           data={filteredOrders}
-          searchPlaceholder="Tìm theo tên người nhận hoặc mã đơn..."
+          searchPlaceholder="Tìm theo mã đơn hoặc khách hàng..."
           searchValue={search}
           onSearchChange={setSearch}
         />

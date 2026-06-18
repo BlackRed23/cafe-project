@@ -10,44 +10,7 @@ import { Loading } from "../../components/common/Loading";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { Play, Sparkles, Terminal, Mail, RefreshCw, AlertTriangle, ShieldCheck, X, CheckCircle, Info, AlertOctagon } from "lucide-react";
 
-/* ─── Inline Toast System ─── */
-type ToastType = "success" | "error" | "warning" | "info";
-interface Toast {
-  id: string;
-  type: ToastType;
-  message: string;
-}
-
-const TOAST_DURATION = 6000;
-let _toastId = 0;
-
-const toastStyles: Record<ToastType, { bg: string; border: string; text: string; icon: React.ReactNode }> = {
-  success: {
-    bg: "bg-emerald-50",
-    border: "border-emerald-300",
-    text: "text-emerald-900",
-    icon: <CheckCircle size={18} className="text-emerald-600 shrink-0" />,
-  },
-  error: {
-    bg: "bg-rose-50",
-    border: "border-rose-300",
-    text: "text-rose-900",
-    icon: <AlertOctagon size={18} className="text-rose-600 shrink-0" />,
-  },
-  warning: {
-    bg: "bg-amber-50",
-    border: "border-amber-300",
-    text: "text-amber-900",
-    icon: <AlertTriangle size={18} className="text-amber-600 shrink-0" />,
-  },
-  info: {
-    bg: "bg-sky-50",
-    border: "border-sky-300",
-    text: "text-sky-900",
-    icon: <Info size={18} className="text-sky-600 shrink-0" />,
-  },
-};
-/* ─── End Toast System Types ─── */
+import { useToast } from "../../contexts/ToastContext";
 
 export const AdminSimulateSalePage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -64,20 +27,7 @@ export const AdminSimulateSalePage: React.FC = () => {
   const [isSimulating, setIsSimulating] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  // Toast state
-  const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const addToast = useCallback((type: ToastType, message: string) => {
-    const id = `toast-${++_toastId}`;
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, TOAST_DURATION);
-  }, []);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+  const toast = useToast();
 
   // Result state
   const [result, setResult] = useState<{
@@ -91,6 +41,9 @@ export const AdminSimulateSalePage: React.FC = () => {
     minThreshold: number;
     prCreated: boolean;
     prId?: string;
+    prNumber?: string;
+    hasNoSupplierSkip?: boolean;
+    hasDuplicateSkip?: boolean;
   } | null>(null);
 
   const loadData = async () => {
@@ -118,7 +71,8 @@ export const AdminSimulateSalePage: React.FC = () => {
 
   const currentQty = selectedInventory?.quantity ?? 0;
   const threshold = selectedInventory?.minThreshold ?? selectedInventory?.min_threshold ?? 0;
-  const unit = selectedProduct?.unit || "đơn vị";
+  let unit = selectedProduct?.unit || "đơn vị";
+  if (unit.toLowerCase() === "ly") unit = "đơn vị";
 
   let localNumberOfDays = 1;
   if (simulationMode === "WEEK") localNumberOfDays = 7;
@@ -162,21 +116,6 @@ export const AdminSimulateSalePage: React.FC = () => {
         status = "WARNING";
       }
 
-      setResult({
-        success: true,
-        productId: affected.productId ?? res?.productId ?? selectedProductId,
-        productName: affected.productName ?? res?.productName ?? selectedProduct?.name,
-        stockBefore,
-        stockAfter,
-        decreasedQuantity,
-        statusAfter: status,
-        minThreshold,
-        prCreated: !!(res?.purchaseRequestId || res?.purchaseRequest || res?.prCreated),
-        prId: res?.purchaseRequestId || res?.purchaseRequest?.id || undefined,
-      });
-
-      /* ─── Toast notifications based on response ─── */
-
       const createdPRs = res?.createdPurchaseRequests ?? [];
       const logs: any[] = res?.agentLogs ?? res?.agentResults ?? [];
 
@@ -207,37 +146,55 @@ export const AdminSimulateSalePage: React.FC = () => {
         );
       });
 
-      addToast("success", `Mô phỏng bán hàng thành công. Tồn kho còn ${stockAfter} ${unit}.`);
+      setResult({
+        success: true,
+        productId: affected.productId ?? res?.productId ?? selectedProductId,
+        productName: affected.productName ?? res?.productName ?? selectedProduct?.name,
+        stockBefore,
+        stockAfter,
+        decreasedQuantity,
+        statusAfter: status,
+        minThreshold,
+        prCreated: !!(res?.purchaseRequestId || res?.purchaseRequest || createdPRs.length > 0),
+        prId: res?.purchaseRequestId || res?.purchaseRequest?.id || createdPRs[0]?.id || undefined,
+        prNumber: createdPRs[0]?.requestNumber || createdPRs[0]?.id || undefined,
+        hasNoSupplierSkip,
+        hasDuplicateSkip
+      });
+
+      /* ─── Toast notifications based on response ─── */
+
+      toast.success("Mô phỏng thành công", `Tồn kho còn ${stockAfter} ${unit}.`);
 
       if (createdPRs.length > 0) {
         const prNumber = createdPRs[0]?.requestNumber || createdPRs[0]?.id || "";
-        addToast("success", `AI Agent đã tạo yêu cầu nhập hàng: ${prNumber}.`);
+        toast.success("Tạo yêu cầu tự động", `AI Agent đã tạo yêu cầu nhập hàng: ${prNumber}.`);
       } else if (hasNoSupplierSkip) {
-        addToast("warning", "Sản phẩm chưa được liên kết với nhà cung cấp nên AI Agent không thể tạo yêu cầu nhập hàng.");
+        toast.warning("Chưa có nhà cung cấp", "Sản phẩm chưa được liên kết với nhà cung cấp nên AI Agent không thể tạo yêu cầu nhập hàng.");
       } else if (hasDuplicateSkip) {
-        addToast("info", "Sản phẩm đã có yêu cầu nhập hàng đang chờ xử lý.");
+        toast.info("Yêu cầu nhập hàng tồn tại", "Sản phẩm đã có yêu cầu nhập hàng đang chờ xử lý.");
       }
       
       if (stockAfter <= 0) {
-        addToast("warning", "Sản phẩm đã hết hàng. Vui lòng kiểm tra yêu cầu nhập hàng.");
+        toast.error("Sản phẩm hết hàng", "Vui lòng kiểm tra yêu cầu nhập hàng.");
       } else if (stockAfter < minThreshold) {
-        addToast("warning", `Sản phẩm sắp hết hàng. Tồn kho hiện tại: ${stockAfter} ${unit}, ngưỡng cảnh báo: ${minThreshold} ${unit}.`);
+        toast.warning("Sản phẩm sắp hết hàng", `Tồn kho hiện tại: ${stockAfter} ${unit}, ngưỡng cảnh báo: ${minThreshold} ${unit}.`);
       }
 
       // Refresh inventory stock values locally
       await loadData();
     } catch (err: any) {
-      // Case 6 & 7: Error toasts
+      // Case Error toasts
       const status = err.response?.status;
       const message = err.response?.data?.message || err.message || "";
 
       if (status === 400 && (message.toLowerCase().includes("not enough") || message.toLowerCase().includes("inventory") || message.toLowerCase().includes("stock") || message.toLowerCase().includes("không đủ"))) {
-        addToast("error", "Không đủ tồn kho để mô phỏng bán hàng.");
+        toast.error("Không đủ tồn kho", message || `Không đủ tồn kho để mô phỏng bán hàng. Tồn kho hiện tại: ${currentQty} ${unit}, yêu cầu: ${localSimulatedDemand} ${unit}.`);
       } else {
-        addToast("error", "Không thể mô phỏng bán hàng. Vui lòng kiểm tra kết nối server.");
+        toast.error("Lỗi giả lập", "Không thể mô phỏng bán hàng. Vui lòng kiểm tra kết nối server.");
       }
 
-      setApiError(err.response?.data?.message || err.message || "Lỗi khi chạy giả lập bán hàng.");
+      setApiError(message || "Lỗi khi chạy giả lập bán hàng.");
     } finally {
       setIsSimulating(false);
       setShowConfirm(false);
@@ -250,44 +207,6 @@ export const AdminSimulateSalePage: React.FC = () => {
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
-      {/* ─── Toast Container (fixed top-right) ─── */}
-      {toasts.length > 0 && (
-        <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm" style={{ pointerEvents: "none" }}>
-          {toasts.map((t) => {
-            const s = toastStyles[t.type];
-            return (
-              <div
-                key={t.id}
-                className={`flex items-start gap-2.5 px-4 py-3 rounded-xl border shadow-lg ${s.bg} ${s.border} ${s.text} text-sm font-medium animate-[slideInRight_0.3s_ease-out]`}
-                style={{ pointerEvents: "auto" }}
-              >
-                {s.icon}
-                <span className="flex-1 leading-snug">{t.message}</span>
-                <button
-                  onClick={() => removeToast(t.id)}
-                  className="shrink-0 p-0.5 rounded hover:bg-black/5 transition-colors"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ─── Toast animation keyframes ─── */}
-      <style>{`
-        @keyframes slideInRight {
-          from {
-            opacity: 0;
-            transform: translateX(100%);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-      `}</style>
 
       {apiError && (
         <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-semibold rounded-2xl">
@@ -472,19 +391,45 @@ export const AdminSimulateSalePage: React.FC = () => {
             <div className="p-4 bg-amber-50 border border-amber-250 text-amber-900 rounded-xl space-y-3">
               <p className="text-xs font-semibold flex items-center gap-1.5">
                 <Sparkles size={14} className="text-amber-700 animate-pulse" />
-                AI Agent phát hiện tồn kho thấp và đã tạo thành công dự thảo đề xuất nhập hàng (Purchase Request)!
+                AI Agent đã tạo yêu cầu nhập hàng: {result.prNumber || result.prId}
               </p>
               <div className="flex items-center gap-3">
-                {result.prId && (
-                  <Link to={`/admin/purchase-requests/${result.prId}`}>
-                    <Button size="sm" className="bg-amber-800 hover:bg-amber-900 text-xs flex items-center gap-1 border-none text-white">
-                      <Mail size={12} /> Xem Purchase Request
-                    </Button>
-                  </Link>
-                )}
+                <Link to={result.prId ? `/admin/purchase-requests/${result.prId}` : `/admin/purchase-requests`}>
+                  <Button size="sm" className="bg-amber-800 hover:bg-amber-900 text-xs flex items-center gap-1 border-none text-white">
+                    <Mail size={12} /> Xem yêu cầu mua hàng
+                  </Button>
+                </Link>
                 <Link to="/admin/agent-logs">
                   <Button size="sm" variant="outline" className="text-xs flex items-center gap-1 border-amber-300 text-amber-900 hover:bg-amber-50/50 bg-white">
                     <Terminal size={12} /> Xem Agent Logs
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          ) : result.hasNoSupplierSkip ? (
+            <div className="p-4 bg-orange-50 border border-orange-200 text-orange-900 rounded-xl space-y-3">
+              <p className="text-xs font-semibold flex items-center gap-1.5">
+                <AlertTriangle size={14} className="text-orange-600" />
+                Sản phẩm chưa được liên kết với nhà cung cấp nên AI Agent không thể tạo yêu cầu nhập hàng.
+              </p>
+              <div className="flex items-center gap-3">
+                <Link to="/admin/suppliers">
+                  <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-xs flex items-center gap-1 border-none text-white">
+                    Đi đến Nhà cung cấp
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          ) : result.hasDuplicateSkip ? (
+            <div className="p-4 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl space-y-3">
+              <p className="text-xs font-semibold flex items-center gap-1.5">
+                <Info size={14} className="text-blue-600" />
+                Sản phẩm đã có yêu cầu nhập hàng đang chờ xử lý.
+              </p>
+              <div className="flex items-center gap-3">
+                <Link to="/admin/purchase-requests">
+                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-xs flex items-center gap-1 border-none text-white">
+                    <Mail size={12} /> Xem yêu cầu mua hàng
                   </Button>
                 </Link>
               </div>

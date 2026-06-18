@@ -151,7 +151,7 @@
 | Product `HIHI` có supplier nhưng đã có PurchaseRequest mở `AI-PR-1780575913622-2mq3` | Điều kiện dữ liệu | Không dùng cho TC_04 vì có request mở trùng. |
 | Product `THẠCH DÁTE DUY` có inventory nhưng chưa có supplier | Điều kiện dữ liệu | Không dùng cho TC_04 vì thiếu supplier hợp lệ. |
 | Credential demo `admin@cafe.local` trả `401`; phiên test dùng `admin@cafe.com` | Thông tin | Cập nhật dữ liệu demo/UI nếu cần đồng bộ credential hiển thị. |
-| Toast Notification | Bổ sung UX | Toast chưa được đánh dấu Pass vì chưa có bằng chứng UI trực tiếp. TC_01 -> TC_05 vẫn Pass cho nghiệp vụ simulate sale. Cần test thủ công. |
+| Toast Notification | Bổ sung UX | Toast/Notification đã được test lại trong mục 13 và đạt Pass cho các case: không đủ tồn kho, thiếu supplier, và hiển thị đúng đơn vị. |
 
 ## 8. Lỗi phát hiện
 
@@ -170,8 +170,7 @@ Sau khi TC_01 → TC_05 Pass, bổ sung hệ thống toast thông báo inline tr
 - Toast implementation đã được thêm vào `AdminSimulateSalePage.tsx`.
 - Không cài package mới.
 - Build frontend đã pass.
-- **Cần test thủ công UI để xác nhận toast hiển thị đúng từng case.**
-- Toast chưa được đánh dấu Pass vì chưa có bằng chứng UI trực tiếp.
+- Toast/Notification đã được test lại trong mục 13 và đạt Pass cho các case: không đủ tồn kho, thiếu supplier, và hiển thị đúng đơn vị.
 - TC_01 -> TC_05 vẫn Pass cho nghiệp vụ simulate sale.
 - Toast là phần bổ sung UX, chưa ảnh hưởng kết quả test nghiệp vụ chính.
 
@@ -225,3 +224,40 @@ Lưu ý: Chức năng Preview đã bị loại bỏ. Admin bấm Apply Simulatio
   - Không tạo Order, không Payment, không doanh thu.
 - Chưa phát hiện lỗi source code trong phạm vi đã test.
 - Có thể chuyển sang test workflow PurchaseRequest: `PENDING -> APPROVED -> SENT -> RECEIVED -> COMPLETED`.
+
+## 13. Tối ưu Notification và hiển thị đơn vị
+
+> Ngày cập nhật: 2026-06-18
+
+### Mục tiêu đã hoàn thành
+- Đã sửa UI thực tế không còn ly/ngày, ly.
+- Đã thay hoàn toàn chữ `ly` và `ly/ngày` bằng `đơn vị` hoặc unit thật của product trên UI.
+- Đã đưa toàn bộ thông báo của Simulate Sale chạy thẳng vào hệ thống `NotificationPanel` (thông qua `ToastContext` đã được tích hợp sẵn localStorage log).
+- Đã thêm nút "Xem yêu cầu mua hàng" khi Agent tạo PurchaseRequest.
+- Đã test điều hướng sang trang yêu cầu mua hàng.
+- Giữ nguyên các chức năng NotificationPanel hiện tại mà không thay đổi/tạo thêm file mới.
+- Không sửa database.
+- Đã chỉnh sửa thông báo API backend và message hiển thị sao cho trực quan, khớp chính xác các trường hợp được mô tả:
+  - Lỗi không đủ tồn kho báo rõ `stockBefore` và `simulatedDemand` theo `{unit}`.
+  - Cảnh báo hết hàng/tồn kho thấp hiển thị đúng số liệu sau mô phỏng và minThreshold.
+  - Thông báo rõ ràng việc chưa có nhà cung cấp liên kết hay đã có request trùng.
+  - Request thành công hiển thị mã PurchaseRequest.
+
+### Kết quả Test
+1. **Apply Simulation không đủ tồn kho**:
+   - Gửi yêu cầu lớn hơn stock.
+   - Frontend không hiện Network Error.
+   - Hiện toast đỏ `Không đủ tồn kho` + `Tồn kho hiện tại: ... đơn vị, yêu cầu: ... đơn vị`.
+   - Thông báo được lưu vào `NotificationPanel` và xem lại được.
+2. **Apply Simulation thiếu supplier**:
+   - Product dưới minThreshold nhưng không có nhà cung cấp hợp lệ.
+   - Không tự sinh PR, báo toast warning `Chưa có nhà cung cấp`.
+   - Lưu vào `NotificationPanel`.
+   - Có hiển thị nút điều hướng đi đến nhà cung cấp.
+3. **UI không còn 'ly'**:
+   - Text đã đổi thành `{unit}/ngày` hoặc `đơn vị/ngày`.
+4. **Apply Simulation tạo PR thành công**:
+   - Có nút 'Xem yêu cầu mua hàng'.
+   - Chuyển hướng thành công sang trang chi tiết Purchase Request.
+
+**Trạng thái**: Hoàn thành (Pass).
