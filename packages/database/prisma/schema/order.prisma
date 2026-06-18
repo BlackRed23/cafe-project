@@ -15,6 +15,7 @@ enum PaymentStatus {
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
+  VIET_QR
 }
 
 model Order {
@@ -23,6 +24,8 @@ model Order {
   user        User        @relation(fields: [userId], references: [id])
   status          OrderStatus @default(PENDING)
   totalAmount     Decimal     @default(0) @db.Decimal(12, 2)
+  shippingFee     Decimal     @default(0) @db.Decimal(12, 2)
+  shippingZone    String?
   shippingName    String?
   shippingPhone   String?
   shippingAddress String?

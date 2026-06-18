@@ -1,6 +1,6 @@
 import type { Product } from "./product.types";
 
-export type PaymentMethod = "CASH" | "BANK_TRANSFER";
+export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "VIET_QR";
 export type PaymentStatus = "PENDING" | "SUCCESS" | "PAID" | "FAILED" | "REFUNDED";
 export type OrderStatus =
   | "PENDING"
@@ -17,6 +17,9 @@ export interface OrderItemPayload {
 export interface CreateOrderPayload {
   items: OrderItemPayload[];
   paymentMethod: PaymentMethod;
+  shippingName: string;
+  shippingPhone: string;
+  shippingAddress: string;
   note?: string;
 }
 
@@ -38,9 +41,14 @@ export interface Order {
     email?: string | null;
   } | null;
   totalAmount: number;
+  shippingFee?: number | null;
+  shippingZone?: string | null;
   status: OrderStatus;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
+  shippingName?: string | null;
+  shippingPhone?: string | null;
+  shippingAddress?: string | null;
   note?: string;
   createdAt: string;
   updatedAt: string;

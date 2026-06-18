@@ -145,7 +145,7 @@ export const CartPage: React.FC = () => {
             </div>
             <div className="flex justify-between text-slate-500 pb-4 border-b border-amber-900/5">
               <span>Phí giao hàng</span>
-              <span className="text-emerald-700 font-bold">Miễn phí</span>
+              <span className="font-semibold text-slate-700">Tạm tính</span>
             </div>
             <div className="flex justify-between text-base font-black text-slate-900 pt-2">
               <span>Tổng cộng</span>

@@ -14,6 +14,8 @@ const toOrderDto = (order: OrderRecord) => ({
     status: order.status,
     displayStatus: order.status === OrderStatus.PROCESSING ? 'CONFIRMED' : order.status,
     totalAmount: Number(order.totalAmount),
+    shippingFee: Number(order.shippingFee),
+    shippingZone: order.shippingZone ?? null,
     paymentStatus: order.payment?.status ?? 'PENDING',
     paymentMethod: order.payment?.method ?? null,
     payment: order.payment ? { ...order.payment, amount: Number(order.payment.amount) } : null,

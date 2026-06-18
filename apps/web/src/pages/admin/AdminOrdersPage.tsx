@@ -113,7 +113,11 @@ export const AdminOrdersPage: React.FC = () => {
   ];
 
   // Order count by status
-  const pendingCount = orders.filter((o) => o.status === "PENDING").length;
+  const getCount = (status: string) => {
+    if (status === "ALL") return 0;
+    return orders.filter((o) => o.status === status).length;
+  };
+  const pendingCount = getCount("PENDING");
 
   return (
     <div className="flex flex-col gap-6">
@@ -139,26 +143,36 @@ export const AdminOrdersPage: React.FC = () => {
 
       {/* Filter tab bar */}
       <div className="flex flex-wrap items-center gap-1.5 bg-white rounded-xl border border-slate-200 p-1.5 shadow-sm">
-        {FILTER_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            onClick={() => setStatusFilter(opt.value)}
-            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
-              statusFilter === opt.value
-                ? "bg-amber-800 text-white shadow-sm"
-                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-            }`}
-          >
-            {opt.label}
-            {opt.value === "PENDING" && pendingCount > 0 && (
-              <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                statusFilter === "PENDING" ? "bg-white/30 text-white" : "bg-amber-100 text-amber-800"
-              }`}>
-                {pendingCount}
-              </span>
-            )}
-          </button>
-        ))}
+        {FILTER_OPTIONS.map((opt) => {
+          const count = getCount(opt.value);
+          const isSelected = statusFilter === opt.value;
+          return (
+            <button
+              key={opt.value}
+              onClick={() => setStatusFilter(opt.value)}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 flex items-center ${
+                isSelected
+                  ? "bg-amber-800 text-white shadow-sm"
+                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              }`}
+            >
+              {opt.label}
+              {count > 0 && opt.value !== "ALL" && (
+                <span
+                  className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                    isSelected
+                      ? "bg-white/30 text-white"
+                      : opt.value === "PENDING"
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-slate-200 text-slate-600"
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {orders.length === 0 ? (

@@ -1,6 +1,7 @@
 import { InventoryTransactionType, OrderStatus, type Prisma } from '@cafe-project/database';
 import { prisma } from '../../common/prisma';
 import type { CreateOrderInput, OrderFiltersInput } from './order.validator';
+import { detectShippingZone, calculateShippingFee } from './shipping.service';
 
 const orderInclude = {
     user: { select: { id: true, name: true, email: true } },
@@ -54,12 +55,20 @@ export const orderRepository = {
                 totalAmount += Number(product.price) * item.quantity;
             }
 
+            // === TÍNH PHÍ GIAO HÀNG ===
+            const subtotal = totalAmount;
+            const shippingZone = detectShippingZone(input.shippingAddress ?? '');
+            const shippingFee = calculateShippingFee(shippingZone, subtotal);
+            const grandTotal = subtotal + shippingFee;
+
             // === TẠO ĐƠN HÀNG ===
             const order = await tx.order.create({
                 data: {
                     userId,
                     status: OrderStatus.PENDING,
-                    totalAmount,
+                    totalAmount: grandTotal,
+                    shippingFee: shippingFee,
+                    shippingZone: shippingZone,
                     shippingName: input.shippingName,
                     shippingPhone: input.shippingPhone,
                     shippingAddress: input.shippingAddress,
@@ -71,7 +80,7 @@ export const orderRepository = {
                         })
                     },
                     payment: {
-                        create: { method: input.paymentMethod, amount: totalAmount, status: 'PENDING' }
+                        create: { method: input.paymentMethod, amount: grandTotal, status: 'PENDING' }
                     }
                 },
                 include: orderInclude

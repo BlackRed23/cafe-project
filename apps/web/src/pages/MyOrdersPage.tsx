@@ -3,12 +3,14 @@ import { useSearchParams } from "react-router-dom";
 import { ordersApi } from "../api/orders.api";
 import type { Order } from "../types/order.types";
 import { formatCurrency } from "../utils/formatCurrency";
+import { getZoneLabel } from "../utils/shipping";
+import { getPaymentMethodLabel } from "../utils/payment";
 import { formatDate } from "../utils/formatDate";
 import { Badge } from "../components/common/Badge";
 import { Loading } from "../components/common/Loading";
 import { EmptyState } from "../components/common/EmptyState";
 import { Button } from "../components/common/Button";
-import { CheckCircle2, ChevronDown, ChevronUp, Package, Calendar, CreditCard, DollarSign, Sparkles } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronUp, Package, Calendar, CreditCard, DollarSign, Sparkles, User, Phone, MapPin, MessageSquare } from "lucide-react";
 
 export const MyOrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -155,8 +157,8 @@ export const MyOrdersPage: React.FC = () => {
                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
                           <CreditCard size={10} /> Thanh toán
                         </span>
-                        <span className="text-xs text-slate-655 font-bold uppercase">
-                          {order.paymentMethod || (order as any).payment_method}
+                        <span className="text-xs text-slate-700 font-bold">
+                          {getPaymentMethodLabel(order.paymentMethod || (order as any).payment_method)}
                         </span>
                       </div>
                     </div>
@@ -176,6 +178,39 @@ export const MyOrdersPage: React.FC = () => {
                   {/* Expanded Details */}
                   {isExpanded && (
                     <div className="border-t border-amber-900/5 bg-[#faf6f0]/50 p-5 sm:p-6 space-y-4">
+
+                      {/* Shipping Info */}
+                      {(order.shippingName || order.shippingPhone || order.shippingAddress) && (
+                        <div>
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                            <MapPin size={12} /> Thông tin giao hàng
+                          </h4>
+                          <div className="bg-white border border-amber-900/5 rounded-2xl p-4 shadow-sm space-y-2.5">
+                            {order.shippingName && (
+                              <div className="flex items-center gap-2.5 text-sm">
+                                <User size={14} className="text-amber-700 shrink-0" />
+                                <span className="text-slate-500 font-medium w-28 shrink-0">Người nhận:</span>
+                                <span className="font-bold text-slate-800">{order.shippingName}</span>
+                              </div>
+                            )}
+                            {order.shippingPhone && (
+                              <div className="flex items-center gap-2.5 text-sm">
+                                <Phone size={14} className="text-amber-700 shrink-0" />
+                                <span className="text-slate-500 font-medium w-28 shrink-0">Số điện thoại:</span>
+                                <span className="font-bold text-slate-800">{order.shippingPhone}</span>
+                              </div>
+                            )}
+                            {order.shippingAddress && (
+                              <div className="flex items-start gap-2.5 text-sm">
+                                <MapPin size={14} className="text-amber-700 shrink-0 mt-0.5" />
+                                <span className="text-slate-500 font-medium w-28 shrink-0">Địa chỉ:</span>
+                                <span className="font-bold text-slate-800 leading-relaxed">{order.shippingAddress}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Products details */}
                       <div>
                         <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
@@ -202,10 +237,43 @@ export const MyOrdersPage: React.FC = () => {
 
                       {order.note && (
                         <div className="text-sm bg-white p-4 border border-amber-900/5 rounded-2xl shadow-sm">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú đơn hàng</p>
+                          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                            <MessageSquare size={12} /> Ghi chú đơn hàng
+                          </div>
                           <p className="text-slate-600 leading-relaxed font-bold mt-1">{order.note}</p>
                         </div>
                       )}
+
+                      {/* Tổng tiền chi tiết */}
+                      <div className="bg-white border border-amber-900/5 rounded-2xl p-4 shadow-sm">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex justify-between text-sm text-slate-500">
+                            <span>Tiền hàng</span>
+                            <span>{formatCurrency(order.totalAmount - (order.shippingFee ?? 0))}</span>
+                          </div>
+                          {order.shippingFee != null && (
+                            <div className="flex justify-between text-sm text-slate-500">
+                              <span className="flex items-center gap-1">
+                                Phí ship
+                                {order.shippingZone && (
+                                  <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded font-medium text-slate-500">
+                                    {getZoneLabel(order.shippingZone)}
+                                  </span>
+                                )}
+                              </span>
+                              {order.shippingFee === 0 ? (
+                                <span className="text-emerald-600 font-bold">Miễn phí</span>
+                              ) : (
+                                <span className="font-semibold">{formatCurrency(order.shippingFee)}</span>
+                              )}
+                            </div>
+                          )}
+                          <div className="flex justify-between text-sm font-black text-slate-900 border-t border-slate-100 pt-2">
+                            <span>Tổng thanh toán</span>
+                            <span className="text-amber-800">{formatCurrency(order.totalAmount)}</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

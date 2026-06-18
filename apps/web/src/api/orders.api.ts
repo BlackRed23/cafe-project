@@ -114,7 +114,10 @@ const normalizeOrderPayload = (payload: CreateOrderPayload) => {
       quantity: Number(item.quantity),
     })),
     paymentMethod: payload.paymentMethod,
-  };
+    shippingName: payload.shippingName?.trim() || undefined,
+    shippingPhone: payload.shippingPhone?.trim() || undefined,
+    shippingAddress: payload.shippingAddress?.trim() || undefined,
+  } as any;
 
   const note = payload.note?.trim();
   if (note) normalized.note = note;
