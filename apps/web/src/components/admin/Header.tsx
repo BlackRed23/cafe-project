@@ -51,8 +51,11 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
     }, 4000);
   }, []);
 
-  const loadNotifications = async (isRefresh = false) => {
+  const [loadError, setLoadError] = useState(false);
+
+  const loadNotifications = async () => {
     setIsLoadingNotifications(true);
+    setLoadError(false);
     try {
       const logs = await agentLogsApi.getAgentLogs();
       const recentLogs = logs.slice(0, 8);
@@ -60,12 +63,8 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
       
       const hasErrors = recentLogs.some(log => log.status === "ERROR" || log.error || log.errorMessage || log.error_message || log.status === "FAILED");
       setHasUnread(hasErrors || recentLogs.length > 0);
-      
-      if (isRefresh) {
-        addToast("success", "Đã cập nhật thông báo hệ thống.");
-      }
     } catch (err) {
-      addToast("error", "Không thể tải thông báo hệ thống.");
+      setLoadError(true);
     } finally {
       setIsLoadingNotifications(false);
     }
@@ -167,7 +166,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
               <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 overflow-hidden flex flex-col z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
                   <h3 className="font-bold text-slate-800 text-sm">Thông báo hệ thống</h3>
-                  <button onClick={() => loadNotifications(true)} className="p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors" title="Làm mới">
+                  <button onClick={() => loadNotifications()} className="p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors" title="Làm mới">
                     <RefreshCw size={14} className={isLoadingNotifications ? "animate-spin" : ""} />
                   </button>
                 </div>
@@ -175,6 +174,8 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
                 <div className="max-h-[360px] overflow-y-auto">
                   {isLoadingNotifications && notifications.length === 0 ? (
                     <div className="p-6 text-center text-sm text-slate-400">Đang tải thông báo...</div>
+                  ) : loadError ? (
+                    <div className="p-6 text-center text-sm text-rose-500">Không thể tải thông báo hệ thống.</div>
                   ) : notifications.length === 0 ? (
                     <div className="p-6 text-center text-sm text-slate-400">Chưa có thông báo hệ thống.</div>
                   ) : (

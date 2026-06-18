@@ -79,12 +79,12 @@ export const CustomerLayout: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-2.5 group">
-              <div className="p-2.5 bg-amber-700 text-white rounded-xl group-hover:bg-amber-600 transition-all shadow-md shadow-amber-950/30">
-                <Coffee size={22} />
+            <Link to="/" className="flex items-center group">
+              <div className="p-2.5 bg-white-300 text-white  group-hover:bg-white-600 transition-all ">
+                <img className="w-20 h-20" src="./src/assets/logo-inventory1.png" alt="" />
               </div>
               <span className="font-bold text-xl tracking-tight text-white uppercase font-serif">
-                COFFEE <span className="text-[#c49b76]">SHOP</span>
+                COFFEE <span className="text-[#c49b76]">SYSTEM</span>
               </span>
             </Link>
 
@@ -97,11 +97,10 @@ export const CustomerLayout: React.FC = () => {
                     key={item.path}
                     to={item.path}
                     onClick={(e) => handleNavClick(item, e)}
-                    className={`text-xs font-bold transition-all duration-200 relative py-1 uppercase tracking-wider ${
-                      isActive(item)
-                        ? "text-[#c49b76] font-bold"
-                        : "text-amber-250/80 hover:text-white"
-                    }`}
+                    className={`text-xs font-bold transition-all duration-200 relative py-1 uppercase tracking-wider ${isActive(item)
+                      ? "text-[#c49b76] font-bold"
+                      : "text-amber-250/80 hover:text-white"
+                      }`}
                   >
                     {item.label}
                     {isActive(item) && (
@@ -141,7 +140,7 @@ export const CustomerLayout: React.FC = () => {
               {/* User actions */}
               {isAuthenticated && user ? (
                 <div className="relative flex items-center pl-3 border-l border-amber-955/30" ref={userMenuRef}>
-                  <button 
+                  <button
                     onClick={() => setUserMenuOpen(!userMenuOpen)}
                     className="flex items-center gap-3 p-1.5 rounded-xl hover:bg-white/5 transition-colors"
                   >
@@ -250,17 +249,16 @@ export const CustomerLayout: React.FC = () => {
                   key={item.path}
                   to={item.path}
                   onClick={(e) => handleNavClick(item, e)}
-                  className={`block px-3 py-2 rounded-lg text-base font-medium transition-colors ${
-                    isActive(item)
-                      ? "bg-amber-900/40 text-[#c49b76] font-bold"
-                      : "text-amber-250/80 hover:bg-white/5 hover:text-white"
-                  }`}
+                  className={`block px-3 py-2 rounded-lg text-base font-medium transition-colors ${isActive(item)
+                    ? "bg-amber-900/40 text-[#c49b76] font-bold"
+                    : "text-amber-250/80 hover:bg-white/5 hover:text-white"
+                    }`}
                 >
                   {item.label}
                 </Link>
               );
             })}
-            
+
             {isAuthenticated && isAdmin && (
               <Link
                 to="/admin/dashboard"
@@ -359,10 +357,10 @@ export const CustomerLayout: React.FC = () => {
             </p>
             <div className="flex gap-3 mt-2">
               <a href="#facebook" className="w-9 h-9 rounded-full border border-amber-955/30 hover:border-[#c49b76] flex items-center justify-center text-amber-250 hover:text-[#c49b76] transition-colors">
-                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
               </a>
               <a href="#instagram" className="w-9 h-9 rounded-full border border-amber-955/30 hover:border-[#c49b76] flex items-center justify-center text-amber-250 hover:text-[#c49b76] transition-colors">
-                <svg className="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+                <svg className="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5" /><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" /><line x1="17.5" y1="6.5" x2="17.51" y2="6.5" /></svg>
               </a>
             </div>
           </div>
@@ -375,8 +373,8 @@ export const CustomerLayout: React.FC = () => {
                 if (item.protected && !isAuthenticated) return null;
                 return (
                   <li key={item.path}>
-                    <Link 
-                      to={item.path} 
+                    <Link
+                      to={item.path}
                       onClick={(e) => handleNavClick(item, e)}
                       className="hover:text-[#c49b76] transition-colors"
                     >
@@ -414,9 +412,9 @@ export const CustomerLayout: React.FC = () => {
               Nhận thông tin cập nhật về các sản phẩm cà phê hạt và chương trình ưu đãi mới nhất.
             </p>
             <form onSubmit={(e) => e.preventDefault()} className="flex border border-amber-955/30 rounded-xl overflow-hidden mt-1 bg-white/5 focus-within:border-[#c49b76] transition-colors">
-              <input 
-                type="email" 
-                placeholder="Email của bạn..." 
+              <input
+                type="email"
+                placeholder="Email của bạn..."
                 className="flex-1 px-3 py-2.5 bg-transparent text-[14px] text-white placeholder-amber-200/35 outline-none border-none"
               />
               <button type="submit" className="px-4.5 bg-amber-700 hover:bg-amber-600 text-white transition-colors border-none flex items-center justify-center">

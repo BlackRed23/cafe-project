@@ -111,14 +111,68 @@ export const agentService = {
                 });
             }
 
-            if (inventory.quantity > minThreshold) {
-                console.info('[AI_DEBUG] Product skipped:', { productId: product.id, productName: product.name, reason: `Stock ${inventory.quantity} is above minThreshold ${minThreshold}.` });
+            const supplierProduct = product.supplierProducts.find((sp) => isSupplierActive(sp.supplier));
+
+            // Tính toán Reorder Point nếu có Supplier và leadTime
+            let reorderPoint = minThreshold;
+            let safetyStock = minThreshold;
+            let averageDailySales = 0;
+            const delayBufferDays = 2;
+            if (supplierProduct && supplierProduct.leadTimeDays > 0) {
+                // Lấy lượng bán trung bình 30 ngày qua (hoặc 1 nếu không có dữ liệu)
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                
+                const recentSales = await prisma.inventoryTransaction.aggregate({
+                    where: {
+                        productId: product.id,
+                        type: { in: ['ORDER', 'SIMULATE_SALE'] },
+                        createdAt: { gte: thirtyDaysAgo }
+                    },
+                    _sum: { quantity: true }
+                });
+                
+                // Transactions bán hàng ghi nhận quantity âm
+                const totalSold = Math.abs(recentSales._sum.quantity || 0);
+                averageDailySales = totalSold / 30;
+                
+                // Reorder Point = Average Daily Sales * Lead Time + Safety Stock (minThreshold)
+                safetyStock = averageDailySales > 0 ? Math.ceil(averageDailySales * 2) : minThreshold;
+                reorderPoint = Math.ceil(averageDailySales * (supplierProduct.leadTimeDays + delayBufferDays) + safetyStock);
+            }
+
+            if (inventory.quantity > reorderPoint) {
+                console.info('[AI_DEBUG] Product skipped:', { productId: product.id, productName: product.name, reason: `Stock ${inventory.quantity} is above reorderPoint ${reorderPoint}.` });
                 continue;
             }
 
-            const recommendedQty = Math.max(minThreshold * 3 - inventory.quantity, 1);
+            const recommendedQty = Math.max(reorderPoint * 2 - inventory.quantity, minThreshold * 3 - inventory.quantity, 1);
             const hasOpenRequest = await agentRepository.hasOpenPurchaseRequest(inventory.productId, inventory.id);
-            const baseInput = { triggerType: input.triggerType, inventoryId: inventory.id, productId: inventory.productId, currentQty: inventory.quantity, minThreshold, recommendedQty };
+            const backupSuppliers = product.supplierProducts
+                .filter((sp) => sp.supplierId !== supplierProduct?.supplierId && isSupplierActive(sp.supplier))
+                .map((sp) => ({
+                    supplierId: sp.supplierId,
+                    supplierName: sp.supplier.name,
+                    isPreferred: sp.isPreferred,
+                    leadTimeDays: sp.leadTimeDays,
+                    moq: sp.minOrderQuantity,
+                    purchasePrice: Number(sp.price)
+                }));
+            const baseInput = {
+                triggerType: input.triggerType,
+                inventoryId: inventory.id,
+                productId: inventory.productId,
+                currentQty: inventory.quantity,
+                minThreshold,
+                avgDailySales: Number(averageDailySales.toFixed(2)),
+                safetyStock,
+                leadTimeDays: supplierProduct?.leadTimeDays ?? null,
+                delayBufferDays,
+                reorderPoint,
+                recommendedQty,
+                backupSuppliers,
+                capacityNote: 'SupplierProduct hien chua co availableQuantity/capacity; Agent khong tu ket luan nha cung cap du hay thieu.'
+            };
 
             if (hasOpenRequest) {
                 const reasoning = 'Sản phẩm đã có yêu cầu nhập hàng đang xử lý.';
@@ -136,7 +190,6 @@ export const agentService = {
                 continue;
             }
 
-            const supplierProduct = product.supplierProducts.find((sp) => isSupplierActive(sp.supplier));
             if (!supplierProduct) {
                 const reasoning = 'Nhà cung cấp của sản phẩm đang bị vô hiệu hóa.';
                 console.info('[AI_DEBUG] Product skipped:', { productId: product.id, productName: product.name, reason: reasoning });
@@ -148,7 +201,7 @@ export const agentService = {
             const reasoning = withOptionalText(reasoningText(inventory, minThreshold, recommendedQty, supplierProduct.supplier.name), [settings.promptPrefix, settings.slogan]);
             const request = await agentRepository.createAiPurchaseRequest(inventory, supplierProduct, recommendedQty, reasoning, userId);
             createdPurchaseRequests.push({ id: request.id, requestNumber: request.requestNumber, supplierName: request.supplier.name, status: request.status });
-            const output = { purchaseRequestId: request.id, recommendedSupplierId: supplierProduct.supplierId, recommendedQty, confidence: 0.82 };
+            const output = { purchaseRequestId: request.id, recommendedSupplierId: supplierProduct.supplierId, recommendedQty, backupSuppliers, confidence: 0.82 };
             const log = await agentRepository.createLog({ action: 'SCAN_INVENTORY_CREATE_PURCHASE_REQUEST', input: JSON.stringify(baseInput), output: JSON.stringify(output), reasoning, result: 'CREATED_PURCHASE_REQUEST', fallback_used: true, reference_type: 'PurchaseRequest', reference_id: request.id, creator: { connect: { id: userId } } });
             results.push(toLogDto(log));
         }

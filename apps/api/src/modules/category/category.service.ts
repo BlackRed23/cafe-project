@@ -1,4 +1,4 @@
-﻿import { Prisma, type Category } from '@cafe-project/database';
+import { Prisma, type Category } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
 import { categoryRepository } from './category.repository';
 import type { CreateCategoryInput, UpdateCategoryInput } from './category.validator';
@@ -95,7 +95,7 @@ export const deleteCategory = async (id: string): Promise<CategoryDto> => {
     const productCount = await categoryRepository.countProducts(category.id);
 
     if (productCount > 0) {
-        throw new HttpError(400, 'Không thể xóa danh mục vì vẫn còn sản phẩm thuộc danh mục này.');
+        throw new HttpError(400, 'Không thể xoá danh mục vì vẫn còn sản phẩm thuộc danh mục này. Hãy chuyển sản phẩm sang danh mục khác trước.');
     }
 
     return toCategoryDto(await categoryRepository.delete(category.id));

@@ -1,4 +1,4 @@
-﻿export interface Category {
+export interface Category {
   id: string;
   name: string;
 }
@@ -21,4 +21,6 @@ export interface Product {
     minThreshold?: number;
     min_threshold?: number;
   };
+  deletedAt?: Date | string | null;
+  pendingDeleteUntil?: Date | string | null;
 }

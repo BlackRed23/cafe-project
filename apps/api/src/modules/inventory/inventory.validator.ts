@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 
 export const inventoryIdSchema = z.string().trim().min(1, 'Mã tồn kho là bắt buộc.');
 
@@ -14,5 +14,11 @@ export const adjustInventorySchema = z.object({
     note: z.string().trim().max(1000, 'Ghi chú tối đa 1000 ký tự.').optional().nullable()
 });
 
+export const updateThresholdSchema = z.object({
+    inventoryId: inventoryIdSchema,
+    minThreshold: z.coerce.number().int('Ngưỡng phải là số nguyên.').min(0, 'Ngưỡng không được âm.')
+});
+
 export type ImportInventoryInput = z.infer<typeof importInventorySchema>;
 export type AdjustInventoryInput = z.infer<typeof adjustInventorySchema>;
+export type UpdateThresholdInput = z.infer<typeof updateThresholdSchema>;

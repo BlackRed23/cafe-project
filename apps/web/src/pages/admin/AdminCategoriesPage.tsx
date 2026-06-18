@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Search, Edit2, Trash2, LayoutGrid, Info } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, LayoutGrid, Info, AlertCircle, CheckCircle } from "lucide-react";
 import { categoriesApi } from "../../api/categories.api";
 import type { Category } from "../../types/category.types";
 import { Button } from "../../components/common/Button";
@@ -29,7 +29,12 @@ export const AdminCategoriesPage: React.FC = () => {
   // Delete modal states
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const fetchCategories = async () => {
     try {
@@ -114,27 +119,27 @@ export const AdminCategoriesPage: React.FC = () => {
 
   const handleOpenDeleteModal = (id: string) => {
     setCategoryToDelete(id);
-    setDeleteError(null);
     setIsDeleteModalOpen(true);
   };
 
   const handleCloseDeleteModal = () => {
     setIsDeleteModalOpen(false);
     setCategoryToDelete(null);
-    setDeleteError(null);
   };
 
   const handleDelete = async () => {
     if (!categoryToDelete) return;
-    setDeleteError(null);
     try {
       setIsSubmitting(true);
+      showToast("Đang xoá...", "info");
       await categoriesApi.deleteCategory(categoryToDelete);
-      setSuccessMessage("Đã xóa danh mục thành công.");
+      showToast("Xoá danh mục thành công.", "success");
       handleCloseDeleteModal();
       fetchCategories();
     } catch (err) {
-      setDeleteError(getErrorMessage(err));
+      const errorMsg = getErrorMessage(err);
+      const isGenericError = errorMsg === "Đã có lỗi xảy ra." || errorMsg === "Đã có lỗi xảy ra. Vui lòng thử lại.";
+      showToast(isGenericError ? "Không thể xoá danh mục vì vẫn còn sản phẩm thuộc danh mục này. Hãy chuyển sản phẩm sang danh mục khác trước." : errorMsg, "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -147,7 +152,8 @@ export const AdminCategoriesPage: React.FC = () => {
   if (isLoading) return <Loading message="Đang tải danh sách danh mục..." />;
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <>
+      <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Danh mục sản phẩm</h1>
@@ -321,15 +327,8 @@ export const AdminCategoriesPage: React.FC = () => {
             </div>
             <h3 className="text-lg font-bold text-slate-800 text-center mb-2">Xóa danh mục này?</h3>
             <p className="text-sm text-slate-500 text-center mb-4">
-              Hành động này không thể hoàn tác. Nếu danh mục còn sản phẩm, hệ thống sẽ không cho phép xóa.
+              Lưu ý: Nếu danh mục còn sản phẩm, hệ thống sẽ không cho phép xoá.
             </p>
-
-            {deleteError && (
-              <div className="p-3 mb-4 bg-rose-50 border border-rose-200 text-rose-800 text-sm rounded-lg flex items-center gap-2">
-                <Info size={16} className="flex-shrink-0" />
-                {deleteError}
-              </div>
-            )}
 
             <div className="flex gap-3">
               <Button
@@ -354,5 +353,32 @@ export const AdminCategoriesPage: React.FC = () => {
         </div>
       )}
     </div>
+      
+      {/* Toast Notification Container */}
+      {toast && (
+        <div
+          className={`fixed top-4 right-4 z-[9999] px-4 py-3 rounded-xl border shadow-lg flex items-start gap-2.5 max-w-sm animate-in slide-in-from-right-8 duration-300 ${
+            toast.type === "error"
+              ? "bg-rose-50 border-rose-300 text-rose-900"
+              : toast.type === "success"
+              ? "bg-emerald-50 border-emerald-300 text-emerald-900"
+              : "bg-sky-50 border-sky-300 text-sky-900"
+          }`}
+        >
+          <div
+            className={`mt-0.5 ${
+              toast.type === "error"
+                ? "text-rose-600"
+                : toast.type === "success"
+                ? "text-emerald-600"
+                : "text-sky-600"
+            }`}
+          >
+            {toast.type === "error" ? <AlertCircle size={18} /> : toast.type === "success" ? <CheckCircle size={18} /> : <Info size={18} />}
+          </div>
+          <span className="flex-1 text-sm font-medium leading-snug">{toast.message}</span>
+        </div>
+      )}
+    </>
   );
 };

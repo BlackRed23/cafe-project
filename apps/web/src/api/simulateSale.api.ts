@@ -1,11 +1,23 @@
-﻿import { apiClient, unwrapApiData } from "./client";
+import { apiClient, unwrapApiData } from "./client";
 
 export const simulateSaleApi = {
-  simulateSale: async (payload: { productId: string; quantity: number }): Promise<any> => {
+  simulateSale: async (payload: {
+    productId: string;
+    quantity?: number;
+    simulationMode?: string;
+    startDate?: string;
+    endDate?: string;
+    dailySimulatedQuantity?: number;
+    note?: string;
+  }): Promise<any> => {
     const response = await apiClient.post("/simulate-sale", {
       productId: payload.productId,
       quantity: payload.quantity,
-      note: `Frontend simulate sale request for product ${payload.productId}`,
+      simulationMode: payload.simulationMode,
+      startDate: payload.startDate,
+      endDate: payload.endDate,
+      dailySimulatedQuantity: payload.dailySimulatedQuantity,
+      note: payload.note || `Frontend simulate sale request for product ${payload.productId}`,
     });
     const result = unwrapApiData<any>(response.data);
     const purchaseRequest = result?.createdPurchaseRequests?.[0];

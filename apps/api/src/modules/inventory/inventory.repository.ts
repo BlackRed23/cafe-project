@@ -1,4 +1,4 @@
-﻿import { InventoryTransactionType, type Category, type Inventory, type InventoryTransaction, type Prisma, type Product, type User } from '@cafe-project/database';
+import { InventoryTransactionType, type Category, type Inventory, type InventoryTransaction, type Prisma, type Product, type User } from '@cafe-project/database';
 import { prisma } from '../../common/prisma';
 
 type ProductWithCategory = Product & {
@@ -161,6 +161,14 @@ export const inventoryRepository = {
             }
 
             return updatedInventory;
+        });
+    },
+
+    async updateThreshold(inventory: InventoryRecord, minThreshold: number): Promise<InventoryRecord> {
+        return prisma.inventory.update({
+            where: { id: inventory.id },
+            data: { minThreshold },
+            include: inventoryInclude
         });
     }
 };

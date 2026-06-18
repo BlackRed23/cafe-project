@@ -1,5 +1,27 @@
-﻿import { apiClient, unwrapApiField, unwrapApiList } from "./client";
+import { apiClient, unwrapApiData, unwrapApiField, unwrapApiList } from "./client";
 import type { Inventory, InventoryTransaction } from "../types/inventory.types";
+
+type ThresholdSuggestionParams = {
+  salesWindowDays?: number;
+  bufferDays?: number;
+  delayBufferDays?: number;
+};
+
+const normalizeInventoryMutation = (payload: any) => {
+  const data = unwrapApiData<any>(payload);
+  const inventory = normalizeInventory(data?.inventory ?? data);
+
+  return {
+    ...data,
+    inventory,
+    quantity: inventory.quantity,
+    minThreshold: inventory.minThreshold,
+    min_threshold: inventory.min_threshold,
+    productId: inventory.productId,
+    product_id: inventory.product_id,
+    product: inventory.product,
+  };
+};
 
 const normalizeInventory = (inventory: any): Inventory => ({
   ...inventory,
@@ -55,11 +77,21 @@ export const inventoryApi = {
   },
 
   updateInventory: async (productId: string, payload: { minThreshold?: number; min_threshold?: number; quantity?: number }): Promise<Inventory> => {
+    const inventoryId = await resolveInventoryId(productId);
     if (payload.quantity !== undefined) {
       return inventoryApi.adjustInventory({ productId, quantity: payload.quantity });
     }
 
-    throw new Error("Backend hiện tại chưa hỗ trợ cập nhật ngưỡng tồn kho từ frontend.");
+    const minThreshold = payload.minThreshold ?? payload.min_threshold;
+    if (minThreshold !== undefined) {
+      const response = await apiClient.post("/inventories/threshold", {
+        inventoryId,
+        minThreshold,
+      });
+      return normalizeInventoryMutation(response.data);
+    }
+
+    throw new Error("Invalid payload for updateInventory");
   },
 
   importInventory: async (payload: { productId: string; quantity: number; note?: string }): Promise<any> => {
@@ -68,7 +100,7 @@ export const inventoryApi = {
       quantity: payload.quantity,
       note: payload.note,
     });
-    return normalizeInventory(unwrapApiField<any>(response.data, "inventory"));
+    return normalizeInventoryMutation(response.data);
   },
 
   adjustInventory: async (payload: { productId: string; quantity: number; note?: string }): Promise<any> => {
@@ -77,11 +109,19 @@ export const inventoryApi = {
       quantity: payload.quantity,
       note: payload.note,
     });
-    return normalizeInventory(unwrapApiField<any>(response.data, "inventory"));
+    return normalizeInventoryMutation(response.data);
   },
 
   getInventoryTransactions: async (): Promise<InventoryTransaction[]> => {
     const response = await apiClient.get("/inventory-transactions");
     return unwrapApiList<any>(response.data, "transactions").map(normalizeTransaction);
   },
+
+  getThresholdSuggestion: async (inventoryId: string, params?: ThresholdSuggestionParams): Promise<any> => {
+    const resolvedInventoryId = await resolveInventoryId(inventoryId);
+    const response = await apiClient.get(`/inventories/${resolvedInventoryId}/suggest-threshold`, { params });
+    const data = unwrapApiData<any>(response.data);
+    return data?.suggestion || data || {};
+  },
 };
+

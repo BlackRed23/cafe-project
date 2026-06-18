@@ -211,3 +211,47 @@ Scan nhanh dự án Cafe Agent trước yêu cầu tiếp theo, chỉ đọc sou
   10. Toast báo lỗi rõ nếu API lỗi.
 - **Những việc không thực hiện**:
   - Không sửa các phần khác ngoài chức năng email và agent purchase request. Không tự cài package mới hoặc tạo data migration/seed để migrate dữ liệu cũ.
+
+## 12. Inventory Threshold Suggestion and Stock Warning Flow
+
+- **File đã kiểm tra**:
+  - `apps/api/src/modules/inventory/inventory.repository.ts`
+  - `apps/api/src/modules/inventory/inventory.service.ts`
+  - `apps/web/src/pages/admin/AdminInventoryPage.tsx`
+  - `apps/api/src/modules/agent/agent.service.ts`
+- **File đã sửa**:
+  - `apps/api/src/modules/inventory/inventory.service.ts`
+  - `apps/api/src/modules/inventory/inventory.controller.ts`
+  - `apps/api/src/modules/inventory/inventory.route.ts`
+  - `apps/web/src/api/inventory.api.ts`
+  - `apps/web/src/pages/admin/AdminInventoryPage.tsx`
+- **Công thức gợi ý ngưỡng**:
+  - Tính `avgDailySales` = Tổng lượng xuất kho (loại ORDER và SIMULATE_SALE) trong 30 ngày qua chia cho 30.
+  - Lấy thời gian nhập hàng trung bình (`leadTimeDays`) từ bảng `SupplierProduct` (chọn nhà cung cấp ưu tiên hoặc nhỏ nhất). Nếu không có thì fallback là 3.
+  - Tính `safetyStock` = `avgDailySales * bufferDays` (trong đó bufferDays = 2). Nếu `avgDailySales == 0`, fallback = 10.
+  - `recommendedThreshold = avgDailySales * leadTimeDays + safetyStock` (làm tròn lên).
+- **Cảnh báo sau nhập kho**:
+  - Nếu sau khi nhập kho, số lượng thực tế vẫn `<= minThreshold`, hiển thị toast cảnh báo màu đỏ: *"Số lượng sau nhập vẫn thấp hơn ngưỡng tối thiểu."*
+  - Nếu `> minThreshold`, hiển thị toast xanh: *"Nhập kho thành công. Đủ hàng."*
+- **Cảnh báo sau điều chỉnh kho**:
+  - Tương tự nhập kho, so sánh quantity sau điều chỉnh với `minThreshold` để đưa ra các cảnh báo phù hợp.
+- **Agent scan được trigger khi nào**:
+  - Kích hoạt ngầm (`async`) sau khi gọi hàm điều chỉnh tồn kho (`adjustInventory`) thành công. Agent sẽ quét mã sản phẩm và tạo Purchase Request nếu thiếu hàng và không có request trùng.
+- **Test case cần chạy**:
+  - Bấm nút Ngưỡng trên UI, xem có xuất hiện gợi ý từ hệ thống chưa.
+  - Test thay đổi Input threshold thấp hơn dự phòng hoặc cao gấp 3 lần xem có cảnh báo không.
+  - Bấm nút Lưu ngưỡng đề xuất.
+  - Thực hiện điều chỉnh/nhập kho một số lượng sao cho sau khi nhập vẫn thấp hơn ngưỡng để xem cảnh báo màu đỏ xuất hiện.
+  - Check xem sau điều chỉnh tồn kho thấp, hệ thống có tự sinh Purchase Request mới (nếu chưa có).
+- **Những việc không thực hiện**:
+  - Không sửa giao diện ngoài trang AdminInventoryPage.
+  - Không tạo log file mới.
+
+## 13. Inventory Threshold Suggestion and Stock Warning Flow
+
+- **Công thức tính**: `avgDailySales = totalSalesInWindow / salesWindowDays`, `effectiveLeadTimeDays = leadTimeDays + delayBufferDays`, `safetyStock = ceil(avgDailySales * bufferDays)` hoặc fallback `10`, `leadTimeDemand = ceil(avgDailySales * effectiveLeadTimeDays)`, `recommendedThreshold = ceil(leadTimeDemand + safetyStock)`.
+- **Trigger Agent**: Order sau khi chuyển `PROCESSING`, simulate sale sau khi trừ tồn, và điều chỉnh kho khi `stockAfter <= minThreshold` đều gọi `agentService.scanInventory` bất đồng bộ. Lỗi Agent không làm fail thao tác kho.
+- **Chống tạo request trùng**: Agent vẫn dùng `agentRepository.hasOpenPurchaseRequest` để chặn request trùng cho cùng inventory/product khi có PR trạng thái `PENDING`, `APPROVED`, hoặc `SENT`.
+- **Nhà cung cấp dự phòng**: Dựa trên `SupplierProduct` thật, chọn supplier chính theo `isPreferred`, `leadTimeDays`, `price`; backup suppliers là các mapping active còn lại. Schema hiện chưa có `availableQuantity/capacity`, nên Agent không tự kết luận supplier đủ hay thiếu.
+- **Cảnh báo sau nhập/điều chỉnh**: API nhập kho/điều chỉnh trả `stockAfter`, `minThreshold`, `message`, `warnings`; frontend hiển thị toast warning nếu tồn sau thao tác vẫn thấp hơn ngưỡng.
+- **Việc không thực hiện**: Không hard-code supplier/product, không tạo endpoint giả, không thêm migration capacity, không refactor toàn dự án.

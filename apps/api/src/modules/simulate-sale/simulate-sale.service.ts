@@ -1,4 +1,4 @@
-﻿import { HttpError } from '../../common/http-error';
+import { HttpError } from '../../common/http-error';
 import { agentService } from '../agent/agent.service';
 import { simulateSaleRepository } from './simulate-sale.repository';
 import type { SimulateSaleInput } from './simulate-sale.validator';
@@ -8,7 +8,6 @@ const randomInt = (min: number, max: number): number => Math.floor(Math.random()
 export const simulateSaleService = {
     async run(input: SimulateSaleInput, userId: string) {
         if (input.productId) {
-            const quantity = input.quantity ?? 0;
             const inventory = await simulateSaleRepository.findInventoryByProductId(input.productId);
 
             if (!inventory) {
@@ -19,8 +18,31 @@ export const simulateSaleService = {
                 throw new HttpError(400, 'Selected product is inactive.');
             }
 
+            let quantity = input.quantity ?? 0;
+
+            if (input.simulationMode || input.dailySimulatedQuantity) {
+                let numberOfDays = 1;
+                if (input.simulationMode === 'WEEK') numberOfDays = 7;
+                else if (input.simulationMode === 'MONTH') numberOfDays = 30;
+                else if (input.simulationMode === 'CUSTOM_RANGE') {
+                    if (input.startDate && input.endDate) {
+                        const start = new Date(input.startDate);
+                        const end = new Date(input.endDate);
+                        const diffTime = end.getTime() - start.getTime();
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        numberOfDays = diffDays >= 0 ? diffDays + 1 : 0;
+                    } else {
+                        numberOfDays = 0;
+                    }
+                }
+
+                if (input.dailySimulatedQuantity) {
+                    quantity = Math.round(input.dailySimulatedQuantity * numberOfDays);
+                }
+            }
+
             if (inventory.quantity < quantity) {
-                throw new HttpError(400, `Not enough inventory for ${inventory.product.name}. Current stock: ${inventory.quantity}, requested: ${quantity}.`);
+                throw new HttpError(400, `Không đủ tồn kho để mô phỏng bán hàng. Tồn kho hiện tại: ${inventory.quantity}, yêu cầu: ${quantity}.`);
             }
 
             const affectedProduct = await simulateSaleRepository.applyProductSale(inventory, quantity, input.note ?? null, userId);

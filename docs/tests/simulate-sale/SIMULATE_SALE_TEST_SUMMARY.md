@@ -20,7 +20,7 @@
 ## 2.1 Làm rõ nghiệp vụ Simulate Sale
 
 1. Simulate Sale không phải là Order thật.
-2. Simulate Sale là công cụ admin/test dùng để giả lập tác động bán hàng lên tồn kho.
+2. Simulate Sale là công cụ admin/test dùng để giả lập tác động bán hàng lên tồn kho. Simulate Sale sử dụng đơn vị bán/tồn kho thực tế của sản phẩm (ví dụ: gói, hộp, thùng, kg), không mặc định theo "ly".
 3. Mục đích chính là kiểm tra:
    - trừ tồn kho theo productId
    - chặn bán vượt tồn
@@ -36,7 +36,16 @@
 5. So sánh ngắn:
    - Order thật: Customer -> Cart -> Checkout -> Order -> Payment -> Trừ kho -> Doanh thu
    - Simulate Sale: Admin -> Simulate Sale -> Trừ kho mô phỏng -> Agent scan -> AgentLog -> PurchaseRequest
-6. Kết luận:
+6. Nguyên tắc cốt lõi của Agent trong Simulate Sale:
+   - Agent **không dự đoán** hay quyết định số lượng tồn kho, nhu cầu bán giả lập, hoặc số lượng cần nhập.
+   - Agent chỉ scan dữ liệu tồn kho thực tế **sau khi** quá trình mô phỏng đã hoàn tất.
+   - Gemini không tham gia vào việc quyết định số lượng. Hệ thống tính toán dựa trên rule rõ ràng: `Tổng nhu cầu mô phỏng = Số lượng dự kiến bán mỗi ngày x Số ngày mô phỏng`.
+   - Hệ thống không dùng phần trăm tăng nhu cầu ở giai đoạn này. Admin nhập trực tiếp số lượng mô phỏng để kết quả rõ ràng và dễ kiểm chứng.
+7. Ví dụ tính toán nhu cầu:
+   - **Theo hộp**: Mô phỏng 7 ngày. Dự kiến bán 25 hộp/ngày. Tổng nhu cầu mô phỏng = 25 x 7 = 175 hộp.
+   - **Theo gói**: Mô phỏng 3 ngày. Dự kiến bán 30 gói/ngày. Tổng nhu cầu mô phỏng = 90 gói.
+   - **Theo kg**: Mô phỏng 5 ngày. Dự kiến bán 10 kg/ngày. Tổng nhu cầu mô phỏng = 50 kg. Chỉ áp dụng nếu hệ thống đang hỗ trợ quantity theo kg.
+8. Kết luận:
    - Simulate Sale có trừ kho, nhưng mục đích là kiểm thử Inventory và AI Agent.
    - Nó không thay thế luồng bán hàng thật.
 
@@ -61,6 +70,8 @@
 | 5 | Test TC_02 | Kiểm tra lỗi không đủ tồn kho | TC_02 + summary | Pass |
 | 6 | Test gộp TC_03/TC_04/TC_05 | Kiểm tra Agent scan, PurchaseRequest, UI/backend response | TC_03, TC_04, TC_05 + summary | TC_03 Pass, TC_04 ban đầu Blocked, TC_05 sau đó Pass |
 | 7 | Retest TC_04 | Reject PR trùng cũ qua API nghiệp vụ rồi test lại | TC_04 + summary | TC_04 Pass |
+| 8 | Implement Time-based Simulation | Thêm tính năng Preview/Apply Simulation (ngày/tuần/tháng) | ADV_TC_01 -> ADV_TC_05 + summary | Pass |
+| 9 | Remove Preview Simulation | Bỏ Preview, chỉ dùng Apply Simulation, tính toán trực tiếp | API/UI/Summary | Pass |
 
 ## 5. Những thay đổi/chỉnh sửa đã thực hiện trong quá trình fix
 
@@ -69,9 +80,11 @@
 - `AdminSimulateSalePage` hiển thị kết quả dựa trên response backend, không tự đoán stockAfter.
 
 ### Backend
-- Validator simulate sale nhận `productId` và `quantity`.
+- Bỏ cơ chế `isPreview`.
+- Validator simulate sale nhận thêm các trường hỗ trợ tính toán (`simulationMode`, `startDate`, `endDate`, `dailySimulatedQuantity`).
+- Service tính toán trực tiếp `simulatedDemand` từ input trên và thực hiện thay cho `quantity`.
 - Service tìm inventory theo `productId`.
-- Service chặn quantity lớn hơn tồn kho.
+- Service chặn `simulatedDemand` lớn hơn tồn kho.
 - Service gọi Agent scan đúng product sau khi trừ kho.
 - Response trả `affectedProduct`, `stockBefore`, `stockAfter`, `decreasedQuantity`, `createdPurchaseRequests`.
 
@@ -172,7 +185,7 @@ Sau khi TC_01 → TC_05 Pass, bổ sung hệ thống toast thông báo inline tr
 | 4 | Simulate thành công, `stockAfter <= minThreshold` nhưng không tạo PR | ℹ️ info | Mô phỏng bán hàng thành công, nhưng AI Agent chưa tạo yêu cầu nhập hàng. |
 | 5 | Simulate thành công, tồn kho bình thường | ✅ success | Mô phỏng bán hàng thành công. Tồn kho còn {stockAfter}. |
 | 6 | API trả 400 (quantity > stock) | ❌ error | Không đủ tồn kho để mô phỏng bán hàng. |
-| 7 | Lỗi mạng/server khác | ❌ error | Không thể mô phỏng bán hàng. Vui lòng thử lại. |
+| 7 | Lỗi mạng/server khác | ❌ error | Không thể mô phỏng bán hàng. Vui lòng kiểm tra kết nối server. |
 
 ### Chi tiết kỹ thuật
 - Dùng React state inline, không cài thêm package.
@@ -188,14 +201,27 @@ Sau khi TC_01 → TC_05 Pass, bổ sung hệ thống toast thông báo inline tr
 ### Build
 - `npm run build`: ✅ Pass (tsc + vite build thành công).
 
-## 11. Kết luận cuối cùng
-- TC_01, TC_02, TC_03, TC_04, TC_05: Pass.
-- Luồng simulate sale đã đạt:
-  - Trừ đúng tồn kho.
-  - Chặn bán vượt tồn kho.
-  - Trigger Agent scan đúng product.
-  - Tạo PurchaseRequest khi đủ điều kiện.
-  - UI hiển thị đúng response backend.
-  - UI toast notification đã được bổ sung và build thành công; cần test thủ công để xác nhận hiển thị đúng trên UI.
+## 11. Advanced Time-based Simulation Test (Apply Only)
+
+Lưu ý: Chức năng Preview đã bị loại bỏ. Admin bấm Apply Simulation sẽ lập tức tính `simulatedDemand` và áp dụng thật.
+
+| ADV TC | Mục tiêu | Input | Kết quả mong đợi | Kết quả thực tế (Evidence) | Trạng thái |
+|---|---|---|---|---|---|
+| ADV_TC_01 | Apply 1 ngày | `ONE_DAY`, dailyQty: 10 | simulatedDemand = 10. Kho thật trừ 10, gọi Agent scan. | stockBefore: 20, dailyQty: 10. Kho thật giảm còn 10. Có AgentLog (`SIMULATE_SALE`). | Pass |
+| ADV_TC_02 | Apply 1 tuần | `WEEK`, dailyQty: 25 | simulatedDemand = 175. Kho thật trừ 175 (nếu đủ), gọi Agent scan. | stockBefore: 200, dailyQty: 25. Kho thật giảm còn 25. Có AgentLog (`SIMULATE_SALE`). | Pass |
+| ADV_TC_03 | Apply 1 tháng | `MONTH`, dailyQty: 5 | simulatedDemand = 150 (30 ngày). Kho thật trừ 150, gọi Agent scan. | stockBefore: 400, dailyQty: 5. Kho thật giảm còn 250. Có AgentLog (`SIMULATE_SALE`). | Pass |
+| ADV_TC_04 | Apply không đủ tồn kho | simulatedDemand > stockBefore | Lỗi nghiệp vụ, API trả 400, kho không bị trừ, không Agent scan, không PR. | API báo "Không đủ tồn kho...". Kho thật giữ nguyên. Không gọi Agent. | Pass |
+| ADV_TC_05 | Thiếu supplier | Product < minThreshold, không supplier, Apply | Trừ kho thật, Agent scan báo lỗi thiếu supplier, không PR, hiển thị Toast cảnh báo. | Kho thật bị trừ. AgentLog báo `NO_SUPPLIER`. Không tạo PR. Toast cảnh báo hiển thị. | Pass |
+
+## 12. Kết luận cuối cùng
+- Đã bỏ nút Preview Simulation.
+- Apply Simulation là thao tác duy nhất.
+- Khi bấm Apply, hệ thống tự động tính `simulatedDemand` dựa trên số ngày và `dailySimulatedQuantity`.
+- Trừ tồn kho thật và chỉ gọi Agent scan sau khi tồn kho thật thay đổi.
+- Core simulate TC_01 -> TC_05: Pass.
+- Time-based Apply Simulation (ADV_TC_01 -> ADV_TC_05): Pass.
+- Các quy tắc cốt lõi được tuân thủ:
+  - Không dùng Gemini để quyết định số liệu bán hay tồn kho.
+  - Không tạo Order, không Payment, không doanh thu.
 - Chưa phát hiện lỗi source code trong phạm vi đã test.
 - Có thể chuyển sang test workflow PurchaseRequest: `PENDING -> APPROVED -> SENT -> RECEIVED -> COMPLETED`.

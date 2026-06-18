@@ -1,8 +1,9 @@
-﻿import { OrderStatus, PaymentStatus } from '@cafe-project/database';
+import { OrderStatus, PaymentStatus } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
 import type { JwtUserPayload } from '../auth/auth.service';
 import { orderRepository, type OrderRecord } from './order.repository';
 import type { CreateOrderInput, OrderFiltersInput, OrderStatusInput } from './order.validator';
+import { agentService } from '../agent/agent.service';
 
 export type OrderDto = ReturnType<typeof toOrderDto>;
 
@@ -128,7 +129,15 @@ export const updateOrderStatus = async (id: string, input: OrderStatusInput, use
     assertTransition(order, nextStatus);
 
     try {
-        return toOrderDto(await orderRepository.updateStatus(order, nextStatus, userId));
+        const updatedOrder = await orderRepository.updateStatus(order, nextStatus, userId);
+
+        if (nextStatus === OrderStatus.PROCESSING && order.status === OrderStatus.PENDING) {
+            const productIds = updatedOrder.items.map((item) => item.productId);
+            // Async trigger agent to scan inventory
+            agentService.scanInventory({ productIds, triggerType: 'ORDER' }, userId).catch(console.error);
+        }
+
+        return toOrderDto(updatedOrder);
     } catch (error) {
         throw normalizeOrderError(error, 'Không thể cập nhật trạng thái đơn hàng.');
     }

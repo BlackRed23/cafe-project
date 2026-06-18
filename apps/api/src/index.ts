@@ -17,6 +17,7 @@ import { env } from './common/env';
 import { errorHandler } from './common/error-handler';
 import { prisma } from './common/prisma';
 import { sendError, sendSuccess } from './common/response';
+import { scheduleJobs } from './modules/cron/cron.service';
 
 const app = express();
 const PORT = env.port;
@@ -61,6 +62,7 @@ app.use(errorHandler);
 const server = app.listen(PORT, () => {
     console.log(`[api] Server is running at ${SERVER_URL}`);
     console.log(`[api] Health check: ${SERVER_URL}/health`);
+    scheduleJobs();
 });
 
 server.on('error', (error: NodeJS.ErrnoException) => {

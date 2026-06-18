@@ -7,7 +7,9 @@ model Product {
   costPrice   Decimal   @default(0)
   unit        String  @default("Hộp")
   imageUrl    String?
-  isActive    Boolean @default(true)
+  isActive           Boolean   @default(true)
+  deletedAt          DateTime?
+  pendingDeleteUntil DateTime?
 
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
