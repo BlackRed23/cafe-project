@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Menu, Bell, Search, RefreshCw, X, AlertCircle, Info, CheckCircle, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLocation, Link } from "react-router-dom";
@@ -43,14 +43,6 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
   
   const [toasts, setToasts] = useState<Toast[]>([]);
   
-  const addToast = useCallback((type: ToastType, message: string) => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  }, []);
-
   const [loadError, setLoadError] = useState(false);
 
   const loadNotifications = async () => {

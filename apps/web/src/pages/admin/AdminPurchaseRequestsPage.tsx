@@ -256,20 +256,18 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
           <button
             key={opt.value}
             onClick={() => setStatusFilter(opt.value)}
-            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
-              statusFilter === opt.value
+            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${statusFilter === opt.value
                 ? "bg-amber-800 text-white shadow-sm"
                 : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-            }`}
+              }`}
           >
             {opt.label}
             {opt.value === "PENDING" && pendingCount > 0 && (
               <span
-                className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                  statusFilter === "PENDING"
+                className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${statusFilter === "PENDING"
                     ? "bg-white/30 text-white"
                     : "bg-amber-100 text-amber-800"
-                }`}
+                  }`}
               >
                 {pendingCount}
               </span>

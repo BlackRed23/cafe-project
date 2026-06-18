@@ -11,9 +11,11 @@ import { Modal } from "../../components/common/Modal";
 import { Input } from "../../components/common/Input";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { DataTable } from "../../components/admin/DataTable";
+import { useToast } from "../../contexts/ToastContext";
 import { Plus, Edit2, Trash2, Link2, Truck, Coffee } from "lucide-react";
 
 export const AdminSuppliersPage: React.FC = () => {
+  const toast = useToast();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -98,13 +100,15 @@ export const AdminSuppliersPage: React.FC = () => {
     try {
       if (selectedSupplier) {
         await suppliersApi.updateSupplier(selectedSupplier.id, payload);
+        toast.success("Cập nhật thành công", `Nhà cung cấp "${payload.name}" đã được cập nhật.`);
       } else {
         await suppliersApi.createSupplier(payload);
+        toast.success("Tạo thành công", `Nhà cung cấp "${payload.name}" đã được thêm mới.`);
       }
       await fetchData();
       handleCloseSupplierModal();
     } catch (err) {
-      alert("Lỗi khi cập nhật nhà cung cấp.");
+      toast.error("Thao tác thất bại", "Lỗi khi lưu thông tin nhà cung cấp.");
     } finally {
       setModalLoading(false);
     }
@@ -142,10 +146,11 @@ export const AdminSuppliersPage: React.FC = () => {
 
     try {
       await suppliersApi.createSupplierProduct(payload);
+      toast.success("Gán thành công", "Sản phẩm đã được gán cho nhà cung cấp.");
       await fetchData();
       setIsLinkModalOpen(false);
     } catch (err) {
-      alert("Lỗi khi gán sản phẩm cho nhà cung cấp.");
+      toast.error("Gán thất bại", "Lỗi khi gán sản phẩm cho nhà cung cấp.");
     } finally {
       setLinkLoading(false);
     }
@@ -157,14 +162,16 @@ export const AdminSuppliersPage: React.FC = () => {
     try {
       if (deleteType === "supplier") {
         await suppliersApi.deleteSupplier(deleteId);
+        toast.success("Xóa thành công", "Nhà cung cấp đã được xóa.");
       } else {
         await suppliersApi.deleteSupplierProduct(deleteId);
+        toast.success("Gỡ liên kết thành công", "Đã gỡ sản phẩm khỏi nhà cung cấp.");
       }
       await fetchData();
       setDeleteId(null);
       setDeleteType(null);
     } catch (err) {
-      alert("Lỗi khi thực hiện xóa.");
+      toast.error("Thao tác thất bại", "Lỗi khi thực hiện xóa.");
     } finally {
       setIsDeleting(false);
     }

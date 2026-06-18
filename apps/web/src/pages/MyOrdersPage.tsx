@@ -186,14 +186,14 @@ export const MyOrdersPage: React.FC = () => {
                             <div key={item.id} className="p-4 flex items-center justify-between text-sm">
                               <div>
                                 <p className="font-bold text-slate-800">
-                                  {item.product?.name || "Sản phẩm"}
+                                  {item.product?.name || (item as any).Product?.name || "Sản phẩm"}
                                 </p>
                                 <p className="text-slate-400 text-xs mt-0.5 font-light">
-                                  Số lượng: {item.quantity} {item.product?.unit || "hộp"}
+                                  Số lượng: {item.quantity} {item.product?.unit || (item as any).Product?.unit || "hộp"}
                                 </p>
                               </div>
                               <span className="font-bold text-slate-800">
-                                {formatCurrency(item.price * item.quantity)}
+                                {formatCurrency((item.price || (item as any).Price || 0) * item.quantity)}
                               </span>
                             </div>
                           ))}
@@ -204,12 +204,12 @@ export const MyOrdersPage: React.FC = () => {
                       <div className="grid sm:grid-cols-2 gap-4 text-sm bg-white p-4 border border-amber-900/5 rounded-2xl shadow-sm">
                         <div className="space-y-1.5">
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Thông tin người nhận</p>
-                          <p className="font-bold text-slate-800">{order.shippingName}</p>
-                          <p className="text-slate-500 font-light">{order.shippingPhone}</p>
+                          <p className="font-bold text-slate-800">{order.shippingName || (order as any).shipping_name || "Không rõ"}</p>
+                          <p className="text-slate-500 font-light">{order.shippingPhone || (order as any).shipping_phone || "Không rõ"}</p>
                         </div>
                         <div className="space-y-1.5">
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Địa chỉ giao nhận</p>
-                          <p className="text-slate-600 leading-relaxed font-bold">{order.shippingAddress}</p>
+                          <p className="text-slate-600 leading-relaxed font-bold">{order.shippingAddress || (order as any).shipping_address || "Không rõ"}</p>
                           {order.note && (
                             <p className="text-xs text-slate-400 italic font-light">Ghi chú: {order.note}</p>
                           )}

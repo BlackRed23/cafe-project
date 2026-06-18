@@ -1,4 +1,4 @@
-﻿import { InventoryTransactionType, OrderStatus, type Prisma } from '@cafe-project/database';
+import { InventoryTransactionType, OrderStatus, type Prisma } from '@cafe-project/database';
 import { prisma } from '../../common/prisma';
 import type { CreateOrderInput, OrderFiltersInput } from './order.validator';
 
@@ -41,18 +41,29 @@ export const orderRepository = {
             const productById = new Map(products.map((product) => [product.id, product]));
             let totalAmount = 0;
 
+            // === KIỂM TRA TỒN KHO TRƯỚC KHI ĐẶT ===
             for (const item of input.items) {
                 const product = productById.get(item.productId);
-                if (!product) throw new Error(`Product not found: ${item.productId}`);
-                if (!product.inventory || product.inventory.quantity < item.quantity) throw new Error(`Not enough inventory for ${product.name}.`);
+                if (!product) throw new Error(`Không tìm thấy sản phẩm.`);
+                if (!product.inventory || product.inventory.quantity < item.quantity) {
+                    throw new Error(
+                        `Sản phẩm "${product.name}" không đủ hàng. ` +
+                        `Còn lại: ${product.inventory?.quantity ?? 0}, bạn đặt: ${item.quantity}.`
+                    );
+                }
                 totalAmount += Number(product.price) * item.quantity;
             }
 
+            // === TẠO ĐƠN HÀNG ===
             const order = await tx.order.create({
                 data: {
                     userId,
                     status: OrderStatus.PENDING,
                     totalAmount,
+                    shippingName: input.shippingName,
+                    shippingPhone: input.shippingPhone,
+                    shippingAddress: input.shippingAddress,
+                    note: input.note,
                     items: {
                         create: input.items.map((item) => {
                             const product = productById.get(item.productId)!;
@@ -66,31 +77,53 @@ export const orderRepository = {
                 include: orderInclude
             });
 
+            // === TRỪ KHO NGAY KHI ĐẶT HÀNG ===
+            for (const item of input.items) {
+                const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
+                if (!inventory) continue;
+                const updated = await tx.inventory.updateMany({
+                    where: { id: inventory.id, quantity: { gte: item.quantity } },
+                    data: { quantity: { decrement: item.quantity } }
+                });
+                if (updated.count !== 1) {
+                    const product = productById.get(item.productId)!;
+                    throw new Error(`Sản phẩm "${product.name}" vừa hết hàng. Vui lòng thử lại.`);
+                }
+                await tx.inventoryTransaction.create({
+                    data: {
+                        productId: item.productId,
+                        userId,
+                        type: InventoryTransactionType.ORDER,
+                        quantity: -item.quantity,
+                        reason: `Đặt hàng ${order.id}`
+                    }
+                });
+            }
+
             return order;
         });
     },
 
     async updateStatus(order: OrderRecord, nextStatus: OrderStatus, userId: string): Promise<OrderRecord> {
         return prisma.$transaction(async (tx) => {
-            if (nextStatus === OrderStatus.PROCESSING && order.status === OrderStatus.PENDING) {
-                for (const item of order.items) {
-                    const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
-                    if (!inventory || inventory.quantity < item.quantity) throw new Error(`Not enough inventory for ${item.product.name}.`);
-                    const updated = await tx.inventory.updateMany({
-                        where: { id: inventory.id, quantity: { gte: item.quantity } },
-                        data: { quantity: { decrement: item.quantity } }
-                    });
-                    if (updated.count !== 1) throw new Error(`Not enough inventory for ${item.product.name}.`);
-                    await tx.inventoryTransaction.create({ data: { productId: item.productId, userId, type: InventoryTransactionType.ORDER, quantity: -item.quantity, reason: `Order ${order.id} confirmed` } });
-                }
-            }
-
-            if (nextStatus === OrderStatus.CANCELLED && order.status === OrderStatus.PROCESSING) {
+            // === HOÀN KHO KHI HỦY ĐƠN (ở bất kỳ trạng thái nào) ===
+            if (nextStatus === OrderStatus.CANCELLED) {
                 for (const item of order.items) {
                     const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
                     if (!inventory) continue;
-                    await tx.inventory.update({ where: { id: inventory.id }, data: { quantity: { increment: item.quantity } } });
-                    await tx.inventoryTransaction.create({ data: { productId: item.productId, userId, type: InventoryTransactionType.CANCEL, quantity: item.quantity, reason: `Order ${order.id} cancelled` } });
+                    await tx.inventory.update({
+                        where: { id: inventory.id },
+                        data: { quantity: { increment: item.quantity } }
+                    });
+                    await tx.inventoryTransaction.create({
+                        data: {
+                            productId: item.productId,
+                            userId,
+                            type: InventoryTransactionType.CANCEL,
+                            quantity: item.quantity,
+                            reason: `Hủy đơn hàng ${order.id}`
+                        }
+                    });
                 }
             }
 

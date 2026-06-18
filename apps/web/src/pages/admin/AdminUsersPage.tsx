@@ -9,9 +9,11 @@ import { Input } from "../../components/common/Input";
 import { Select } from "../../components/common/Select";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { DataTable } from "../../components/admin/DataTable";
+import { useToast } from "../../contexts/ToastContext";
 import { Plus, Edit2, Trash2, Users, Shield, User as UserIcon } from "lucide-react";
 
 export const AdminUsersPage: React.FC = () => {
+  const toast = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -74,7 +76,7 @@ export const AdminUsersPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email) {
-      alert("Vui lòng điền đầy đủ Tên và Email.");
+      toast.warning("Thiếu thông tin", "Vui lòng điền đầy đủ Tên và Email.");
       return;
     }
 
@@ -93,14 +95,16 @@ export const AdminUsersPage: React.FC = () => {
         // Edit User
         const updated = await usersApi.updateUser(selectedUser.id, payload);
         setUsers((prev) => prev.map((u) => (u.id === selectedUser.id ? updated : u)));
+        toast.success("Cập nhật thành công", `Nhân viên "${payload.name}" đã được cập nhật.`);
       } else {
         // Create User
         const created = await usersApi.createUser(payload);
         setUsers((prev) => [...prev, created]);
+        toast.success("Tạo thành công", `Nhân viên "${payload.name}" đã được thêm mới.`);
       }
       handleCloseModal();
     } catch (err) {
-      alert("Đã xảy ra lỗi khi lưu thông tin.");
+      toast.error("Thao tác thất bại", "Đã xảy ra lỗi khi lưu thông tin.");
     } finally {
       setModalLoading(false);
     }
@@ -113,8 +117,9 @@ export const AdminUsersPage: React.FC = () => {
       await usersApi.deleteUser(deleteId);
       setUsers((prev) => prev.filter((u) => u.id !== deleteId));
       setDeleteId(null);
+      toast.success("Xóa thành công", "Nhân viên đã được xóa khỏi hệ thống.");
     } catch (err) {
-      alert("Đã xảy ra lỗi khi xóa thành viên.");
+      toast.error("Xóa thất bại", "Đã xảy ra lỗi khi xóa nhân viên.");
     } finally {
       setIsDeleting(false);
     }
@@ -160,11 +165,10 @@ export const AdminUsersPage: React.FC = () => {
         const isAdmin = u.role === "ADMIN";
         return (
           <span
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-bold border transition-colors ${
-              isAdmin
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-bold border transition-colors ${isAdmin
                 ? "bg-amber-50 text-amber-800 border-amber-200"
                 : "bg-slate-50 text-slate-650 border-slate-200"
-            }`}
+              }`}
           >
             {isAdmin ? <Shield size={12} /> : <UserIcon size={12} />}
             {isAdmin ? "Admin" : "Khách hàng"}
@@ -310,7 +314,7 @@ export const AdminUsersPage: React.FC = () => {
             onChange={(e: any) => setIsActiveUser(e.target.value === "true")}
             disabled={modalLoading}
           />
-          
+
           <div className="flex items-center gap-3 pt-3 border-t border-slate-100 mt-2">
             <Button
               type="button"

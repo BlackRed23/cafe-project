@@ -1202,3 +1202,147 @@ Gợi ý ngưỡng tồn kho thông minh dựa trên lịch sử bán, lead time
  -   F r o n t e n d   c h �y   t h � n h   c � n g ,   U I   g �n   v �   t h � n   t h i �n   v �i   A d m i n   h �n . 
   
  
+
+---
+
+## Log merged from feature/postgresql-prisma
+
+
+## 27. Threshold Suggestion Zero Value Fix
+
+**Nguyên nhân hiển thị 0:**
+- Backend fallback khi `leadTimeDays` là 0 đang dùng toán tử `?? 3` nên vẫn nhận 0.
+- Frontend gọi `getThresholdSuggestion` lấy kết quả bằng `unwrapApiField` nhưng có thể fail mapping do response lồng ghép.
+- Biến `bufferDays` trên UI bị nhầm sang `delayBufferDays` khiến `delayBufferDays` không hiển thị.
+
+**Backend fallback đã sửa:**
+- `inventory.service.ts` đổi từ `?? 3` thành `|| 3` để nhận 3 ngày khi `leadTimeDays` là 0.
+- Đã thêm warning khi `supplierProducts.length === 0`.
+
+**Frontend response mapping đã sửa:**
+- Cập nhật `getThresholdSuggestion` trong `inventory.api.ts` an toàn hơn.
+- UI modal hiển thị rõ `delayBufferDays` (Thời gian dự phòng) và `leadTimeDays` (Thời gian nhập hàng).
+
+**Trường hợp chưa có lịch sử bán:**
+- UI hiển thị cảnh báo: 'Chưa có dữ liệu bán trong 30 ngày gần nhất. Hệ thống đang đề xuất ngưỡng an toàn mặc định.'
+
+**File đã sửa:**
+- `apps/api/src/modules/inventory/inventory.service.ts`
+- `apps/web/src/api/inventory.api.ts`
+- `apps/web/src/pages/admin/AdminInventoryPage.tsx`
+
+## 28. Fix AdminInventoryPage Parse Error After Threshold Suggestion
+
+**Lỗi là gì:** Lỗi `[PARSE_ERROR] Unexpected token. Did you mean {'}'} or &rbrace;?` khi build/chạy frontend.
+**Nguyên nhân:** Do sửa nhầm mã JSX khiến mất thẻ `</div>`.
+**File đã sửa:** `apps/web/src/pages/admin/AdminInventoryPage.tsx`
+**Kết quả:** Đã bổ sung lại thẻ `</div>`, lỗi cú pháp đã được xử lý triệt để.
+
+## 29. Simplify Inventory Threshold Modal UI
+
+**Đã rút gọn modal Ngưỡng:**
+- Giao diện chính của modal chỉ tập trung vào các chỉ số quyết định: Tồn hiện tại, Ngưỡng hiện tại, Bán trung bình/ngày, Thời gian chờ nhập, Ngưỡng đề xuất.
+- Đã thêm trạng thái đánh giá nhanh bằng chữ (VD: 'Nên tăng ngưỡng để tránh thiếu hàng').
+- Nút 'Lưu ngưỡng đề xuất' sẽ thay đổi màu sắc và không còn nổi bật nếu ngưỡng đề xuất thấp hơn hoặc bằng ngưỡng hiện tại.
+
+**Thông tin chi tiết đã ẩn:**
+- Đã đưa toàn bộ các chỉ số như Tổng bán 30 ngày, Lead time nhà cung cấp, Thời gian dự phòng, Safety stock, Nhu cầu chờ nhập, Nhà cung cấp chính, và các warning vào trong một block có thể mở rộng (collapse) với tiêu đề 'Xem chi tiết tính toán'.
+
+**Không thay đổi logic:**
+- Hoàn toàn không sửa backend, API hay logic tính toán, chỉ tổ chức lại UI ở Frontend.
+
+**File đã sửa:**
+- `apps/web/src/pages/admin/AdminInventoryPage.tsx`
+
+## 30. Simplify Inventory Threshold Modal For Admin
+
+**Thay đổi UI:**
+- Đã bỏ hoàn toàn phần 'Xem chi tiết tính toán' và các chỉ số kỹ thuật phức tạp (Bán trung bình/ngày, Thời gian chờ nhập, Tổng bán 30 ngày, Lead time, Safety stock, Warning).
+- Modal hiện tại rất gọn gàng, chỉ tập trung hiển thị: Tồn kho hiện tại, Ngưỡng hiện tại, Ngưỡng đề xuất và Trạng thái gợi ý ngắn gọn.
+- Nút 'Lưu ngưỡng đề xuất' được enable cho cả trường hợp tăng hoặc giảm ngưỡng (recommendedThreshold khác currentThreshold), và chỉ bị disable khi hai giá trị bằng nhau.
+- Không thay đổi bất kỳ logic tính toán ngưỡng nào ở backend hay API.
+
+**File đã sửa:**
+- `apps/web/src/pages/admin/AdminInventoryPage.tsx`
+
+**Kết quả:**
+- Frontend chạy thành công, UI gọn và thân thiện với Admin hơn.
+
+---
+
+## Merge feature/postgresql-prisma into dateduy
+
+Thoi gian thuc hien: 2026-06-18 17:19:45 +07:00.
+
+Target branch: dateduy.
+Source branch: feature/postgresql-prisma.
+Backup branch da tao: backup/dateduy-before-merge-postgresql-prisma.
+
+File log untracked da xu ly:
+- docs/FRONTEND_BACKEND_INTEGRATION_LOG.md duoc move tam ra ..\git-temp\FRONTEND_BACKEND_INTEGRATION_LOG.from-feature.md tren nhanh feature/postgresql-prisma, sau do append lai vao docs/FRONTEND_BACKEND_INTEGRATION_LOG.md tren dateduy.
+- docs/MERGE_BRANCH_SCAN_LOG.md duoc move tam ra ..\git-temp\MERGE_BRANCH_SCAN_LOG.from-feature.md tren nhanh feature/postgresql-prisma, sau do dua lai vao docs/MERGE_BRANCH_SCAN_LOG.md tren dateduy.
+
+File da merge chinh:
+- apps/web/src/App.tsx
+- apps/web/src/api/client.ts
+- apps/web/src/api/orders.api.ts
+- apps/web/src/api/inventory.api.ts
+- apps/web/vite.config.ts
+- apps/web/src/pages/admin/AdminInventoryPage.tsx
+- apps/api/src/index.ts
+- apps/api/src/modules/order/order.repository.ts
+- apps/api/src/modules/order/order.service.ts
+- apps/api/src/modules/user/
+- apps/api/src/modules/inventory/inventory.service.ts
+- packages/database/prisma/schema/order.prisma
+
+File/thu muc da co tinh loai bo khong merge:
+- apps/api/.env.example
+- apps/web/.env.example
+- env test/
+- env test/env-agent.txt
+- env test/env-backend.txt
+- env test/env-database.txt
+- env test/env-web.txt
+
+Conflict: Co.
+Conflict da xu ly o cac file:
+- apps/web/src/api/auth.api.ts
+- apps/web/src/api/categories.api.ts
+- apps/web/src/api/client.ts
+- apps/web/src/api/orders.api.ts
+- apps/web/src/api/products.api.ts
+- apps/web/src/components/admin/Header.tsx
+- apps/web/src/pages/admin/AdminCategoriesPage.tsx
+- apps/web/src/pages/admin/AdminInventoryPage.tsx
+- apps/web/src/pages/admin/AdminProductFormPage.tsx
+- apps/web/src/pages/admin/AdminProductsPage.tsx
+- apps/web/src/pages/admin/AdminPurchaseRequestDetailPage.tsx
+- apps/web/src/pages/admin/AdminSimulateSalePage.tsx
+- apps/web/src/routes/AppRoutes.tsx
+
+Ket qua kiem tra route /api/users: da them import userRoutes va dang ky app.use('/api/users', userRoutes) trong apps/api/src/index.ts.
+
+Ket qua kiem tra order API: frontend dung /orders/me va PATCH /orders/:id/status; backend mount orderRoutes tai /api/orders va co router.get('/me') cung router.patch('/:id/status').
+
+Ket qua kiem tra inventory threshold: phan goi y nguong van dung getThresholdSuggestion; modal admin giu cac thong tin chinh gom Ton kho hien tai, Nguong hien tai, Nguong de xuat va trang thai ngan gon.
+
+Ket qua kiem tra Prisma schema: packages/database/prisma/schema/order.prisma them shippingName, shippingPhone, shippingAddress, note cho Order; PaymentMethod hien chi con CASH va BANK_TRANSFER. Viec bo CARD va E_WALLET co the anh huong du lieu cu neu database dang co gia tri nay. Khong chay migration hoac db push production; chi chay prisma generate de cap nhat client type local.
+
+Ket qua chay kiem tra:
+- npm install: thanh cong; npm audit bao 13 vulnerabilities.
+- npm run check-types: loi cau hinh Turbo, "Could not find task check-types in project".
+- npm run build: ban dau loi type do merge; da sua cac loi truc tiep va chay lai thanh cong.
+- npm run lint: that bai voi 193 loi trong @cafe-project/web, chu yeu la rule rong hien co nhu no-explicit-any, set-state-in-effect va unused vars tren nhieu file. Khong sua lan man ngoai pham vi merge.
+
+Ket luan: chua commit vi npm run check-types va npm run lint chua pass. Merge dang o trang thai no-commit da resolve conflict, cho xu ly quyet dinh tiep theo.
+---
+
+## Merge Commit Final Status
+
+Thoi gian cap nhat: 2026-06-18 17:33:27 +07:00.
+
+- Merge feature/postgresql-prisma into dateduy da duoc chuan bi commit voi message: Merge postgresql prisma integration into dateduy.
+- npm run build: pass.
+- npm run check-types: fail do Turbo khong co task check-types trong project.
+- npm run lint: con 193 problems trong @cafe-project/web, se xu ly sau.

@@ -5,7 +5,6 @@ import { ordersApi } from "../api/orders.api";
 import { getErrorMessage } from "../api/client";
 import type { PaymentMethod } from "../types/order.types";
 import { formatCurrency } from "../utils/formatCurrency";
-import { Input } from "../components/common/Input";
 import { Button } from "../components/common/Button";
 import { ArrowLeft, ShoppingBag, Sparkles, AlertCircle } from "lucide-react";
 
@@ -16,16 +15,13 @@ export const CheckoutPage: React.FC = () => {
   const [note, setNote] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("BANK_TRANSFER");
   
-  const [errors, setErrors] = useState<{}>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setApiError(null);
-    const newErrors: typeof errors = {};
 
-    setErrors({});
     setIsLoading(true);
 
     const payload = {
@@ -43,11 +39,7 @@ export const CheckoutPage: React.FC = () => {
       navigate("/my-orders?success=true");
     } catch (err: any) {
       const message = getErrorMessage(err);
-      if (message.toLowerCase().includes("stock") || message.toLowerCase().includes("tồn kho")) {
-        setApiError("Sản phẩm không đủ tồn kho.");
-      } else {
-        setApiError(message);
-      }
+      setApiError(message);
     } finally {
       setIsLoading(false);
     }
@@ -125,8 +117,7 @@ export const CheckoutPage: React.FC = () => {
               </label>
               <div className="grid sm:grid-cols-3 gap-4">
                 {[
-                  { id: "COD", title: "COD", desc: "Thanh toán khi nhận hàng" },
-                  { id: "CASH", title: "Tiền mặt", desc: "Trả tiền mặt tại cửa hàng" },
+                  { id: "CASH", title: "Tiền mặt", desc: "Trả tiền mặt" },
                   { id: "BANK_TRANSFER", title: "Chuyển khoản", desc: "Chuyển khoản ngân hàng" },
                 ].map((method) => (
                   <label

@@ -31,6 +31,7 @@ import { AdminPurchaseRequestsPage } from "../pages/admin/AdminPurchaseRequestsP
 import { AdminPurchaseRequestDetailPage } from "../pages/admin/AdminPurchaseRequestDetailPage";
 import { AdminAgentLogsPage } from "../pages/admin/AdminAgentLogsPage";
 import { AdminUsersPage } from "../pages/admin/AdminUsersPage";
+import { AdminNotificationsPage } from "../pages/admin/AdminNotificationsPage";
 import { AdminCategoriesPage } from "../pages/admin/AdminCategoriesPage";
 import { AdminSystemSettingsPage } from "../pages/admin/AdminSystemSettingsPage";
 
@@ -120,6 +121,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="agent-logs" element={<AdminAgentLogsPage />} />
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="system-settings" element={<AdminSystemSettingsPage />} />
+          <Route path="notifications" element={<AdminNotificationsPage />} />
         </Route>
 
         {/* Fallback route */}

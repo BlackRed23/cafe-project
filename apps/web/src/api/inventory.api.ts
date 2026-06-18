@@ -1,4 +1,4 @@
-import { apiClient, unwrapApiData, unwrapApiField, unwrapApiList } from "./client";
+import { apiClient, unwrapApiData, unwrapApiList } from "./client";
 import type { Inventory, InventoryTransaction } from "../types/inventory.types";
 
 type ThresholdSuggestionParams = {
@@ -76,7 +76,9 @@ export const inventoryApi = {
     return inventories.filter((i) => i.quantity < (i.minThreshold ?? i.min_threshold ?? 5));
   },
 
-  updateInventory: async (productId: string, payload: { minThreshold?: number; min_threshold?: number; quantity?: number }): Promise<Inventory> => {
+  getLowStock: async (): Promise<Inventory[]> => inventoryApi.getLowStockInventories(),
+
+  updateInventory: async (productId: string, payload: { minThreshold?: number; min_threshold?: number; quantity?: number }): Promise<any> => {
     const inventoryId = await resolveInventoryId(productId);
     if (payload.quantity !== undefined) {
       return inventoryApi.adjustInventory({ productId, quantity: payload.quantity });
