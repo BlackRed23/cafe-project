@@ -10,9 +10,11 @@ import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { Modal } from "../../components/common/Modal";
 import { ArrowLeft, CheckCircle, Sparkles, Mail, Send, Ban } from "lucide-react";
 import { getErrorMessage } from "../../api/client";
+import { useToast } from "../../contexts/ToastContext";
 
 export const AdminPurchaseRequestDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const toast = useToast();
   const [pr, setPr] = useState<PurchaseRequest | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,13 +54,16 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
     try {
       await purchaseRequestsApi.approvePurchaseRequest(id);
       setSuccessMessage("Đã duyệt Purchase Request thành công! Hệ thống đã gửi email đặt hàng tới nhà cung cấp.");
+      toast.success("Đã duyệt thành công!", "Email đặt hàng đã được gửi tới nhà cung cấp.");
       await fetchPR();
     } catch (err: any) {
       const msg = getErrorMessage(err);
       if (msg.toLowerCase().includes("smtp") || msg.toLowerCase().includes("mail")) {
         setError(`Duyệt PR thành công nhưng gặp lỗi SMTP khi gửi email: ${msg}`);
+        toast.warning("Đã duyệt nhưng lỗi SMTP", "Không gửi được email. Kiểm tra cấu hình SMTP.");
       } else {
         setError(msg);
+        toast.error("Duyệt thất bại", msg);
       }
     } finally {
       setIsApproving(false);
@@ -78,11 +83,13 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
         reason: rejectReason.trim(),
       });
       setSuccessMessage("Đã từ chối yêu cầu nhập hàng.");
+      toast.info("Đã từ chối yêu cầu", "Yêu cầu nhập hàng đã được từ chối.");
       setShowRejectModal(false);
       setRejectReason("");
       await fetchPR();
     } catch (err: any) {
       setError(getErrorMessage(err));
+      toast.error("Từ chối thất bại", getErrorMessage(err));
     } finally {
       setIsRejecting(false);
     }

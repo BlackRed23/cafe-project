@@ -1,0 +1,29 @@
+PORT=5000
+JWT_SECRET="system-côffe-aiagent-26-5"
+JWT_EXPIRES_IN="7d"
+
+CLOUDINARY_CLOUD_NAME=do6t9qdae
+CLOUDINARY_API_KEY=948258792736383
+CLOUDINARY_API_SECRET=D01XnkJzK4ta20t6Yb1LUDM0fRI
+
+# apps/api/.env
+
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=thachdateduytv2021@gmail.com
+SMTP_PASS=wecq pupi yvfg qizj
+SMTP_FROM=thachdateduytv2021@gmail.com
+
+# Server
+PORT=5000
+NODE_ENV=development
+
+# Auth
+JWT_SECRET=thachdateduy@quanly^quancaffe
+JWT_EXPIRES_IN=7d
+
+# Database
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/cafe_project?schema=public"
+
+# Gemini AI
+GEMINI_API_KEY="AIzaSyDo5wC9LJESXnKuyM4oosSq4NKzgrD8VTc"

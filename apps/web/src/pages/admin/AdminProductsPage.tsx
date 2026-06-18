@@ -8,10 +8,12 @@ import { Loading } from "../../components/common/Loading";
 import { EmptyState } from "../../components/common/EmptyState";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { DataTable } from "../../components/admin/DataTable";
+import { useToast } from "../../contexts/ToastContext";
 import { Plus, Edit2, Trash2, Coffee } from "lucide-react";
 
 export const AdminProductsPage: React.FC = () => {
   const navigate = useNavigate();
+  const toast = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -42,8 +44,9 @@ export const AdminProductsPage: React.FC = () => {
       await productsApi.deleteProduct(deleteId);
       setProducts((prev) => prev.filter((p) => p.id !== deleteId));
       setDeleteId(null);
+      toast.success("Xóa thành công", "Sản phẩm đã được xóa khỏi hệ thống.");
     } catch {
-      alert("Lỗi khi xóa sản phẩm.");
+      toast.error("Xóa thất bại", "Lỗi khi xóa sản phẩm. Vui lòng thử lại.");
     } finally {
       setIsDeleting(false);
     }

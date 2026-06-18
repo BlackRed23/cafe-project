@@ -1,4 +1,4 @@
-﻿import { OrderStatus, PaymentStatus } from '@cafe-project/database';
+import { OrderStatus, PaymentStatus } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
 import type { JwtUserPayload } from '../auth/auth.service';
 import { orderRepository, type OrderRecord } from './order.repository';
@@ -14,15 +14,29 @@ const toOrderDto = (order: OrderRecord) => ({
     displayStatus: order.status === OrderStatus.PROCESSING ? 'CONFIRMED' : order.status,
     totalAmount: Number(order.totalAmount),
     paymentStatus: order.payment?.status ?? 'PENDING',
+    paymentMethod: order.payment?.method ?? null,
     payment: order.payment ? { ...order.payment, amount: Number(order.payment.amount) } : null,
+    shippingName: order.shippingName ?? null,
+    shippingPhone: order.shippingPhone ?? null,
+    shippingAddress: order.shippingAddress ?? null,
+    note: order.note ?? null,
     items: order.items.map((item) => ({
         id: item.id,
+        orderId: item.orderId,
         productId: item.productId,
         productName: item.product.name,
         productSku: item.product.sku,
         quantity: item.quantity,
+        price: Number(item.price),
         unitPrice: Number(item.price),
-        subtotal: Number(item.price) * item.quantity
+        subtotal: Number(item.price) * item.quantity,
+        product: {
+            id: item.product.id,
+            name: item.product.name,
+            sku: item.product.sku,
+            unit: item.product.unit ?? 'hộp',
+            imageUrl: item.product.imageUrl ?? null,
+        }
     })),
     createdAt: order.createdAt,
     updatedAt: order.updatedAt

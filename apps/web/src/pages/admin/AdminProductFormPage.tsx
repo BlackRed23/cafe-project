@@ -7,11 +7,13 @@ import { Input } from "../../components/common/Input";
 import { Button } from "../../components/common/Button";
 import { Loading } from "../../components/common/Loading";
 import { getErrorMessage } from "../../api/client";
+import { useToast } from "../../contexts/ToastContext";
 import { ArrowLeft, Save, Image, Info } from "lucide-react";
 
 export const AdminProductFormPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   const isEdit = !!id;
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -93,12 +95,16 @@ export const AdminProductFormPage: React.FC = () => {
     try {
       if (isEdit && id) {
         await productsApi.updateProduct(id, payload);
+        toast.success("Cập nhật thành công", `Sản phẩm "${payload.name}" đã được cập nhật.`);
       } else {
         await productsApi.createProduct(payload);
+        toast.success("Tạo thành công", `Sản phẩm "${payload.name}" đã được thêm mới.`);
       }
       navigate("/admin/products");
     } catch (err: any) {
-      setApiError(getErrorMessage(err));
+      const msg = getErrorMessage(err);
+      setApiError(msg);
+      toast.error("Thao tác thất bại", msg);
     } finally {
       setIsLoading(false);
     }

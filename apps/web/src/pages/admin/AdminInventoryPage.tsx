@@ -8,9 +8,11 @@ import { EmptyState } from "../../components/common/EmptyState";
 import { Modal } from "../../components/common/Modal";
 import { Input } from "../../components/common/Input";
 import { DataTable } from "../../components/admin/DataTable";
+import { useToast } from "../../contexts/ToastContext";
 import { AlertCircle, PlusCircle, Sliders, Settings, Package } from "lucide-react";
 
 export const AdminInventoryPage: React.FC = () => {
+  const toast = useToast();
   const [inventories, setInventories] = useState<Inventory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,10 +85,11 @@ export const AdminInventoryPage: React.FC = () => {
           min_threshold: inputValue,
         });
       }
+      toast.success("Thao tác thành công", "Kho hàng đã được cập nhật.");
       await fetchInventories();
       handleCloseModal();
     } catch {
-      alert("Đã xảy ra lỗi khi thực hiện thao tác kho.");
+      toast.error("Thao tác thất bại", "Đã xảy ra lỗi khi thực hiện thao tác kho.");
     } finally {
       setModalLoading(false);
     }

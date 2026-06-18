@@ -8,9 +8,11 @@ import type { Inventory } from "../../types/inventory.types";
 import { Button } from "../../components/common/Button";
 import { Loading } from "../../components/common/Loading";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
+import { useToast } from "../../contexts/ToastContext";
 import { Play, Sparkles, Terminal, Mail, RefreshCw, AlertTriangle, ShieldCheck } from "lucide-react";
 
 export const AdminSimulateSalePage: React.FC = () => {
+  const toast = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [inventories, setInventories] = useState<Inventory[]>([]);
   const [selectedProductId, setSelectedProductId] = useState("");
@@ -92,10 +94,18 @@ export const AdminSimulateSalePage: React.FC = () => {
         prId: res?.purchaseRequestId || res?.purchaseRequest?.id || undefined,
       });
 
+      if (res?.purchaseRequestId || res?.purchaseRequest || res?.prCreated) {
+        toast.warning("Tồn kho thấp", "AI Agent đã tạo một đề xuất nhập hàng (PR).");
+      } else {
+        toast.success("Giả lập thành công", "Kho hàng vẫn ở mức an toàn.");
+      }
+
       // Refresh inventory stock values locally
       await loadData();
     } catch (err: any) {
-      setApiError(err.response?.data?.message || err.message || "Lỗi khi chạy giả lập bán hàng.");
+      const msg = err.response?.data?.message || err.message || "Lỗi khi chạy giả lập bán hàng.";
+      setApiError(msg);
+      toast.error("Giả lập thất bại", msg);
     } finally {
       setIsSimulating(false);
       setShowConfirm(false);

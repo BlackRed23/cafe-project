@@ -1,0 +1,11 @@
+# Đảm bảo bạn đã thay đoạn chuỗi dưới đây bằng Key thật của bạn
+GEMINI_API_KEY1="AIzaSyBuHQyD5jhdrHTSbKyYJFX2mb6R4D3hHMw"
+GEMINI_API_KEY2="AIzaSyAjLd1nHFFDuxP1ORq4hgmIXr_LdFh07nc"
+GEMINI_API_KEY3="AIzaSyDuj9YWvNvd1uK_5aVofbHyS1LO8c5Js9M"
+
+
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/cafe_project?schema=public"
+
+
+
+

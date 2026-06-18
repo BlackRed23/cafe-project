@@ -64,11 +64,7 @@ export const CheckoutPage: React.FC = () => {
       navigate("/my-orders?success=true");
     } catch (err: any) {
       const message = getErrorMessage(err);
-      if (message.toLowerCase().includes("stock") || message.toLowerCase().includes("tồn kho")) {
-        setApiError("Sản phẩm không đủ tồn kho.");
-      } else {
-        setApiError(message);
-      }
+      setApiError(message);
     } finally {
       setIsLoading(false);
     }

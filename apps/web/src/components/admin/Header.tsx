@@ -1,7 +1,8 @@
 import React from "react";
-import { Menu, Bell, Search } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLocation } from "react-router-dom";
+import { NotificationPanel } from "./NotificationPanel";
 
 interface HeaderProps {
   sidebarOpen: boolean;
@@ -84,10 +85,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
           </button>
 
           {/* Notification */}
-          <button className="relative w-9 h-9 flex items-center justify-center rounded-xl text-slate-500 bg-slate-100 hover:bg-slate-200 hover:text-slate-800 transition-all">
-            <Bell size={17} />
-            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-amber-500 border border-white" />
-          </button>
+          <NotificationPanel />
 
           <div className="h-7 w-px bg-slate-200 mx-0.5 hidden sm:block" />
 

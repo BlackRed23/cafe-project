@@ -5,8 +5,10 @@ import type { Category } from "../../types/category.types";
 import { Button } from "../../components/common/Button";
 import { Input } from "../../components/common/Input";
 import { Loading } from "../../components/common/Loading";
+import { useToast } from "../../contexts/ToastContext";
 
 export const AdminCategoriesPage: React.FC = () => {
+  const toast = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -15,7 +17,7 @@ export const AdminCategoriesPage: React.FC = () => {
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  
+
   // Form states
   const [formData, setFormData] = useState({
     name: "",
@@ -76,14 +78,16 @@ export const AdminCategoriesPage: React.FC = () => {
       setIsSubmitting(true);
       if (editingCategory) {
         await categoriesApi.updateCategory(editingCategory.id, formData);
+        toast.success("Cập nhật thành công", `Danh mục "${formData.name}" đã được cập nhật.`);
       } else {
         await categoriesApi.createCategory(formData);
+        toast.success("Tạo thành công", `Danh mục "${formData.name}" đã được thêm mới.`);
       }
       handleCloseModal();
       fetchCategories();
     } catch (err) {
       console.error(err);
-      alert("Đã có lỗi xảy ra");
+      toast.error("Thao tác thất bại", "Đã có lỗi xảy ra khi lưu danh mục.");
     } finally {
       setIsSubmitting(false);
     }
@@ -100,9 +104,10 @@ export const AdminCategoriesPage: React.FC = () => {
       setIsSubmitting(true);
       await categoriesApi.deleteCategory(categoryToDelete);
       setIsDeleteModalOpen(false);
+      toast.success("Xóa thành công", "Danh mục đã được xóa khỏi hệ thống.");
       fetchCategories();
     } catch (err) {
-      alert("Không thể xóa danh mục này");
+      toast.error("Xóa thất bại", "Không thể xóa danh mục này. Có thể danh mục đang chứa sản phẩm.");
     } finally {
       setIsSubmitting(false);
       setCategoryToDelete(null);
@@ -227,7 +232,7 @@ export const AdminCategoriesPage: React.FC = () => {
                 {editingCategory ? "Cập nhật danh mục" : "Thêm danh mục mới"}
               </h3>
             </div>
-            
+
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <Input
                 label="Tên danh mục"
@@ -236,7 +241,7 @@ export const AdminCategoriesPage: React.FC = () => {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
               />
-              
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
                   Mô tả

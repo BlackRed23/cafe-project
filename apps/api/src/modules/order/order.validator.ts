@@ -1,4 +1,4 @@
-﻿import { OrderStatus, PaymentMethod, PaymentStatus } from '@cafe-project/database';
+import { OrderStatus, PaymentMethod, PaymentStatus } from '@cafe-project/database';
 import { z } from 'zod';
 
 export const createOrderSchema = z.object({
@@ -6,6 +6,7 @@ export const createOrderSchema = z.object({
         productId: z.string().trim().min(1, 'Product is required.'),
         quantity: z.coerce.number().int('Quantity must be an integer.').positive('Quantity must be greater than 0.')
     })).min(1, 'Order items cannot be empty.'),
+    shippingName: z.string().trim().optional(),
     shippingAddress: z.string().trim().optional(),
     shippingPhone: z.string().trim().optional(),
     note: z.string().trim().optional().nullable(),
