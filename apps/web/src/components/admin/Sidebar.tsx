@@ -18,6 +18,7 @@ import {
   Users,
   LayoutGrid,
   Settings,
+  Key,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -183,23 +184,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
         })}
       </div>
 
-      {/* ── FOOTER ACTIONS ── */}
-      <div className="p-3 border-t border-white/5 space-y-1">
-        <button
-          onClick={() => { navigate("/products"); setSidebarOpen(false); }}
-          className="flex items-center gap-3 w-full rounded-xl px-3 py-2.5 text-[13px] font-medium text-white/40 hover:text-white/80 hover:bg-white/5 transition-all group"
-        >
-          <Home size={16} className="text-white/25 group-hover:text-amber-400 transition-colors flex-shrink-0" />
-          <span>Quay lại Store</span>
-        </button>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 w-full rounded-xl px-3 py-2.5 text-[13px] font-medium text-rose-500/70 hover:text-rose-400 hover:bg-rose-500/10 transition-all group"
-        >
-          <LogOut size={16} className="flex-shrink-0" />
-          <span>Đăng xuất</span>
-        </button>
-      </div>
+
     </aside>
   );
 };

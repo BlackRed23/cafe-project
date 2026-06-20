@@ -5,7 +5,6 @@ import { getOrderErrorMessage, ordersApi } from "../api/orders.api";
 import type { PaymentMethod } from "../types/order.types";
 import { formatCurrency } from "../utils/formatCurrency";
 import { detectShippingZone, calculateShippingFee, getZoneLabel, FREE_SHIPPING_THRESHOLD } from "../utils/shipping";
-import { STORE_BANK_INFO, generateVietQrUrl } from "../utils/payment";
 import { Button } from "../components/common/Button";
 import { ArrowLeft, ShoppingBag, Sparkles, AlertCircle, User, Phone, MapPin, MessageSquare, CreditCard, Truck, Gift, Copy, CheckCheck } from "lucide-react";
 import { useToast } from "../contexts/ToastContext";
@@ -19,7 +18,7 @@ export const CheckoutPage: React.FC = () => {
   const [shippingPhone, setShippingPhone] = useState("");
   const [address, setAddress] = useState("");
   const [note, setNote] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "">("BANK_TRANSFER");
+  const [paymentMethod] = useState<PaymentMethod>("CASH");
 
   // Location states
   const [provinces, setProvinces] = useState<any[]>([]);
@@ -76,7 +75,6 @@ export const CheckoutPage: React.FC = () => {
 
   const [apiError, setApiError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const getCartProductId = (item: (typeof items)[number]) => {
     return String(item.product.id ?? (item.product as any).product_id ?? "").trim();
@@ -103,11 +101,6 @@ export const CheckoutPage: React.FC = () => {
 
     if (!shippingAddress.trim()) {
       toast.warning("Vui lòng nhập địa chỉ giao hàng.");
-      return;
-    }
-
-    if (!paymentMethod) {
-      toast.warning("Vui lòng chọn phương thức thanh toán.");
       return;
     }
 
@@ -315,106 +308,19 @@ export const CheckoutPage: React.FC = () => {
               <h3 className="text-lg font-bold text-slate-800 border-b border-amber-900/5 pb-4 flex items-center gap-2 uppercase tracking-wider">
                 <CreditCard size={20} className="text-amber-800" /> Phương thức thanh toán
               </h3>
-              <div className="grid sm:grid-cols-3 gap-3">
-                {[
-                  { id: "CASH",          icon: "💵", title: "Tiền mặt",     desc: "Trả tiền khi nhận hàng (COD)" },
-                  { id: "BANK_TRANSFER", icon: "🏦", title: "Chuyển khoản", desc: "Chuyển khoản ngân hàng thủ công" },
-                  { id: "VIET_QR",       icon: "📱", title: "QR Ngân hàng", desc: "Quét mã QR bằng app bất kỳ" },
-                ].map((method) => (
-                  <label
-                    key={method.id}
-                    className={`flex flex-col p-4 border-2 rounded-2xl cursor-pointer transition-all hover:bg-amber-50/30
-                      ${paymentMethod === method.id ? "border-amber-800 bg-amber-50/20 ring-1 ring-amber-800" : "border-slate-200"}`}
-                  >
-                    <input
-                      type="radio"
-                      name="paymentMethod"
-                      value={method.id}
-                      checked={paymentMethod === method.id}
-                      onChange={() => setPaymentMethod(method.id as PaymentMethod)}
-                      className="sr-only"
-                    />
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0
-                        ${paymentMethod === method.id ? "border-amber-800" : "border-slate-300"}`}>
-                        {paymentMethod === method.id && <div className="w-2 h-2 rounded-full bg-amber-800" />}
-                      </div>
-                      <span className="text-base">{method.icon}</span>
-                      <span className="font-bold text-sm text-slate-800">{method.title}</span>
-                    </div>
-                    <span className="text-[11px] text-slate-400 leading-normal font-light pl-6">{method.desc}</span>
-                  </label>
-                ))}
+              <div className="p-4 border-2 border-amber-800 bg-amber-50/20 rounded-2xl flex items-center gap-3">
+                <div className="text-2xl">💵</div>
+                <div>
+                  <p className="font-bold text-sm text-slate-800">Thanh toán tiền mặt (COD)</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Thanh toán trực tiếp cho nhân viên giao hàng khi nhận được sản phẩm.</p>
+                </div>
               </div>
-
-              {/* Panel thông tin chuyển khoản */}
-              {paymentMethod === "BANK_TRANSFER" && (
-                <div className="mt-3 p-4 bg-blue-50 border border-blue-100 rounded-2xl space-y-2.5 text-sm">
-                  <p className="font-bold text-blue-800 text-xs uppercase tracking-wider">Thông tin chuyển khoản</p>
-                  {[
-                    { label: "Ngân hàng",      value: STORE_BANK_INFO.bankName },
-                    { label: "Số tài khoản",   value: STORE_BANK_INFO.accountNo, copyKey: "account" },
-                    { label: "Chủ tài khoản",  value: STORE_BANK_INFO.accountName },
-                    { label: "Số tiền",         value: formatCurrency(grandTotal), copyKey: "amount" },
-                    { label: "Nội dung CK",     value: `Thanh toan don hang cafe`, copyKey: "content" },
-                  ].map(({ label, value, copyKey }) => (
-                    <div key={label} className="flex items-center justify-between gap-2">
-                      <span className="text-slate-500 shrink-0 w-32">{label}:</span>
-                      <span className="font-bold text-slate-800 flex-1 text-right">{value}</span>
-                      {copyKey && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(value);
-                            setCopiedField(copyKey);
-                            setTimeout(() => setCopiedField(null), 2000);
-                          }}
-                          className="shrink-0 text-blue-600 hover:text-blue-800 transition"
-                        >
-                          {copiedField === copyKey ? <CheckCheck size={14} className="text-emerald-600" /> : <Copy size={14} />}
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Panel QR code VietQR */}
-              {paymentMethod === "VIET_QR" && (
-                <div className="mt-3 p-5 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-center gap-6">
-                  <img
-                    src={generateVietQrUrl({ amount: grandTotal })}
-                    alt="VietQR thanh toán"
-                    className="w-44 h-44 object-contain rounded-xl border border-slate-200 bg-white p-1 shadow-sm"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                  />
-                  <div className="space-y-2 text-sm flex-1">
-                    <p className="font-bold text-slate-800 text-base">Quét mã để thanh toán</p>
-                    <p className="text-slate-500 text-xs">Mở app ngân hàng bất kỳ → Quét QR → Xác nhận thanh toán</p>
-                    <div className="pt-1 space-y-1.5">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-400">Ngân hàng:</span>
-                        <span className="font-semibold">{STORE_BANK_INFO.bankName}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-400">Số tiền:</span>
-                        <span className="font-bold text-amber-800">{formatCurrency(grandTotal)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-400">Chủ TK:</span>
-                        <span className="font-semibold">{STORE_BANK_INFO.accountName}</span>
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-slate-400 pt-1">* Đơn hàng sẽ được xác nhận sau khi admin kiểm tra thanh toán</p>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Note */}
-            <div className="p-4 bg-amber-50 border border-amber-900/5 text-amber-900 rounded-2xl text-xs font-light leading-relaxed">
+            {/* <div className="p-4 bg-amber-50 border border-amber-900/5 text-amber-900 rounded-2xl text-xs font-light leading-relaxed">
               <strong>Lưu ý:</strong> Đây là thanh toán mô phỏng phục vụ demo, hệ thống không xử lý giao dịch tiền thật.
-            </div>
+            </div> */}
 
             <div className="pt-4 border-t border-amber-900/5 flex justify-end">
               <Button

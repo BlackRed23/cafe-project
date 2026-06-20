@@ -1,4 +1,4 @@
-﻿import { apiClient, unwrapApiData } from "./client";
+import { apiClient, unwrapApiData } from "./client";
 import type { LoginPayload, RegisterPayload, AuthResponse } from "../types/auth.types";
 
 export const authApi = {
@@ -15,5 +15,9 @@ export const authApi = {
   getMe: async (): Promise<AuthResponse> => {
     const response = await apiClient.get<AuthResponse["user"]>("/auth/me");
     return { user: unwrapApiData<AuthResponse["user"]>(response.data) };
+  },
+
+  changePassword: async (payload: { currentPassword: string; newPassword: string }): Promise<void> => {
+    await apiClient.patch("/auth/change-password", payload);
   },
 };

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Menu, Bell, Search, RefreshCw, X, AlertCircle, Info, CheckCircle, AlertTriangle } from "lucide-react";
+import { Menu, Bell, Search, RefreshCw, X, AlertCircle, Info, CheckCircle, AlertTriangle, LogOut, User, Key, ChevronDown } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-import { useLocation, Link } from "react-router-dom";
+import { useLocation, Link, useNavigate } from "react-router-dom";
 import { agentLogsApi } from "../../api/agentLogs.api";
 import type { AgentLog } from "../../types/agentLog.types";
 
@@ -32,14 +32,17 @@ const BREADCRUMB_MAP: Record<string, string[]> = {
 };
 
 export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, title }) => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [showNotifications, setShowNotifications] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState<AgentLog[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   
   const [toasts, setToasts] = useState<Toast[]>([]);
   
@@ -67,12 +70,15 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
       }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
     };
-    if (showNotifications) {
+    if (showNotifications || userMenuOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showNotifications]);
+  }, [showNotifications, userMenuOpen]);
 
   useEffect(() => {
     loadNotifications();
@@ -135,14 +141,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
 
         {/* RIGHT: search + bell + user */}
         <div className="flex items-center gap-2.5">
-          {/* Search bar */}
-          <button className="hidden md:flex items-center gap-2.5 px-4 py-2 text-sm text-slate-400 bg-slate-100 rounded-xl hover:bg-slate-200 transition-all border border-transparent hover:border-slate-200">
-            <Search size={15} />
-            <span className="font-medium">Tìm kiếm...</span>
-            <kbd className="ml-1 px-1.5 py-0.5 rounded text-[11px] bg-white border border-slate-200 text-slate-400 font-mono">
-              ⌘K
-            </kbd>
-          </button>
+
 
           {/* Notification */}
           <div className="relative" ref={dropdownRef}>
@@ -225,22 +224,60 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
 
           <div className="h-7 w-px bg-slate-200 mx-0.5 hidden sm:block" />
 
-          {/* User card */}
-          <div className="flex items-center gap-2.5 pl-1">
+          {/* User card detailed with Dropdown */}
+          <div className="relative flex items-center gap-3 pl-3 py-1 cursor-pointer hover:bg-slate-50 rounded-xl transition-colors" ref={userMenuRef} onClick={() => setUserMenuOpen(!userMenuOpen)}>
             <div className="relative">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-amber-600 to-amber-900 flex items-center justify-center font-black text-white text-[15px] shadow-md flex-shrink-0">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-600 to-amber-800 flex items-center justify-center font-black text-white text-base shadow-sm ring-2 ring-white">
                 {user?.name ? user.name.charAt(0).toUpperCase() : "A"}
               </div>
-              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-white" />
+              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white shadow-sm" title="Đang hoạt động" />
             </div>
-            <div className="hidden md:block">
-              <p className="text-[14px] font-bold text-slate-800 leading-tight">
-                {user?.name || "Quản trị viên"}
-              </p>
-              <p className="text-[11px] font-semibold text-amber-600 leading-tight uppercase tracking-wide">
-                {user?.role === "ADMIN" ? "Admin" : "Staff"}
-              </p>
+            <div className="hidden md:flex flex-col justify-center">
+              <div className="flex items-center gap-1.5 mb-1">
+                <p className="text-[14px] font-bold text-slate-800 leading-none">
+                  {user?.name || "Quản trị viên"}
+                </p>
+                <ChevronDown size={14} className={`text-slate-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                  {user?.role === "ADMIN" ? "Admin" : "Staff"}
+                </span>
+              </div>
             </div>
+            
+            {/* User Dropdown Menu */}
+            {userMenuOpen && (
+              <div className="absolute top-full right-0 mt-3 w-56 bg-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="p-2 flex flex-col gap-1">
+                  <Link
+                    to="/admin/users"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-slate-600 hover:text-amber-700 hover:bg-amber-50 rounded-xl transition-colors"
+                  >
+                    <User size={15} /> Thay đổi thông tin
+                  </Link>
+                  <Link
+                    to="/admin/change-password"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-slate-600 hover:text-amber-700 hover:bg-amber-50 rounded-xl transition-colors"
+                  >
+                    <Key size={15} /> Đổi mật khẩu
+                  </Link>
+                </div>
+                <div className="p-2 border-t border-slate-100">
+                  <button
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      logout();
+                    }}
+                    className="flex items-center gap-2.5 px-3 py-2 w-full text-[13px] font-medium text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
+                  >
+                    <LogOut size={15} /> Đăng xuất
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

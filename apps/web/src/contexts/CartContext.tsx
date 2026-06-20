@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { useAuth } from "./AuthContext";
 import type { Product } from "../types/product.types";
 
 export interface CartItem {
@@ -25,21 +26,37 @@ const getInventoryQuantity = (product: Product): number | undefined => {
 };
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [items, setItems] = useState<CartItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(CART_STORAGE_KEY);
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      localStorage.removeItem(CART_STORAGE_KEY);
-      return [];
-    }
-  });
+  const { user } = useAuth();
+  const CART_STORAGE_KEY = user ? `cart_${user.id}` : null;
 
+  const [items, setItems] = useState<CartItem[]>([]);
+
+  // Load cart when user changes
   useEffect(() => {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
-  }, [items]);
+    if (CART_STORAGE_KEY) {
+      try {
+        const saved = localStorage.getItem(CART_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setItems(Array.isArray(parsed) ? parsed : []);
+        } else {
+          setItems([]);
+        }
+      } catch {
+        setItems([]);
+      }
+    } else {
+      // Clear cart on logout
+      setItems([]);
+    }
+  }, [CART_STORAGE_KEY]);
+
+  // Save cart when items change
+  useEffect(() => {
+    if (CART_STORAGE_KEY) {
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+    }
+  }, [items, CART_STORAGE_KEY]);
 
   const addToCart = (product: Product, quantity: number) => {
     if (quantity <= 0) return false;

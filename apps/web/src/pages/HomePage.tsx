@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Cpu, ArrowRight, ShoppingBag, Play, ChevronRight } from "lucide-react";
 import { productsApi } from "../api/products.api";
 import { useCart } from "../contexts/CartContext";
@@ -7,10 +7,14 @@ import type { Product } from "../types/product.types";
 import { ProductCard } from "../components/product/ProductCard";
 import { Loading } from "../components/common/Loading";
 import { useToast } from "../contexts/ToastContext";
+import { useAuth } from "../contexts/AuthContext";
 
 export const HomePage: React.FC = () => {
   const { addToCart } = useCart();
   const toast = useToast();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -31,6 +35,12 @@ export const HomePage: React.FC = () => {
   }, []);
 
   const handleAddToCart = (product: Product) => {
+    if (!isAuthenticated) {
+      toast.warning("Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng!");
+      navigate("/login", { state: { returnUrl: location.pathname } });
+      return;
+    }
+
     const stockQuantity = product.inventory?.quantity;
 
     if (typeof stockQuantity === "number" && stockQuantity <= 0) {

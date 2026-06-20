@@ -10,9 +10,10 @@ export const RegisterPage: React.FC = () => {
   const { register } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [errors, setErrors] = useState<{ name?: string; email?: string; password?: string; confirmPassword?: string }>({});
+  const [errors, setErrors] = useState<{ name?: string; email?: string; phone?: string; password?: string; confirmPassword?: string }>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -29,6 +30,12 @@ export const RegisterPage: React.FC = () => {
       newErrors.email = "Email không được để trống";
     } else if (!/\S+@\S+\.\S+/.test(email)) {
       newErrors.email = "Email không hợp lệ";
+    }
+
+    if (!phone.trim()) {
+      newErrors.phone = "Số điện thoại không được để trống";
+    } else if (phone.length < 10) {
+      newErrors.phone = "Số điện thoại không hợp lệ";
     }
 
     if (!password) {
@@ -50,7 +57,7 @@ export const RegisterPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      await register({ name, email, password });
+      await register({ name, email, password, phone });
     } catch (err: any) {
       setApiError(getErrorMessage(err));
     } finally {
@@ -93,6 +100,15 @@ export const RegisterPage: React.FC = () => {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           error={errors.email}
+        />
+
+        <Input
+          label="Số điện thoại"
+          type="tel"
+          placeholder="0987654321"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          error={errors.phone}
         />
 
         <Input
