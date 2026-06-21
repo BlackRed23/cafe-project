@@ -3,7 +3,7 @@ import { sendError, sendSuccess } from '../../common/response';
 import type { AuthenticatedRequest } from '../auth/auth.middleware';
 import { cloudinary } from '../../common/cloudinary';
 
-const uploadToCloudinary = (fileBuffer: Buffer): Promise<{ secure_url: string }> => {
+const uploadToCloudinary = (fileBuffer: Buffer): Promise<{ secure_url: string; public_id: string }> => {
     return new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
             {
@@ -43,7 +43,10 @@ export const uploadProductImage = async (req: AuthenticatedRequest, res: Respons
     try {
         // 3. Upload to Cloudinary
         const result = await uploadToCloudinary(req.file.buffer);
-        sendSuccess(res, 200, 'Image uploaded successfully.', { imageUrl: result.secure_url });
+        sendSuccess(res, 200, 'Image uploaded successfully.', {
+            imageUrl: result.secure_url,
+            imagePublicId: result.public_id
+        });
     } catch (error: any) {
         console.error('[upload] Cloudinary upload error:', error);
         sendError(res, 500, error.message || 'Failed to upload image to Cloudinary.');

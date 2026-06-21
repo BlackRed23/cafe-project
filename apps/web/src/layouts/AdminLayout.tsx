@@ -14,6 +14,7 @@ const TITLE_MAP: Record<string, string> = {
   "/admin/simulate-sale": "Mô phỏng bán hàng",
   "/admin/purchase-requests": "Yêu cầu mua hàng",
   "/admin/agent-logs": "Nhật ký Agent",
+  "/admin/system-settings": "Cài đặt hệ thống",
 };
 
 function getTitle(pathname: string): string {

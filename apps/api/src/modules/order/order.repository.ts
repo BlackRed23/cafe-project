@@ -1,6 +1,7 @@
-﻿import { InventoryTransactionType, OrderStatus, type Prisma } from '@cafe-project/database';
+import { InventoryTransactionType, OrderStatus, type Prisma } from '@cafe-project/database';
 import { prisma } from '../../common/prisma';
 import type { CreateOrderInput, OrderFiltersInput } from './order.validator';
+import { detectShippingZone, calculateShippingFee } from './shipping.service';
 
 const orderInclude = {
     user: { select: { id: true, name: true, email: true } },
@@ -43,16 +44,34 @@ export const orderRepository = {
 
             for (const item of input.items) {
                 const product = productById.get(item.productId);
-                if (!product) throw new Error(`Product not found: ${item.productId}`);
-                if (!product.inventory || product.inventory.quantity < item.quantity) throw new Error(`Not enough inventory for ${product.name}.`);
+                if (!product) throw new Error('Không tìm thấy sản phẩm.');
+
+                const availableStock = product.inventory ? product.inventory.quantity - product.inventory.reservedStock : 0;
+                if (!product.inventory || availableStock < item.quantity) {
+                    throw new Error(
+                        `Không đủ tồn kho khả dụng để tạo đơn hàng. Sản phẩm "${product.name}" khả dụng: ${availableStock}, bạn đặt: ${item.quantity}.`
+                    );
+                }
+
                 totalAmount += Number(product.price) * item.quantity;
             }
+
+            const subtotal = totalAmount;
+            const shippingZone = detectShippingZone(input.shippingAddress ?? '');
+            const shippingFee = calculateShippingFee(shippingZone, subtotal);
+            const grandTotal = subtotal + shippingFee;
 
             const order = await tx.order.create({
                 data: {
                     userId,
                     status: OrderStatus.PENDING,
-                    totalAmount,
+                    totalAmount: grandTotal,
+                    shippingFee,
+                    shippingZone,
+                    shippingName: input.shippingName,
+                    shippingPhone: input.shippingPhone,
+                    shippingAddress: input.shippingAddress,
+                    note: input.note,
                     items: {
                         create: input.items.map((item) => {
                             const product = productById.get(item.productId)!;
@@ -60,11 +79,42 @@ export const orderRepository = {
                         })
                     },
                     payment: {
-                        create: { method: input.paymentMethod, amount: totalAmount, status: 'PENDING' }
+                        create: { method: input.paymentMethod, amount: grandTotal, status: 'PENDING' }
                     }
                 },
                 include: orderInclude
             });
+
+            for (const item of input.items) {
+                const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
+                if (!inventory) continue;
+
+                const availableStock = inventory.quantity - inventory.reservedStock;
+                if (availableStock < item.quantity) {
+                    const product = productById.get(item.productId)!;
+                    throw new Error(`Không đủ tồn kho khả dụng để tạo đơn hàng. Sản phẩm "${product.name}" vừa hết hàng.`);
+                }
+
+                const updated = await tx.inventory.updateMany({
+                    where: { id: inventory.id, quantity: { gte: inventory.reservedStock + item.quantity } },
+                    data: { reservedStock: { increment: item.quantity } }
+                });
+
+                if (updated.count !== 1) {
+                    const product = productById.get(item.productId)!;
+                    throw new Error(`Không đủ tồn kho khả dụng để tạo đơn hàng. Sản phẩm "${product.name}" vừa hết hàng.`);
+                }
+
+                await tx.inventoryTransaction.create({
+                    data: {
+                        productId: item.productId,
+                        userId,
+                        type: InventoryTransactionType.ORDER,
+                        quantity: item.quantity,
+                        reason: `Giữ hàng cho đơn ${order.id}`
+                    }
+                });
+            }
 
             return order;
         });
@@ -72,29 +122,79 @@ export const orderRepository = {
 
     async updateStatus(order: OrderRecord, nextStatus: OrderStatus, userId: string): Promise<OrderRecord> {
         return prisma.$transaction(async (tx) => {
-            if (nextStatus === OrderStatus.PROCESSING && order.status === OrderStatus.PENDING) {
-                for (const item of order.items) {
-                    const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
-                    if (!inventory || inventory.quantity < item.quantity) throw new Error(`Not enough inventory for ${item.product.name}.`);
-                    const updated = await tx.inventory.updateMany({
-                        where: { id: inventory.id, quantity: { gte: item.quantity } },
-                        data: { quantity: { decrement: item.quantity } }
-                    });
-                    if (updated.count !== 1) throw new Error(`Not enough inventory for ${item.product.name}.`);
-                    await tx.inventoryTransaction.create({ data: { productId: item.productId, userId, type: InventoryTransactionType.ORDER, quantity: -item.quantity, reason: `Order ${order.id} confirmed` } });
-                }
-            }
+            const shouldFinalizeStock = !order.stockDeductedAt && nextStatus === OrderStatus.COMPLETED;
+            const shouldReleaseReserved =
+                !order.stockDeductedAt &&
+                nextStatus === OrderStatus.CANCELLED &&
+                (order.status === OrderStatus.PENDING || order.status === OrderStatus.PROCESSING);
 
-            if (nextStatus === OrderStatus.CANCELLED && order.status === OrderStatus.PROCESSING) {
+            if (shouldFinalizeStock) {
                 for (const item of order.items) {
                     const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
                     if (!inventory) continue;
-                    await tx.inventory.update({ where: { id: inventory.id }, data: { quantity: { increment: item.quantity } } });
-                    await tx.inventoryTransaction.create({ data: { productId: item.productId, userId, type: InventoryTransactionType.CANCEL, quantity: item.quantity, reason: `Order ${order.id} cancelled` } });
+
+                    const updated = await tx.inventory.updateMany({
+                        where: {
+                            id: inventory.id,
+                            quantity: { gte: item.quantity },
+                            reservedStock: { gte: item.quantity }
+                        },
+                        data: {
+                            quantity: { decrement: item.quantity },
+                            reservedStock: { decrement: item.quantity }
+                        }
+                    });
+
+                    if (updated.count !== 1) {
+                        throw new Error('Không đủ số lượng hàng đang giữ để cập nhật đơn hàng.');
+                    }
+
+                    await tx.inventoryTransaction.create({
+                        data: {
+                            productId: item.productId,
+                            userId,
+                            type: InventoryTransactionType.ORDER,
+                            quantity: -item.quantity,
+                            reason: `Trừ kho thật cho đơn ${order.id}`
+                        }
+                    });
                 }
             }
 
-            return tx.order.update({ where: { id: order.id }, data: { status: nextStatus }, include: orderInclude });
+            if (shouldReleaseReserved) {
+                for (const item of order.items) {
+                    const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
+                    if (!inventory) continue;
+
+                    const updated = await tx.inventory.updateMany({
+                        where: { id: inventory.id, reservedStock: { gte: item.quantity } },
+                        data: { reservedStock: { decrement: item.quantity } }
+                    });
+
+                    if (updated.count !== 1) {
+                        throw new Error('Không đủ số lượng hàng đang giữ để cập nhật đơn hàng.');
+                    }
+
+                    await tx.inventoryTransaction.create({
+                        data: {
+                            productId: item.productId,
+                            userId,
+                            type: InventoryTransactionType.CANCEL,
+                            quantity: -item.quantity,
+                            reason: `Nhả giữ hàng cho đơn ${order.id}`
+                        }
+                    });
+                }
+            }
+
+            return tx.order.update({
+                where: { id: order.id },
+                data: {
+                    status: nextStatus,
+                    ...(shouldFinalizeStock ? { stockDeductedAt: new Date() } : {})
+                },
+                include: orderInclude
+            });
         });
     }
 };

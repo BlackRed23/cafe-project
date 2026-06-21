@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { productsApi } from "../api/products.api";
 import type { Product } from "../types/product.types";
 import { useCart } from "../contexts/CartContext";
@@ -7,15 +7,20 @@ import { formatCurrency } from "../utils/formatCurrency";
 import { Button } from "../components/common/Button";
 import { Loading } from "../components/common/Loading";
 import { ArrowLeft, ShoppingCart, ShieldCheck, AlertCircle } from "lucide-react";
+import { useToast } from "../contexts/ToastContext";
+import { useAuth } from "../contexts/AuthContext";
 
 export const ProductDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated } = useAuth();
   const [product, setProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { addToCart } = useCart();
+  const toast = useToast();
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -48,6 +53,7 @@ export const ProductDetailPage: React.FC = () => {
     const maxQty = product?.inventory?.quantity;
     if (maxQty !== undefined && num > maxQty) {
       num = maxQty;
+      toast.warning("Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");
     }
     
     setQuantity(num);
@@ -187,7 +193,16 @@ export const ProductDetailPage: React.FC = () => {
 
             <Button
               onClick={() => {
-                addToCart(product, quantity);
+                if (!isAuthenticated) {
+                  toast.warning("Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng!");
+                  navigate("/login", { state: { returnUrl: location.pathname } });
+                  return;
+                }
+                const didAdd = addToCart(product, quantity);
+                if (!didAdd) {
+                  toast.warning("Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");
+                  return;
+                }
                 navigate("/cart");
               }}
               disabled={isOutOfStock || product.isActive === false || product.is_active === false}

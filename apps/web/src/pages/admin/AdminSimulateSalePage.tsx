@@ -8,39 +8,91 @@ import type { Inventory } from "../../types/inventory.types";
 import { Button } from "../../components/common/Button";
 import { Loading } from "../../components/common/Loading";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
-import { Play, Sparkles, Terminal, Mail, RefreshCw, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Play, Sparkles, Terminal, Mail, RefreshCw, AlertTriangle, ShieldCheck, Info } from "lucide-react";
+
+import { useToast } from "../../contexts/ToastContext";
+
+const LAST_SIMULATION_TRANSACTION_KEY = "lastSimulationTransactionId";
 
 export const AdminSimulateSalePage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [inventories, setInventories] = useState<Inventory[]>([]);
   const [selectedProductId, setSelectedProductId] = useState("");
-  const [sellQuantity, setSellQuantity] = useState(5);
-  
+  const [simulationMode, setSimulationMode] = useState<"ONE_DAY" | "WEEK" | "MONTH" | "CUSTOM_RANGE">("ONE_DAY");
+  const [dailySimulatedQuantity, setDailySimulatedQuantity] = useState(5);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [note, setNote] = useState("");
+
   const [isLoading, setIsLoading] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+
+  const toast = useToast();
 
   // Result state
   const [result, setResult] = useState<{
     success: boolean;
+    productId?: string;
+    inventoryId?: string;
+    transactionId?: string;
+    productName?: string;
     stockBefore: number;
     stockAfter: number;
+    decreasedQuantity: number;
+    restored?: boolean;
+    restoredStock?: number;
+    restoreTransactionId?: string;
     statusAfter: "OK" | "WARNING" | "NEED_RESTOCK";
     minThreshold: number;
     prCreated: boolean;
     prId?: string;
+    prNumber?: string;
+    hasNoSupplierSkip?: boolean;
+    hasDuplicateSkip?: boolean;
   } | null>(null);
 
-  const loadData = async () => {
+  const loadData = async (hydratePendingRestore = false) => {
     try {
       setIsLoading(true);
-      const [prods, invs] = await Promise.all([
+      const [prods, invs, pendingResponse] = await Promise.all([
         productsApi.getProducts(),
         inventoryApi.getInventories().catch(() => [] as Inventory[]),
+        hydratePendingRestore ? simulateSaleApi.getPendingRestore().catch(() => null) : Promise.resolve(null),
       ]);
       setProducts(prods.filter((p) => p.isActive !== false));
       setInventories(invs);
+
+      const pending = pendingResponse?.pendingRestore;
+      if (pending) {
+        const stockAfter = pending.stockAfter ?? 0;
+        const stockBefore = pending.stockBefore ?? stockAfter + (pending.decreasedQuantity ?? 0);
+        const inventory = invs.find((item) => item.id === pending.inventoryId || item.productId === pending.productId);
+        const minThreshold = inventory?.minThreshold ?? inventory?.min_threshold ?? 0;
+        let status: "OK" | "WARNING" | "NEED_RESTOCK" = "OK";
+        if (stockAfter < minThreshold) status = "NEED_RESTOCK";
+        else if (stockAfter === minThreshold) status = "WARNING";
+
+        setSelectedProductId(pending.productId);
+        setResult({
+          success: true,
+          productId: pending.productId,
+          inventoryId: pending.inventoryId,
+          transactionId: pending.transactionId,
+          productName: pending.productName,
+          stockBefore,
+          stockAfter,
+          decreasedQuantity: pending.decreasedQuantity,
+          statusAfter: status,
+          minThreshold,
+          prCreated: false,
+        });
+        localStorage.setItem(LAST_SIMULATION_TRANSACTION_KEY, pending.transactionId);
+      } else if (hydratePendingRestore) {
+        localStorage.removeItem(LAST_SIMULATION_TRANSACTION_KEY);
+      }
     } catch (err) {
       setApiError("Không thể tải thông tin sản phẩm và kho.");
     } finally {
@@ -49,7 +101,7 @@ export const AdminSimulateSalePage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadData();
+    loadData(true);
   }, []);
 
   const selectedInventory = inventories.find((inv) => inv.productId === selectedProductId);
@@ -57,12 +109,25 @@ export const AdminSimulateSalePage: React.FC = () => {
 
   const currentQty = selectedInventory?.quantity ?? 0;
   const threshold = selectedInventory?.minThreshold ?? selectedInventory?.min_threshold ?? 0;
-  
-  // Suggest a quantity to drop below threshold
-  const suggestedQuantity = currentQty > threshold ? currentQty - threshold + 1 : 1;
+  let unit = selectedProduct?.unit || "đơn vị";
+  if (unit.toLowerCase() === "ly") unit = "đơn vị";
+
+  let localNumberOfDays = 1;
+  if (simulationMode === "WEEK") localNumberOfDays = 7;
+  else if (simulationMode === "MONTH") localNumberOfDays = 30;
+  else if (simulationMode === "CUSTOM_RANGE" && startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const diffTime = end.getTime() - start.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      localNumberOfDays = diffDays >= 0 ? diffDays + 1 : 0;
+  } else if (simulationMode === "CUSTOM_RANGE") {
+      localNumberOfDays = 0;
+  }
+  const localSimulatedDemand = localNumberOfDays * (dailySimulatedQuantity || 0);
 
   const handleSimulate = async () => {
-    if (!selectedProductId || sellQuantity <= 0) return;
+    if (isSimulating || !selectedProductId || localSimulatedDemand <= 0) return;
     setIsSimulating(true);
     setApiError(null);
     setResult(null);
@@ -70,35 +135,147 @@ export const AdminSimulateSalePage: React.FC = () => {
     try {
       const res: any = await simulateSaleApi.simulateSale({
         productId: selectedProductId,
-        quantity: sellQuantity,
+        simulationMode,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        dailySimulatedQuantity,
+        note: note
       });
 
-      // Calculate post-simulation status
-      const postQty = currentQty - sellQuantity;
+      const affected = res?.affectedProduct ?? res?.affectedProducts?.[0] ?? {};
+      const stockBefore = affected.stockBefore ?? res?.stockBefore ?? currentQty;
+      const stockAfter = affected.stockAfter ?? res?.stockAfter ?? stockBefore;
+      const decreasedQuantity = affected.decreasedQuantity ?? res?.decreasedQuantity ?? localSimulatedDemand;
+      const minThreshold = affected.minThreshold ?? res?.minThreshold ?? threshold;
       let status: "OK" | "WARNING" | "NEED_RESTOCK" = "OK";
-      if (postQty < threshold) {
+      if (stockAfter < minThreshold) {
         status = "NEED_RESTOCK";
-      } else if (postQty === threshold) {
+      } else if (stockAfter === minThreshold) {
         status = "WARNING";
       }
 
-      setResult({
-        success: true,
-        stockBefore: currentQty,
-        stockAfter: Math.max(0, postQty),
-        statusAfter: status,
-        minThreshold: threshold,
-        prCreated: !!(res?.purchaseRequestId || res?.purchaseRequest || res?.prCreated),
-        prId: res?.purchaseRequestId || res?.purchaseRequest?.id || undefined,
+      const createdPRs = res?.createdPurchaseRequests ?? [];
+      const logs: any[] = res?.agentLogs ?? res?.agentResults ?? [];
+
+      const hasDuplicateSkip = logs.some((log: any) => {
+        const output = typeof log?.output === "string"
+          ? (() => { try { return JSON.parse(log.output); } catch { return null; } })()
+          : log?.output;
+        return (
+          log?.result === "SKIPPED_DUPLICATE" ||
+          output?.reason === "ACTIVE_PR_EXISTS" ||
+          log?.reasonCode === "ACTIVE_PR_EXISTS"
+        );
       });
 
-      // Refresh inventory stock values locally
-      await loadData();
+      const hasNoSupplierSkip = logs.some((log: any) => {
+        const output = typeof log?.output === "string"
+          ? (() => { try { return JSON.parse(log.output); } catch { return null; } })()
+          : log?.output;
+        return (
+          log?.result === "NO_SUPPLIER" ||
+          log?.result === "SUPPLIER_NOT_FOUND" ||
+          log?.result === "SUPPLIER_PRODUCTS_EMPTY" ||
+          output?.reason === "NO_SUPPLIERS_MAPPED" ||
+          output?.reason === "SUPPLIERS_INACTIVE" ||
+          log?.reasoning?.includes("Sản phẩm chưa được liên kết với nhà cung cấp") ||
+          log?.reasoning?.includes("Nhà cung cấp của sản phẩm đang bị vô hiệu hóa") ||
+          output?.reason === "SUPPLIER_MISSING"
+        );
+      });
+
+      setResult({
+        success: true,
+        productId: affected.productId ?? res?.productId ?? selectedProductId,
+        inventoryId: affected.inventoryId ?? res?.inventoryId,
+        transactionId: affected.transactionId ?? res?.transactionId,
+        productName: affected.productName ?? res?.productName ?? selectedProduct?.name,
+        stockBefore,
+        stockAfter,
+        decreasedQuantity,
+        statusAfter: status,
+        minThreshold,
+        prCreated: !!(res?.purchaseRequestId || res?.purchaseRequest || createdPRs.length > 0),
+        prId: res?.purchaseRequestId || res?.purchaseRequest?.id || createdPRs[0]?.id || undefined,
+        prNumber: createdPRs[0]?.requestNumber || createdPRs[0]?.id || undefined,
+        hasNoSupplierSkip,
+        hasDuplicateSkip
+      });
+
+      /* ─── Toast notifications based on response ─── */
+
+      toast.success("Mô phỏng thành công", `Tồn kho còn ${stockAfter} ${unit}.`);
+
+      if (createdPRs.length > 0) {
+        const prNumber = createdPRs[0]?.requestNumber || createdPRs[0]?.id || "";
+        toast.success("Tạo yêu cầu tự động", `AI Agent đã tạo yêu cầu nhập hàng: ${prNumber}.`);
+      } else if (hasNoSupplierSkip) {
+        toast.warning("Chưa có nhà cung cấp", "Sản phẩm chưa được liên kết với nhà cung cấp nên AI Agent không thể tạo yêu cầu nhập hàng.");
+      } else if (hasDuplicateSkip) {
+        toast.info("Yêu cầu nhập hàng tồn tại", "Sản phẩm đã có yêu cầu nhập hàng đang chờ xử lý.");
+      }
+      
+      if (stockAfter <= 0) {
+        toast.error("Sản phẩm hết hàng", "Vui lòng kiểm tra yêu cầu nhập hàng.");
+      } else if (stockAfter < minThreshold) {
+        toast.warning("Sản phẩm sắp hết hàng", `Tồn kho hiện tại: ${stockAfter} ${unit}, ngưỡng cảnh báo: ${minThreshold} ${unit}.`);
+      }
+
+      const simulationTransactionId = affected.transactionId ?? res?.transactionId;
+      if (simulationTransactionId) {
+        localStorage.setItem(LAST_SIMULATION_TRANSACTION_KEY, simulationTransactionId);
+      }
+      await loadData(false);
     } catch (err: any) {
-      setApiError(err.response?.data?.message || err.message || "Lỗi khi chạy giả lập bán hàng.");
+      // Case Error toasts
+      const status = err.response?.status;
+      const message = err.response?.data?.message || err.message || "";
+
+      if (status === 400 && (message.toLowerCase().includes("not enough") || message.toLowerCase().includes("inventory") || message.toLowerCase().includes("stock") || message.toLowerCase().includes("không đủ"))) {
+        toast.error("Không đủ tồn kho", message || `Không đủ tồn kho để mô phỏng bán hàng. Tồn kho hiện tại: ${currentQty} ${unit}, yêu cầu: ${localSimulatedDemand} ${unit}.`);
+      } else {
+        toast.error("Lỗi giả lập", "Không thể mô phỏng bán hàng. Vui lòng kiểm tra kết nối server.");
+      }
+
+      setApiError(message || "Lỗi khi chạy giả lập bán hàng.");
     } finally {
       setIsSimulating(false);
       setShowConfirm(false);
+    }
+  };
+
+  const handleRestoreSimulation = async () => {
+    if (!result?.transactionId || result.restored) return;
+
+    setIsRestoring(true);
+    setApiError(null);
+
+    try {
+      const restored = await simulateSaleApi.restoreSimulation(result.transactionId);
+      const restoredStock = restored?.restoredStock ?? result.stockBefore;
+
+      setResult((prev) => prev ? {
+        ...prev,
+        restored: true,
+        restoredStock,
+        restoreTransactionId: restored?.restoreTransactionId,
+      } : prev);
+
+      toast.success("Đã khôi phục mô phỏng", "Tồn kho đã được cộng lại.");
+      localStorage.removeItem(LAST_SIMULATION_TRANSACTION_KEY);
+      await loadData(false);
+    } catch (err: any) {
+      const status = err.response?.status;
+      const message = err.response?.data?.message || err.message || "Không thể khôi phục mô phỏng.";
+      if (status === 409) {
+        setResult((prev) => prev ? { ...prev, restored: true } : prev);
+        toast.warning("Mô phỏng đã được khôi phục", message);
+      } else {
+        toast.error("Khôi phục thất bại", message);
+      }
+      setApiError(message);
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -108,6 +285,7 @@ export const AdminSimulateSalePage: React.FC = () => {
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
+
       {apiError && (
         <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-semibold rounded-2xl">
           {apiError}
@@ -120,7 +298,7 @@ export const AdminSimulateSalePage: React.FC = () => {
           <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
             <Play size={20} className="text-amber-800" /> Giả lập bán hàng (Simulate Sale)
           </h3>
-          <button onClick={loadData} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-50">
+          <button onClick={() => loadData(true)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-50">
             <RefreshCw size={14} />
           </button>
         </div>
@@ -146,57 +324,99 @@ export const AdminSimulateSalePage: React.FC = () => {
             </select>
           </div>
 
-          {/* Current Stock info panel */}
+          {/* Form and Preview */}
           {selectedProductId && (
-            <div className="grid grid-cols-2 gap-4 p-4.5 bg-slate-55 border border-slate-100 rounded-xl text-sm">
+            <div className="space-y-6">
               <div>
-                <span className="text-xs text-slate-400 font-medium block">Tồn kho hiện tại:</span>
-                <span className="text-base font-bold text-slate-800">
-                  {currentQty} {selectedProduct?.unit || "hộp"}
-                </span>
-              </div>
-              <div>
-                <span className="text-xs text-slate-400 font-medium block">Ngưỡng tối thiểu:</span>
-                <span className="text-base font-bold text-slate-800">
-                  {threshold} {selectedProduct?.unit || "hộp"}
-                </span>
+                <label className="block text-sm font-medium text-slate-750 mb-1.5 font-semibold">Số lượng dự kiến bán mỗi ngày</label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="number"
+                    min={1}
+                    value={dailySimulatedQuantity || ""}
+                    onChange={(e) => { setDailySimulatedQuantity(parseInt(e.target.value) || 0); }}
+                    className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
+                  />
+                  <span className="text-sm font-medium text-slate-600 whitespace-nowrap">{unit}/ngày</span>
+                </div>
               </div>
 
-              {/* Suggestion banner */}
-              {currentQty > threshold ? (
-                <div className="col-span-2 mt-2 pt-2 border-t border-slate-150 text-xs text-amber-850 font-medium flex items-center gap-1.5">
-                  <Sparkles size={14} className="text-amber-800 animate-pulse" />
-                  Gợi ý: Nhập số lượng từ <strong className="underline">{suggestedQuantity}</strong> trở lên để kích hoạt cảnh báo tồn kho thấp.
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-750 mb-1.5 font-semibold">Thời gian mô phỏng</label>
+                  <select
+                    value={simulationMode}
+                    onChange={(e) => { setSimulationMode(e.target.value as any); }}
+                    className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
+                  >
+                    <option value="ONE_DAY">1 Ngày</option>
+                    <option value="WEEK">1 Tuần (7 ngày)</option>
+                    <option value="MONTH">1 Tháng (30 ngày)</option>
+                    <option value="CUSTOM_RANGE">Tùy chọn khoảng thời gian</option>
+                  </select>
                 </div>
-              ) : (
-                <div className="col-span-2 mt-2 pt-2 border-t border-slate-150 text-xs text-rose-700 font-medium flex items-center gap-1.5">
-                  <AlertTriangle size={14} className="text-rose-500 animate-pulse" />
-                  Sản phẩm hiện đang dưới ngưỡng an toàn!
-                </div>
-              )}
-            </div>
-          )}
+                {simulationMode === "CUSTOM_RANGE" && (
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Từ ngày</label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => { setStartDate(e.target.value); }}
+                        className="block w-full px-2 py-2.5 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-amber-700/20"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">Đến ngày</label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => { setEndDate(e.target.value); }}
+                        className="block w-full px-2 py-2.5 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-amber-700/20"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
 
-          {/* Quantity to sell */}
-          {selectedProductId && (
-            <div>
-              <label className="block text-sm font-medium text-slate-750 mb-1.5 font-semibold">Số lượng bán giả lập</label>
-              <div className="flex gap-2">
+              <div>
+                <label className="block text-sm font-medium text-slate-750 mb-1.5 font-semibold">Ghi chú (Tùy chọn)</label>
                 <input
-                  type="number"
-                  min={1}
-                  value={sellQuantity || ""}
-                  onChange={(e) => setSellQuantity(parseInt(e.target.value) || 0)}
-                  className="block px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700 max-w-[120px]"
+                  type="text"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Vd: Mô phỏng bán dịp lễ"
+                  className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
                 />
-                <Button
-                  onClick={() => setSellQuantity(suggestedQuantity)}
-                  variant="outline"
-                  className="text-xs font-semibold"
-                >
-                  Sử dụng gợi ý ({suggestedQuantity})
-                </Button>
               </div>
+
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-4">
+                <div className="flex items-start gap-2">
+                  <Info size={18} className="text-amber-600 mt-0.5 shrink-0" />
+                  <p className="text-sm text-amber-800 font-medium">
+                    Apply Simulation sẽ cập nhật tồn kho thật và kích hoạt Agent scan. Chức năng này không tạo Order, không tạo Payment và không tính doanh thu.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl">
+                <h4 className="text-sm font-semibold text-slate-700 mb-3">Tính toán dự kiến</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white p-3 rounded-lg border border-slate-150">
+                    <span className="text-xs text-slate-400 font-medium block">Số ngày mô phỏng</span>
+                    <strong className="text-base text-slate-700">{localNumberOfDays} ngày</strong>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-slate-150">
+                    <span className="text-xs text-slate-400 font-medium block">Dự kiến bán</span>
+                    <strong className="text-base text-slate-700">{dailySimulatedQuantity} {unit}/ngày</strong>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-amber-200">
+                    <span className="text-xs text-slate-400 font-medium block">Tổng nhu cầu mô phỏng</span>
+                    <strong className="text-lg text-amber-600">{localSimulatedDemand} {unit}</strong>
+                  </div>
+                </div>
+              </div>
+
             </div>
           )}
         </div>
@@ -206,9 +426,9 @@ export const AdminSimulateSalePage: React.FC = () => {
             <Button
               onClick={() => setShowConfirm(true)}
               className="px-6 py-3"
-              disabled={sellQuantity <= 0}
+              disabled={localSimulatedDemand <= 0 || isSimulating}
             >
-              Chạy giả lập bán hàng
+              Apply Simulation
             </Button>
           </div>
         )}
@@ -218,7 +438,10 @@ export const AdminSimulateSalePage: React.FC = () => {
       {result && (
         <div className="bg-white border border-slate-100 rounded-3xl p-6 sm:p-8 shadow-md space-y-5">
           <h4 className="font-bold text-slate-800 border-b border-slate-100 pb-2">Kết quả mô phỏng bán</h4>
-          
+          <p className="text-xs text-slate-500">
+            {result.productName ? `${result.productName} - ` : ""}Đã trừ {result.decreasedQuantity} sản phẩm từ dữ liệu backend.
+          </p>
+
           <div className="grid grid-cols-3 gap-4 text-center">
             <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl">
               <span className="text-[10px] text-slate-400 block font-medium">Kho trước bán</span>
@@ -242,23 +465,78 @@ export const AdminSimulateSalePage: React.FC = () => {
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs text-slate-600 space-y-1">
+              <p className="font-bold text-slate-800">
+                {result.restored ? "Đã khôi phục mô phỏng" : "Có thể khôi phục tồn kho mô phỏng"}
+              </p>
+              <p>
+                {result.restored
+                  ? `Tồn kho sau khôi phục: ${result.restoredStock ?? result.stockBefore} ${unit}.`
+                  : `Hoàn tác cộng lại ${result.decreasedQuantity} ${unit} đã trừ từ giao dịch mô phỏng này.`}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link to="/admin/agent-logs?tab=simulation">
+                <Button size="sm" variant="outline" className="text-xs flex items-center gap-1 bg-white">
+                  <Terminal size={12} /> Nhật ký mô phỏng
+                </Button>
+              </Link>
+              <Button
+                size="sm"
+                onClick={handleRestoreSimulation}
+                disabled={!result.transactionId || result.restored || isRestoring}
+                className="text-xs flex items-center gap-1"
+              >
+                <RefreshCw size={12} className={isRestoring ? "animate-spin" : ""} />
+                {result.restored ? "Đã khôi phục" : "Khôi phục mô phỏng"}
+              </Button>
+            </div>
+          </div>
+
           {result.prCreated ? (
             <div className="p-4 bg-amber-50 border border-amber-250 text-amber-900 rounded-xl space-y-3">
               <p className="text-xs font-semibold flex items-center gap-1.5">
                 <Sparkles size={14} className="text-amber-700 animate-pulse" />
-                AI Agent phát hiện tồn kho thấp và đã tạo thành công dự thảo đề xuất nhập hàng (Purchase Request)!
+                AI Agent đã tạo yêu cầu nhập hàng: {result.prNumber || result.prId}
               </p>
               <div className="flex items-center gap-3">
-                {result.prId && (
-                  <Link to={`/admin/purchase-requests/${result.prId}`}>
-                    <Button size="sm" className="bg-amber-800 hover:bg-amber-900 text-xs flex items-center gap-1 border-none text-white">
-                      <Mail size={12} /> Xem Purchase Request
-                    </Button>
-                  </Link>
-                )}
+                <Link to={result.prId ? `/admin/purchase-requests/${result.prId}` : `/admin/purchase-requests`}>
+                  <Button size="sm" className="bg-amber-800 hover:bg-amber-900 text-xs flex items-center gap-1 border-none text-white">
+                    <Mail size={12} /> Xem yêu cầu mua hàng
+                  </Button>
+                </Link>
                 <Link to="/admin/agent-logs">
                   <Button size="sm" variant="outline" className="text-xs flex items-center gap-1 border-amber-300 text-amber-900 hover:bg-amber-50/50 bg-white">
                     <Terminal size={12} /> Xem Agent Logs
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          ) : result.hasNoSupplierSkip ? (
+            <div className="p-4 bg-orange-50 border border-orange-200 text-orange-900 rounded-xl space-y-3">
+              <p className="text-xs font-semibold flex items-center gap-1.5">
+                <AlertTriangle size={14} className="text-orange-600" />
+                Sản phẩm chưa được liên kết với nhà cung cấp nên AI Agent không thể tạo yêu cầu nhập hàng.
+              </p>
+              <div className="flex items-center gap-3">
+                <Link to="/admin/suppliers">
+                  <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-xs flex items-center gap-1 border-none text-white">
+                    Đi đến Nhà cung cấp
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          ) : result.hasDuplicateSkip ? (
+            <div className="p-4 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl space-y-3">
+              <p className="text-xs font-semibold flex items-center gap-1.5">
+                <Info size={14} className="text-blue-600" />
+                Sản phẩm đã có yêu cầu nhập hàng đang chờ xử lý.
+              </p>
+              <div className="flex items-center gap-3">
+                <Link to="/admin/purchase-requests">
+                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-xs flex items-center gap-1 border-none text-white">
+                    <Mail size={12} /> Xem yêu cầu mua hàng
                   </Button>
                 </Link>
               </div>
@@ -277,9 +555,9 @@ export const AdminSimulateSalePage: React.FC = () => {
         isOpen={showConfirm}
         onClose={() => setShowConfirm(false)}
         onConfirm={handleSimulate}
-        title="Xác nhận giả lập bán"
-        message={`Bạn muốn giả lập bán hàng với số lượng ${sellQuantity} cho sản phẩm ${selectedProduct?.name}? Giao dịch này sẽ cập nhật kho thực tế và kích hoạt AI Agent kiểm định.`}
-        confirmText="Chạy mô phỏng"
+        title="Xác nhận Apply Simulation"
+        message={`Bạn muốn thực hiện Apply Simulation mô phỏng bán ${localSimulatedDemand} ${unit} cho sản phẩm ${selectedProduct?.name}? Giao dịch này sẽ cập nhật kho thực tế và kích hoạt AI Agent kiểm định.`}
+        confirmText="Apply Simulation"
         cancelText="Hủy"
         type="warning"
         isLoading={isSimulating}

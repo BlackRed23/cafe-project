@@ -8,17 +8,21 @@ import { Badge } from "../../components/common/Badge";
 import { Loading } from "../../components/common/Loading";
 import { Button } from "../../components/common/Button";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
-import { ArrowLeft, Check, Play, Ban, ShieldCheck, Mail } from "lucide-react";
-import { getErrorMessage } from "../../api/client";
+import { ArrowLeft, Check, Ban, ShieldCheck, Mail, User, Phone, MapPin, BadgeCheck } from "lucide-react";
+import { useToast } from "../../contexts/ToastContext";
+import { getOrderErrorMessage } from "../../api/orders.api";
+import { getZoneLabel } from "../../utils/shipping";
+import { getPaymentMethodLabel } from "../../utils/payment";
 
 export const AdminOrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const toast = useToast();
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   // Action state managers
-  const [actionType, setActionType] = useState<"confirm" | "processing" | "completed" | "cancel" | null>(null);
+  const [actionType, setActionType] = useState<"confirm" | "processing" | "completed" | "cancel" | "confirm_payment" | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [successInfo, setSuccessInfo] = useState<{ message: string; prId?: string } | null>(null);
 
@@ -44,30 +48,50 @@ export const AdminOrderDetailPage: React.FC = () => {
     setActionLoading(true);
     setSuccessInfo(null);
     setError(null);
+    toast.info("Đang cập nhật đơn hàng...");
 
     try {
+      let actionMessage = "Cập nhật trạng thái đơn hàng thành công.";
+
       if (actionType === "confirm") {
         const res: any = await ordersApi.confirmOrder(id);
+        actionMessage = "Đơn hàng đã chuyển sang đang xử lý. Hàng vẫn đang được giữ.";
         setSuccessInfo({
-          message: "Đơn hàng đã xác nhận thành công. Tồn kho đã được trừ tương ứng.",
+          message: actionMessage,
           prId: res?.purchaseRequestId || res?.purchaseRequest?.id || undefined,
         });
+      } else if (actionType === "confirm_payment") {
+        await ordersApi.updateOrderStatus(id, { status: order.status, paymentStatus: "PAID" } as any);
+        actionMessage = "Đã xác nhận thanh toán thành công.";
+        setSuccessInfo({ message: actionMessage });
       } else if (actionType === "processing") {
         await ordersApi.updateOrderStatus(id, { status: "PROCESSING" });
+        actionMessage = "Đơn hàng đã chuyển sang đang xử lý. Hàng vẫn đang được giữ.";
+        setSuccessInfo({ message: actionMessage });
       } else if (actionType === "completed") {
         await ordersApi.updateOrderStatus(id, { status: "COMPLETED", paymentStatus: "PAID" });
+        actionMessage = "Đơn hàng đã hoàn thành. Tồn kho thật đã được trừ.";
+        setSuccessInfo({ message: actionMessage });
       } else if (actionType === "cancel") {
         await ordersApi.updateOrderStatus(id, { status: "CANCELLED" });
+        actionMessage = "Đơn hàng đã hủy. Hàng đang giữ đã được hoàn lại vào khả dụng.";
+        setSuccessInfo({ message: actionMessage });
       }
       
       const updated = await ordersApi.getOrderById(id);
       setOrder(updated);
+      toast.success(actionMessage);
     } catch (err: any) {
-      const msg = getErrorMessage(err);
+      const msg = getOrderErrorMessage(
+        err,
+        "Không thể cập nhật trạng thái đơn hàng, vui lòng thử lại."
+      );
       if (msg.toLowerCase().includes("stock") || msg.toLowerCase().includes("tồn kho")) {
         setError("Không đủ tồn kho để xác nhận đơn hàng. AI Agent sẽ đề xuất tạo Purchase Request.");
+        toast.error("Không đủ tồn kho", "AI Agent sẽ tự động tạo đề xuất nhập hàng.");
       } else {
         setError(msg);
+        toast.error(msg);
       }
     } finally {
       setActionLoading(false);
@@ -91,7 +115,6 @@ export const AdminOrderDetailPage: React.FC = () => {
   }
 
   const isPending = order.status === "PENDING";
-  const isConfirmed = order.status === "CONFIRMED";
   const isProcessing = order.status === "PROCESSING";
   const isCancelled = order.status === "CANCELLED";
   const isCompleted = order.status === "COMPLETED";
@@ -144,21 +167,53 @@ export const AdminOrderDetailPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Client & Shipping info */}
+        {/* Order info */}
         <div className="grid sm:grid-cols-2 gap-6 bg-slate-50/50 p-5 rounded-2xl border border-slate-100/50">
           <div className="space-y-1.5 text-sm">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Khách hàng nhận</h4>
-            <p className="font-bold text-slate-800">{order.shippingName}</p>
-            <p className="text-slate-500 font-medium">{order.shippingPhone}</p>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Khách hàng đặt hàng</h4>
+            <p className="font-bold text-slate-800">{order.customer?.name || "Không rõ"}</p>
+            <p className="text-slate-500 font-medium">{order.customer?.email || "Không rõ"}</p>
           </div>
           <div className="space-y-1.5 text-sm">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Địa chỉ nhận hàng</h4>
-            <p className="text-slate-700 leading-relaxed font-semibold">{order.shippingAddress}</p>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ghi chú đơn hàng</h4>
             {order.note && (
-              <p className="text-xs text-slate-400 italic mt-1 block">Ghi chú: {order.note}</p>
+              <p className="text-slate-700 leading-relaxed font-semibold">{order.note}</p>
             )}
+            {!order.note && <p className="text-slate-500 font-medium">Không có ghi chú</p>}
           </div>
         </div>
+
+        {/* Shipping Info */}
+        {(order.shippingName || order.shippingPhone || order.shippingAddress) && (
+          <div className="bg-amber-50/40 border border-amber-900/5 rounded-2xl p-5">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <MapPin size={12} className="text-amber-700" /> Thông tin giao hàng
+            </h4>
+            <div className="space-y-2.5">
+              {order.shippingName && (
+                <div className="flex items-center gap-2.5 text-sm">
+                  <User size={14} className="text-amber-700 shrink-0" />
+                  <span className="text-slate-500 font-medium w-32 shrink-0">Người nhận:</span>
+                  <span className="font-bold text-slate-800">{order.shippingName}</span>
+                </div>
+              )}
+              {order.shippingPhone && (
+                <div className="flex items-center gap-2.5 text-sm">
+                  <Phone size={14} className="text-amber-700 shrink-0" />
+                  <span className="text-slate-500 font-medium w-32 shrink-0">Số điện thoại:</span>
+                  <span className="font-bold text-slate-800">{order.shippingPhone}</span>
+                </div>
+              )}
+              {order.shippingAddress && (
+                <div className="flex items-start gap-2.5 text-sm">
+                  <MapPin size={14} className="text-amber-700 shrink-0 mt-0.5" />
+                  <span className="text-slate-500 font-medium w-32 shrink-0">Địa chỉ:</span>
+                  <span className="font-bold text-slate-800 leading-relaxed">{order.shippingAddress}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Products list */}
         <div>
@@ -167,15 +222,15 @@ export const AdminOrderDetailPage: React.FC = () => {
             {order.items?.map((item) => (
               <div key={item.id} className="p-4 flex items-center justify-between text-sm gap-4">
                 <div>
-                  <p className="font-bold text-slate-800">{item.product?.name || "Sản phẩm"}</p>
+                  <p className="font-bold text-slate-800">{item.product?.name || (item as any).Product?.name || "Sản phẩm"}</p>
                   <p className="text-slate-400 text-xs mt-0.5">
-                    Đơn giá: {formatCurrency(item.price)} / {item.product?.unit || "hộp"}
+                    Đơn giá: {formatCurrency(item.price || (item as any).Price || 0)} / {item.product?.unit || (item as any).Product?.unit || "hộp"}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="font-semibold text-slate-700">x {item.quantity}</p>
                   <p className="font-black text-amber-800 text-sm mt-0.5">
-                    {formatCurrency(item.price * item.quantity)}
+                    {formatCurrency((item.price || (item as any).Price || 0) * item.quantity)}
                   </p>
                 </div>
               </div>
@@ -186,12 +241,33 @@ export const AdminOrderDetailPage: React.FC = () => {
         {/* Calculation details */}
         <div className="border-t border-slate-100 pt-4 flex flex-col gap-2.5 max-w-sm ml-auto w-full">
           <div className="flex justify-between text-sm text-slate-500">
+            <span>Tiền hàng</span>
+            <span>{formatCurrency(order.totalAmount - (order.shippingFee ?? 0))}</span>
+          </div>
+          {order.shippingFee != null && (
+            <div className="flex justify-between text-sm text-slate-500">
+              <span className="flex items-center gap-1.5">
+                Phí vận chuyển
+                {order.shippingZone && (
+                  <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-400">
+                    {getZoneLabel(order.shippingZone)}
+                  </span>
+                )}
+              </span>
+              {order.shippingFee === 0 ? (
+                <span className="text-emerald-600 font-bold">Miễn phí</span>
+              ) : (
+                <span className="font-semibold text-slate-700">{formatCurrency(order.shippingFee)}</span>
+              )}
+            </div>
+          )}
+          <div className="flex justify-between text-sm text-slate-500">
             <span>Phương thức</span>
-            <span className="font-semibold text-slate-700">{order.paymentMethod}</span>
+            <span className="font-semibold text-slate-700">{getPaymentMethodLabel(order.paymentMethod)}</span>
           </div>
           <div className="flex justify-between text-base font-black text-slate-800 border-t border-slate-100 pt-3">
             <span>Tổng thanh toán</span>
-            <span className="text-amber-800 text-lg">{formatCurrency(order.totalAmount)}</span>
+            <span className="text-amber-800 text-lg">{formatCurrency(order.totalAmount || (order as any).total_amount || 0)}</span>
           </div>
         </div>
 
@@ -206,21 +282,23 @@ export const AdminOrderDetailPage: React.FC = () => {
               <Ban size={14} className="mr-1.5" /> Hủy đơn hàng
             </Button>
 
+            {/* Xác nhận đã nhận tiền (chỉ hiện khi thanh toán không phải COD và chưa PAID) */}
+            {(order.paymentMethod === "BANK_TRANSFER" || order.paymentMethod === "VIET_QR") &&
+             order.paymentStatus === "PENDING" && (
+              <Button
+                onClick={() => setActionType("confirm_payment")}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <BadgeCheck size={14} className="mr-1.5" /> Xác nhận đã nhận tiền
+              </Button>
+            )}
+
             {isPending && (
               <Button
                 onClick={() => setActionType("confirm")}
                 className="bg-amber-800 hover:bg-amber-900 text-white"
               >
-                <Check size={14} className="mr-1.5" /> Xác nhận & Trừ kho
-              </Button>
-            )}
-
-            {isConfirmed && (
-              <Button
-                onClick={() => setActionType("processing")}
-                className="bg-amber-800 hover:bg-amber-900 text-white"
-              >
-                <Play size={14} className="mr-1.5" /> Bắt đầu chế biến
+                <Check size={14} className="mr-1.5" /> Xác nhận xử lý
               </Button>
             )}
 
@@ -229,7 +307,7 @@ export const AdminOrderDetailPage: React.FC = () => {
                 onClick={() => setActionType("completed")}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
-                <ShieldCheck size={14} className="mr-1.5" /> Hoàn thành đơn hàng
+                <ShieldCheck size={14} className="mr-1.5" /> Hoàn thành & Trừ kho
               </Button>
             )}
           </div>
@@ -243,7 +321,9 @@ export const AdminOrderDetailPage: React.FC = () => {
         onConfirm={handleActionConfirm}
         title={
           actionType === "confirm"
-            ? "Xác nhận đơn hàng"
+            ? "Xác nhận xử lý"
+            : actionType === "confirm_payment"
+            ? "Xác nhận đã nhận tiền"
             : actionType === "processing"
             ? "Chuyển trạng thái chế biến"
             : actionType === "completed"
@@ -252,7 +332,9 @@ export const AdminOrderDetailPage: React.FC = () => {
         }
         message={
           actionType === "confirm"
-            ? "Khi xác nhận đơn hàng, hệ thống sẽ tự động trừ sản phẩm tương ứng trong kho và kích hoạt AI Agent kiểm tra tồn kho. Bạn có muốn duyệt ngay?"
+            ? "Đơn hàng sẽ chuyển sang Đang xử lý. Hàng vẫn được giữ trong reservedStock và chưa trừ tồn kho thật."
+            : actionType === "confirm_payment"
+            ? "Xác nhận đã nhận được tiền chuyển khoản từ khách hàng. Trạng thái thanh toán sẽ được cập nhật thành ĐÃ THANH TOÁN."
             : actionType === "cancel"
             ? "Bạn có chắc chắn muốn hủy đơn hàng này?"
             : "Bạn có muốn thay đổi trạng thái đơn hàng này?"

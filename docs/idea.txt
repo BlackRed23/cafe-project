@@ -1,0 +1,37 @@
+vấn đề gặp phải:
+ở phần đơn hàng khi admin xác nhận đơn hàng đã được hoàn thành thì ở sản phẩm được hoàn thành chưa 
+được trừ ở tồn kho của sản phẩm đó
+thực hiện:
+sẽ thực hiện theo luồng khi user xác nhận đặt hàng thì đơn hàng chuyển sang trạng thái pending lúc đó
+ở sản phẩm mà user đặt hàng sẽ chuyển sang trạng thái khả dụng reservedStock 
+Ví dụ sản phẩm:
+
+Cà phê G7
+stock = 12 hộp
+reservedStock = 0
+availableStock = stock - reservedStock = 12
+minStock = 10
+
+Khách đặt 3 hộp.
+
+Khi khách bấm Đặt hàng:
+
+stock = 12
+reservedStock = 3
+availableStock = 9
+orderStatus = PENDING
+
+
+và khi admin bấm xác nhận đơn đặt hàng thì sẽ trừ thật vào trong kho và khi admin bấm cancell 
+availableStock sẽ chuyển về 0 và cộng lại stock.
+kết quả:
+user xác nhận đặt hàng thì ở đơn hàng của admin chuyển pending đang sửu lý và và sản phẩm sẽ ở trạng thái khả dụng 
+khi admin bấm hoàn thành đơn hàng sản phẩm sẻ trừ thật vào tồn kho và khi huỷ sẽ hoàn trả vào tồn kho 
+ 
+
+Vậy thì ở phần quét định kỳ là sao:
+nếu khi tồn kho có thay đổi thì backend gọi hàm kiểm tra thì lúc đó ai agent mới hoạt động 
+thì nếu luồng như vậy đâu cần cho agent thực hiện quét định kỳ 
+
+
+ở phần nhà cung cấp sẽ tuỳ chọn nhà cung cấp dựa vào phần thực hiện 

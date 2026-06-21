@@ -1,4 +1,4 @@
-export type InventoryStatus = "OK" | "WARNING" | "NEED_RESTOCK";
+﻿export type InventoryStatus = "OK" | "WARNING" | "NEED_RESTOCK";
 
 export interface Inventory {
   id: string;
@@ -12,8 +12,14 @@ export interface Inventory {
     image_url?: string;
   };
   quantity: number;
+  stock?: number;
+  reservedStock?: number;
+  reserved_stock?: number;
+  availableStock?: number;
+  available_stock?: number;
   minThreshold?: number;
   min_threshold?: number;
+  unit?: string;
 }
 
 export interface InventoryTransaction {

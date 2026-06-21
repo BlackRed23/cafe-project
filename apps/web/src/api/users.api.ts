@@ -1,37 +1,34 @@
-import { apiClient, USE_MOCK } from "./client";
+import { apiClient } from "./client";
 import type { User } from "../types/auth.types";
-import { MockDB } from "./mockDb";
 
 export const usersApi = {
+  // Lấy toàn bộ danh sách users từ DB
   getUsers: async (): Promise<User[]> => {
-    if (USE_MOCK) {
-      return MockDB.getUsers();
-    }
-    const response = await apiClient.get<User[]>("/users");
-    return response.data;
+    const response = await apiClient.get("/users");
+    // Backend trả về: { success, message, data: { users: [...] } }
+    return response.data?.data?.users ?? response.data?.users ?? [];
   },
 
-  createUser: async (payload: Partial<User>): Promise<User> => {
-    if (USE_MOCK) {
-      return MockDB.createUser(payload);
-    }
-    const response = await apiClient.post<User>("/users", payload);
-    return response.data;
+  // Tạo user mới (Admin tạo tài khoản cho nhân viên / khách)
+  createUser: async (payload: Partial<User> & { password?: string }): Promise<User> => {
+    const response = await apiClient.post("/users", payload);
+    return response.data?.data?.user ?? response.data?.user ?? response.data;
   },
 
+  // Cập nhật thông tin user (Admin sửa)
   updateUser: async (id: string, payload: Partial<User>): Promise<User> => {
-    if (USE_MOCK) {
-      return MockDB.updateUser(id, payload);
-    }
-    const response = await apiClient.put<User>(`/users/${id}`, payload);
-    return response.data;
+    const response = await apiClient.put(`/users/${id}`, payload);
+    return response.data?.data?.user ?? response.data?.user ?? response.data;
   },
 
+  // Xóa user
   deleteUser: async (id: string): Promise<void> => {
-    if (USE_MOCK) {
-      MockDB.deleteUser(id);
-      return;
-    }
     await apiClient.delete(`/users/${id}`);
+  },
+
+  // Khách hàng tự cập nhật profile của mình
+  updateProfile: async (payload: { name?: string; phone?: string }): Promise<User> => {
+    const response = await apiClient.patch("/auth/profile", payload);
+    return response.data?.data?.user ?? response.data?.user ?? response.data;
   },
 };

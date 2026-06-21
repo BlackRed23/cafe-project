@@ -1,7 +1,7 @@
 import type { Product } from "./product.types";
 
-export type PaymentMethod = "COD" | "CASH" | "BANK_TRANSFER";
-export type PaymentStatus = "PENDING" | "PAID" | "FAILED" | "CANCELLED";
+export type PaymentMethod = "CASH";
+export type PaymentStatus = "PENDING" | "SUCCESS" | "PAID" | "FAILED" | "REFUNDED";
 export type OrderStatus =
   | "PENDING"
   | "CONFIRMED"
@@ -35,14 +35,22 @@ export interface OrderItem {
 export interface Order {
   id: string;
   userId: string;
+  customer?: {
+    id?: string;
+    name?: string | null;
+    email?: string | null;
+  } | null;
   totalAmount: number;
+  shippingFee?: number | null;
+  shippingZone?: string | null;
   status: OrderStatus;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
-  shippingName: string;
-  shippingPhone: string;
-  shippingAddress: string;
+  shippingName?: string | null;
+  shippingPhone?: string | null;
+  shippingAddress?: string | null;
   note?: string;
+  stockDeductedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   items?: OrderItem[];

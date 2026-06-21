@@ -21,4 +21,6 @@ export interface Product {
     minThreshold?: number;
     min_threshold?: number;
   };
+  deletedAt?: Date | string | null;
+  pendingDeleteUntil?: Date | string | null;
 }

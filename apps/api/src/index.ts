@@ -11,18 +11,23 @@ import purchaseRoutes from './modules/purchase/purchase.route';
 import simulateSaleRoutes from './modules/simulate-sale/simulate-sale.route';
 import systemSettingRoutes from './modules/system-setting/system-setting.route';
 import { productSupplierRoutes, supplierProductRoutes, supplierRoutes } from './modules/supplier/supplier.route';
+import userRoutes from './modules/user/user.route';
 import dashboardRoutes from './modules/dashboard/dashboard.route';
 import uploadRoutes from './modules/upload/upload.route';
 import { env } from './common/env';
 import { errorHandler } from './common/error-handler';
 import { prisma } from './common/prisma';
 import { sendError, sendSuccess } from './common/response';
+import { scheduleJobs } from './modules/cron/cron.service';
 
 const app = express();
 const PORT = env.port;
 const SERVER_URL = `http://localhost:${PORT}`;
 
-app.use(cors());
+app.use(cors({
+    origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+    credentials: true
+}));
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);
@@ -39,6 +44,7 @@ app.use('/api/supplier-products', supplierProductRoutes);
 app.use('/api/products', productSupplierRoutes);
 app.use('/api/simulate-sale', simulateSaleRoutes);
 app.use('/api/system-settings', systemSettingRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/upload', uploadRoutes);
 
@@ -61,6 +67,7 @@ app.use(errorHandler);
 const server = app.listen(PORT, () => {
     console.log(`[api] Server is running at ${SERVER_URL}`);
     console.log(`[api] Health check: ${SERVER_URL}/health`);
+    scheduleJobs();
 });
 
 server.on('error', (error: NodeJS.ErrnoException) => {
@@ -71,3 +78,5 @@ server.on('error', (error: NodeJS.ErrnoException) => {
 
     console.error('[api] Server failed to start:', error);
 });
+
+// Trigger nodemon restart

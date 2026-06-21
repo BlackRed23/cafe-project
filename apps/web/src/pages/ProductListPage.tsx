@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { productsApi } from "../api/products.api";
 import type { Product } from "../types/product.types";
 import { useCart } from "../contexts/CartContext";
 import { ProductCard } from "../components/product/ProductCard";
 import { Loading } from "../components/common/Loading";
+import { useAuth } from "../contexts/AuthContext";
 import { EmptyState } from "../components/common/EmptyState";
 import { Search, Sparkles, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 
 import { categoriesApi } from "../api/categories.api";
-import type { Category } from "../types/category.types";
+import { useToast } from "../contexts/ToastContext";
 
 const PRICE_RANGES = [
   { id: "all", name: "Mọi mức giá" },
@@ -31,6 +33,10 @@ export const ProductListPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { addToCart } = useCart();
+  const toast = useToast();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const fetchData = async () => {
     try {
@@ -41,11 +47,10 @@ export const ProductListPage: React.FC = () => {
         categoriesApi.getCategories()
       ]);
       setProducts(productsData);
-      
-      const activeCats = categoriesData.filter(c => c.isActive !== false);
+
       setCategories([
         { id: "all", name: "Tất cả" },
-        ...activeCats.map(c => ({ id: c.id, name: c.name }))
+        ...categoriesData.map(c => ({ id: c.id, name: c.name }))
       ]);
     } catch (err: any) {
       setError("Không thể tải dữ liệu. Vui lòng kiểm tra lại kết nối.");
@@ -65,7 +70,23 @@ export const ProductListPage: React.FC = () => {
   }, [search, selectedCategory, selectedPriceRange, sortBy]);
 
   const handleAddToCart = (product: Product) => {
-    addToCart(product, 1);
+    if (!isAuthenticated) {
+      toast.warning("Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng!");
+      navigate("/login", { state: { returnUrl: location.pathname } });
+      return;
+    }
+
+    const stockQuantity = product.inventory?.quantity;
+
+    if (typeof stockQuantity === "number" && stockQuantity <= 0) {
+      toast.warning("Sản phẩm hiện đã hết hàng.");
+      return;
+    }
+
+    const didAdd = addToCart(product, 1);
+    if (!didAdd) {
+      toast.warning("Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");
+    }
   };
 
   // Filter and Sort Logic
@@ -139,7 +160,7 @@ export const ProductListPage: React.FC = () => {
         <p className="font-bold mb-2">Đã xảy ra lỗi</p>
         <p className="text-sm mb-6">{error}</p>
         <button
-          onClick={fetchProducts}
+          onClick={fetchData}
           className="px-6 py-2.5 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-sm font-bold transition-all shadow-md active:scale-95"
         >
           Thử lại

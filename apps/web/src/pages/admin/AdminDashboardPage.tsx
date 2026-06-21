@@ -298,7 +298,9 @@ export const AdminDashboardPage: React.FC = () => {
                           <Link to={`/admin/orders/${order.id}`}>#{orderIdStr}</Link>
                         </td>
                         <td className="py-3.5">
-                          <p className="font-semibold text-slate-700">{order.shippingName}</p>
+                          <p className="font-semibold text-slate-700">
+                            {order.customer?.name || order.customer?.email || `#${orderIdStr}`}
+                          </p>
                           {dateVal && (
                             <span className="text-[10px] text-slate-400">{formatDate(dateVal)}</span>
                           )}

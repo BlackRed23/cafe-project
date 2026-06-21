@@ -1,8 +1,9 @@
-﻿import { OrderStatus, PaymentStatus } from '@cafe-project/database';
+import { OrderStatus, PaymentStatus } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
 import type { JwtUserPayload } from '../auth/auth.service';
 import { orderRepository, type OrderRecord } from './order.repository';
 import type { CreateOrderInput, OrderFiltersInput, OrderStatusInput } from './order.validator';
+import { scanInventoryViaAgentService } from '../agent/agent.client';
 
 export type OrderDto = ReturnType<typeof toOrderDto>;
 
@@ -13,16 +14,33 @@ const toOrderDto = (order: OrderRecord) => ({
     status: order.status,
     displayStatus: order.status === OrderStatus.PROCESSING ? 'CONFIRMED' : order.status,
     totalAmount: Number(order.totalAmount),
+    shippingFee: Number(order.shippingFee),
+    shippingZone: order.shippingZone ?? null,
     paymentStatus: order.payment?.status ?? 'PENDING',
+    paymentMethod: order.payment?.method ?? null,
     payment: order.payment ? { ...order.payment, amount: Number(order.payment.amount) } : null,
+    shippingName: order.shippingName ?? null,
+    shippingPhone: order.shippingPhone ?? null,
+    shippingAddress: order.shippingAddress ?? null,
+    note: order.note ?? null,
+    stockDeductedAt: order.stockDeductedAt ?? null,
     items: order.items.map((item) => ({
         id: item.id,
+        orderId: item.orderId,
         productId: item.productId,
         productName: item.product.name,
         productSku: item.product.sku,
         quantity: item.quantity,
+        price: Number(item.price),
         unitPrice: Number(item.price),
-        subtotal: Number(item.price) * item.quantity
+        subtotal: Number(item.price) * item.quantity,
+        product: {
+            id: item.product.id,
+            name: item.product.name,
+            sku: item.product.sku,
+            unit: item.product.unit ?? 'hộp',
+            imageUrl: item.product.imageUrl ?? null
+        }
     })),
     createdAt: order.createdAt,
     updatedAt: order.updatedAt
@@ -92,9 +110,29 @@ const assertTransition = (order: OrderRecord, next: OrderStatus): void => {
 
 const normalizeOrderError = (error: unknown, fallback: string): HttpError => {
     const message = error instanceof Error ? error.message : fallback;
+    const lower = message.toLowerCase();
 
-    if (message.includes('Not enough inventory')) {
-        return new HttpError(400, 'Không đủ tồn kho để xác nhận đơn hàng.');
+    if (
+        lower.includes('not enough inventory') ||
+        lower.includes('inventory') ||
+        lower.includes('stock') ||
+        lower.includes('không đủ') ||
+        lower.includes('tồn kho') ||
+        lower.includes('vừa hết hàng') ||
+        lower.includes('khÃ´ng Ä‘á»§') ||
+        lower.includes('vá»«a háº¿t hÃ ng')
+    ) {
+        return new HttpError(400, 'Không đủ tồn kho để tạo/cập nhật đơn hàng, vui lòng giảm số lượng hoặc kiểm tra lại tồn kho khả dụng.');
+    }
+
+    if (
+        lower.includes('product not found') ||
+        lower.includes('không tìm thấy sản phẩm') ||
+        lower.includes('khÃ´ng tÃ¬m tháº¥y sáº£n pháº©m') ||
+        lower.includes('inactive') ||
+        lower.includes('not available')
+    ) {
+        return new HttpError(400, 'Sản phẩm không còn khả dụng, vui lòng cập nhật giỏ hàng.');
     }
 
     return new HttpError(400, fallback);
@@ -128,7 +166,21 @@ export const updateOrderStatus = async (id: string, input: OrderStatusInput, use
     assertTransition(order, nextStatus);
 
     try {
-        return toOrderDto(await orderRepository.updateStatus(order, nextStatus, userId));
+        const updatedOrder = await orderRepository.updateStatus(order, nextStatus, userId);
+
+        if (nextStatus === OrderStatus.COMPLETED && !order.stockDeductedAt) {
+            const productIds = updatedOrder.items.map((item) => item.productId);
+            scanInventoryViaAgentService({
+                productIds,
+                triggerType: 'ORDER_COMPLETED',
+                sourceType: 'ORDER',
+                sourceId: id
+            }, userId).catch((error) => {
+                console.error('[AI_AGENT] Failed to scan inventory after order completed', error);
+            });
+        }
+
+        return toOrderDto(updatedOrder);
     } catch (error) {
         throw normalizeOrderError(error, 'Không thể cập nhật trạng thái đơn hàng.');
     }

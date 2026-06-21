@@ -17,6 +17,8 @@ import {
   Boxes,
   Users,
   LayoutGrid,
+  Settings,
+  Key,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -35,6 +37,7 @@ const MENU_GROUPS = [
     label: "Cấu hình & Hệ thống",
     items: [
       { label: "Thành viên", path: "/admin/users", icon: Users },
+      { label: "Cài đặt hệ thống", path: "/admin/system-settings", icon: Settings },
     ],
   },
   {
@@ -66,7 +69,7 @@ const MENU_GROUPS = [
 export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const isActive = (path: string) => {
@@ -96,13 +99,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
         <Link
           to="/admin/dashboard"
           onClick={() => setSidebarOpen(false)}
-          className="flex items-center gap-3 group"
+          className="flex items-center  group"
         >
-          <div className="relative">
-            <div className="absolute inset-0 bg-amber-500 rounded-xl blur-md opacity-30 group-hover:opacity-50 transition-opacity" />
-            <div className="relative p-2.5 bg-gradient-to-br from-amber-500 to-amber-700 text-white rounded-xl shadow-lg">
-              <Coffee size={19} />
-            </div>
+          <div className="p-2.5 bg-white-300 text-white  group-hover:bg-white-600 transition-all ">
+            <img className="w-20 h-20" src="../src/assets/logo-inventory1.png" alt="" />
           </div>
           <div>
             <span className="text-[14px] font-black text-white tracking-wide uppercase font-serif leading-none block">
@@ -140,9 +140,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
                 </span>
                 <ChevronRight
                   size={12}
-                  className={`text-white/20 transition-transform duration-200 group-hover:text-white/40 ${
-                    isCollapsed ? "" : "rotate-90"
-                  }`}
+                  className={`text-white/20 transition-transform duration-200 group-hover:text-white/40 ${isCollapsed ? "" : "rotate-90"
+                    }`}
                 />
               </button>
 
@@ -166,9 +165,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
                           {active && (
                             <span className="absolute left-0 inset-y-2.5 w-[3px] bg-amber-400 rounded-r-full" />
                           )}
-                          <span className={`flex-shrink-0 transition-colors ${
-                            active ? "text-amber-300" : "text-white/30 group-hover:text-amber-400"
-                          }`}>
+                          <span className={`flex-shrink-0 transition-colors ${active ? "text-amber-300" : "text-white/30 group-hover:text-amber-400"
+                            }`}>
                             <Icon size={16} />
                           </span>
                           <span className="flex-1 truncate">{item.label}</span>
@@ -186,23 +184,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
         })}
       </div>
 
-      {/* ── FOOTER ACTIONS ── */}
-      <div className="p-3 border-t border-white/5 space-y-1">
-        <button
-          onClick={() => { navigate("/products"); setSidebarOpen(false); }}
-          className="flex items-center gap-3 w-full rounded-xl px-3 py-2.5 text-[13px] font-medium text-white/40 hover:text-white/80 hover:bg-white/5 transition-all group"
-        >
-          <Home size={16} className="text-white/25 group-hover:text-amber-400 transition-colors flex-shrink-0" />
-          <span>Quay lại Store</span>
-        </button>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 w-full rounded-xl px-3 py-2.5 text-[13px] font-medium text-rose-500/70 hover:text-rose-400 hover:bg-rose-500/10 transition-all group"
-        >
-          <LogOut size={16} className="flex-shrink-0" />
-          <span>Đăng xuất</span>
-        </button>
-      </div>
+
     </aside>
   );
 };

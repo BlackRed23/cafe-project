@@ -26,6 +26,18 @@ export const productRepository = {
         });
     },
 
+    async findExpiredPendingDeleteProducts(now: Date = new Date()): Promise<ProductRecord[]> {
+        return prisma.product.findMany({
+            where: {
+                pendingDeleteUntil: {
+                    not: null,
+                    lte: now,
+                },
+            },
+            include: productInclude,
+        });
+    },
+
     async findById(id: string, includeInactive = false): Promise<ProductRecord | null> {
         return prisma.product.findFirst({
             where: includeInactive ? { id } : { id, isActive: true },

@@ -1,54 +1,61 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Key, Eye, EyeOff, CheckCircle } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/common/Button";
 import { Input } from "../components/common/Input";
+import { authApi } from "../api/auth.api";
+import { getErrorMessage } from "../api/client";
 
 export const ChangePasswordPage: React.FC = () => {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  
+
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    
+
     if (!currentPassword || !newPassword || !confirmPassword) {
       setError("Vui lòng điền đầy đủ các trường.");
       return;
     }
-    
+
     if (newPassword !== confirmPassword) {
       setError("Mật khẩu mới không khớp.");
       return;
     }
-    
+
     if (newPassword.length < 6) {
       setError("Mật khẩu mới phải có ít nhất 6 ký tự.");
       return;
     }
 
     setIsLoading(true);
-    
-    // Simulate API call
-    setTimeout(() => {
+
+    try {
+      await authApi.changePassword({ currentPassword, newPassword });
       setIsLoading(false);
       setSuccess(true);
       
-      // Auto redirect after success
+      // Logout and redirect to login after 3 seconds
       setTimeout(() => {
-        navigate("/");
-      }, 2000);
-    }, 1000);
+        logout();
+      }, 3000);
+    } catch (err: any) {
+      setIsLoading(false);
+      setError(getErrorMessage(err) || "Đổi mật khẩu thất bại. Vui lòng thử lại.");
+    }
   };
 
   if (success) {
@@ -58,7 +65,7 @@ export const ChangePasswordPage: React.FC = () => {
           <CheckCircle size={32} />
         </div>
         <h2 className="text-2xl font-bold text-slate-800">Đổi mật khẩu thành công!</h2>
-        <p className="text-slate-500">Mật khẩu của bạn đã được cập nhật. Đang chuyển hướng...</p>
+        <p className="text-slate-500">Mật khẩu của bạn đã được cập nhật. Bạn sẽ được đăng xuất để đăng nhập lại bằng mật khẩu mới...</p>
       </div>
     );
   }
@@ -99,7 +106,7 @@ export const ChangePasswordPage: React.FC = () => {
               {showCurrent ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
-          
+
           <div className="relative">
             <Input
               label="Mật khẩu mới"
@@ -116,7 +123,7 @@ export const ChangePasswordPage: React.FC = () => {
               {showNew ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
-          
+
           <div className="relative">
             <Input
               label="Xác nhận mật khẩu mới"

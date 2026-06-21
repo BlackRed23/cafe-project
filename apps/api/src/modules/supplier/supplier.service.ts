@@ -25,6 +25,9 @@ const toSupplierDto = (supplier: SupplierRecord) => ({
         minOrderQuantity: mapping.minOrderQuantity,
         leadTimeDays: mapping.leadTimeDays,
         isPreferred: mapping.isPreferred,
+        purchaseUnit: mapping.purchaseUnit,
+        conversionQuantity: mapping.conversionQuantity,
+        conversionTargetUnit: mapping.conversionTargetUnit,
         createdAt: mapping.createdAt,
         updatedAt: mapping.updatedAt
     })),
@@ -44,6 +47,9 @@ const toSupplierProductDto = (mapping: SupplierProductRecord) => ({
     minOrderQuantity: mapping.minOrderQuantity,
     leadTimeDays: mapping.leadTimeDays,
     isPreferred: mapping.isPreferred,
+    purchaseUnit: mapping.purchaseUnit,
+    conversionQuantity: mapping.conversionQuantity,
+    conversionTargetUnit: mapping.conversionTargetUnit,
     createdAt: mapping.createdAt,
     updatedAt: mapping.updatedAt
 });
@@ -91,7 +97,10 @@ export const supplierService = {
                 supplierSku: normalize(input.supplierSku),
                 minOrderQuantity: input.minOrderQuantity ?? 1,
                 leadTimeDays: input.leadTimeDays ?? 3,
-                isPreferred: input.isPreferred ?? false
+                isPreferred: input.isPreferred ?? false,
+                purchaseUnit: normalize(input.purchaseUnit),
+                conversionQuantity: input.conversionQuantity ?? null,
+                conversionTargetUnit: normalize(input.conversionTargetUnit)
             }));
         }
         catch (error) { if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new HttpError(409, 'Supplier already provides this product.'); throw error; }
@@ -110,7 +119,10 @@ export const supplierService = {
             ...(input.supplierSku !== undefined ? { supplierSku: normalize(input.supplierSku) } : {}),
             ...(input.minOrderQuantity !== undefined ? { minOrderQuantity: input.minOrderQuantity } : {}),
             ...(input.leadTimeDays !== undefined ? { leadTimeDays: input.leadTimeDays } : {}),
-            ...(input.isPreferred !== undefined ? { isPreferred: input.isPreferred } : {})
+            ...(input.isPreferred !== undefined ? { isPreferred: input.isPreferred } : {}),
+            ...(input.purchaseUnit !== undefined ? { purchaseUnit: normalize(input.purchaseUnit) } : {}),
+            ...(input.conversionQuantity !== undefined ? { conversionQuantity: input.conversionQuantity } : {}),
+            ...(input.conversionTargetUnit !== undefined ? { conversionTargetUnit: normalize(input.conversionTargetUnit) } : {})
         }));
     },
     async deleteSupplierProduct(id: string) { await ensureSupplierProduct(id); return toSupplierProductDto(await supplierRepository.deleteSupplierProduct(id)); }

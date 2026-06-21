@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "productId": "prod_987654321",
+      "quantity": 2
+    },
+    {
+      "productId": "prod_123456789",
+      "quantity": 1
+    }
+  ],
+  "paymentMethod": "CASH",
+  "note": "Ít đá, nhiều sữa"
+}

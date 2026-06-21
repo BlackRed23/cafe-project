@@ -12,6 +12,7 @@ model Inventory {
   productId    String  @unique
   product      Product @relation(fields: [productId], references: [id])
   quantity     Int     @default(0)
+  reservedStock Int    @default(0)
   minThreshold Int     @default(10)
   unit         String
   purchaseRequestItems PurchaseRequestItem[]

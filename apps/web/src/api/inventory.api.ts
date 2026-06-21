@@ -1,54 +1,131 @@
-import { apiClient, USE_MOCK } from "./client";
+import { apiClient, unwrapApiData, unwrapApiList } from "./client";
 import type { Inventory, InventoryTransaction } from "../types/inventory.types";
-import { MockDB } from "./mockDb";
+
+type ThresholdSuggestionParams = {
+  salesWindowDays?: number;
+  bufferDays?: number;
+  delayBufferDays?: number;
+  planningPeriod?: 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
+  planningDays?: number;
+};
+
+const normalizeInventoryMutation = (payload: any) => {
+  const data = unwrapApiData<any>(payload);
+  const inventory = normalizeInventory(data?.inventory ?? data);
+
+  return {
+    ...data,
+    inventory,
+    quantity: inventory.quantity,
+    minThreshold: inventory.minThreshold,
+    min_threshold: inventory.min_threshold,
+    productId: inventory.productId,
+    product_id: inventory.product_id,
+    product: inventory.product,
+  };
+};
+
+const normalizeInventory = (inventory: any): Inventory => ({
+  ...inventory,
+  productId: inventory?.productId ?? inventory?.product_id,
+  product_id: inventory?.product_id ?? inventory?.productId,
+  minThreshold: inventory?.minThreshold ?? inventory?.min_threshold,
+  min_threshold: inventory?.min_threshold ?? inventory?.minThreshold,
+  product: inventory?.product ?? {
+    id: inventory?.productId ?? inventory?.product_id,
+    name: inventory?.productName ?? "Sản phẩm",
+    unit: inventory?.unit,
+    imageUrl: inventory?.productImageUrl,
+    image_url: inventory?.productImageUrl,
+  },
+});
+
+const normalizeTransaction = (transaction: any): InventoryTransaction => ({
+  ...transaction,
+  productId: transaction?.productId ?? transaction?.product_id,
+  product_id: transaction?.product_id ?? transaction?.productId,
+  quantityChange: transaction?.quantityChange ?? transaction?.quantity_change ?? transaction?.quantity,
+  quantity_change: transaction?.quantity_change ?? transaction?.quantityChange ?? transaction?.quantity,
+  createdAt: transaction?.createdAt ?? transaction?.created_at,
+  created_at: transaction?.created_at ?? transaction?.createdAt,
+  product: transaction?.product ?? {
+    id: transaction?.productId ?? transaction?.product_id,
+    name: transaction?.productName ?? "Sản phẩm",
+  },
+});
+
+const resolveInventoryId = async (productIdOrInventoryId: string): Promise<string> => {
+  const inventories = await inventoryApi.getInventories();
+  const inventory = inventories.find(
+    (item) =>
+      item.id === productIdOrInventoryId ||
+      (item as any).inventoryId === productIdOrInventoryId ||
+      item.productId === productIdOrInventoryId ||
+      item.product_id === productIdOrInventoryId
+  );
+
+  return (inventory as any)?.inventoryId ?? inventory?.id ?? productIdOrInventoryId;
+};
 
 export const inventoryApi = {
   getInventories: async (): Promise<Inventory[]> => {
-    if (USE_MOCK) {
-      return MockDB.getInventories();
-    }
-    const response = await apiClient.get<Inventory[]>("/inventories");
-    return response.data;
+    const response = await apiClient.get("/inventories");
+    return unwrapApiList<any>(response.data, "inventories").map(normalizeInventory);
   },
 
   getLowStockInventories: async (): Promise<Inventory[]> => {
-    if (USE_MOCK) {
-      return MockDB.getInventories().filter((i) => i.quantity < (i.minThreshold ?? i.min_threshold ?? 5));
-    }
-    const response = await apiClient.get<Inventory[]>("/inventories/low-stock");
-    return response.data;
+    const inventories = await inventoryApi.getInventories();
+    return inventories.filter((i) => i.quantity < (i.minThreshold ?? i.min_threshold ?? 5));
   },
 
-  updateInventory: async (productId: string, payload: { minThreshold?: number; min_threshold?: number; quantity?: number }): Promise<Inventory> => {
-    if (USE_MOCK) {
-      const val = payload.minThreshold ?? payload.min_threshold ?? 5;
-      return MockDB.updateInventory(productId, val);
+  getLowStock: async (): Promise<Inventory[]> => inventoryApi.getLowStockInventories(),
+
+  updateInventory: async (productId: string, payload: { minThreshold?: number; min_threshold?: number; quantity?: number }): Promise<any> => {
+    const inventoryId = await resolveInventoryId(productId);
+    if (payload.quantity !== undefined) {
+      return inventoryApi.adjustInventory({ productId, quantity: payload.quantity });
     }
-    const response = await apiClient.put<Inventory>(`/inventories/${productId}`, payload);
-    return response.data;
+
+    const minThreshold = payload.minThreshold ?? payload.min_threshold;
+    if (minThreshold !== undefined) {
+      const response = await apiClient.post("/inventories/threshold", {
+        inventoryId,
+        minThreshold,
+      });
+      return normalizeInventoryMutation(response.data);
+    }
+
+    throw new Error("Invalid payload for updateInventory");
   },
 
   importInventory: async (payload: { productId: string; quantity: number; note?: string }): Promise<any> => {
-    if (USE_MOCK) {
-      return MockDB.adjustInventory(payload.productId, payload.quantity, "IMPORT", payload.note);
-    }
-    const response = await apiClient.post("/inventories/import", payload);
-    return response.data;
+    const response = await apiClient.post("/inventories/import", {
+      inventoryId: await resolveInventoryId(payload.productId),
+      quantity: payload.quantity,
+      note: payload.note,
+    });
+    return normalizeInventoryMutation(response.data);
   },
 
   adjustInventory: async (payload: { productId: string; quantity: number; note?: string }): Promise<any> => {
-    if (USE_MOCK) {
-      return MockDB.adjustInventory(payload.productId, payload.quantity, "ADJUST", payload.note);
-    }
-    const response = await apiClient.post("/inventories/adjust", payload);
-    return response.data;
+    const response = await apiClient.post("/inventories/adjust", {
+      inventoryId: await resolveInventoryId(payload.productId),
+      quantity: payload.quantity,
+      note: payload.note,
+    });
+    return normalizeInventoryMutation(response.data);
   },
 
   getInventoryTransactions: async (): Promise<InventoryTransaction[]> => {
-    if (USE_MOCK) {
-      return MockDB.getTransactions();
-    }
-    const response = await apiClient.get<InventoryTransaction[]>("/inventory-transactions");
-    return response.data;
+    const response = await apiClient.get("/inventory-transactions");
+    return unwrapApiList<any>(response.data, "transactions").map(normalizeTransaction);
+  },
+
+  getThresholdSuggestion: async (inventoryId: string, params?: ThresholdSuggestionParams): Promise<any> => {
+    const resolvedInventoryId = await resolveInventoryId(inventoryId);
+    const response = await apiClient.get(`/inventories/${resolvedInventoryId}/suggest-threshold`, { params });
+    const data = unwrapApiData<any>(response.data);
+    return data?.suggestion || data || {};
   },
 };
+

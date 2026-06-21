@@ -3,7 +3,7 @@ import { prisma } from '../../common/prisma';
 import type { CreatePurchaseRequestInput, PurchaseRequestFiltersInput, ReceivePurchaseRequestInput } from './purchase.validator';
 
 const purchaseInclude = {
-    supplier: true,
+    supplier: { include: { products: true } },
     requester: { select: { id: true, name: true, email: true } },
     approver: { select: { id: true, name: true, email: true } },
     items: { include: { inventory: { include: { product: { include: { category: true } } } }, product: true } }

@@ -1,47 +1,54 @@
-import { apiClient, USE_MOCK } from "./client";
+import { apiClient, unwrapApiField, unwrapApiList } from "./client";
 import type { Product } from "../types/product.types";
-import { MockDB } from "./mockDb";
+
+const normalizeProduct = (product: any): Product => ({
+  ...product,
+  image_url: product?.image_url ?? product?.imageUrl,
+  category_id: product?.category_id ?? product?.categoryId,
+});
+
+const normalizeProductPayload = (payload: Partial<Product>) => ({
+  ...payload,
+  imageUrl: payload.imageUrl ?? payload.image_url,
+  categoryId: payload.categoryId ?? payload.category_id,
+});
 
 export const productsApi = {
-  getProducts: async (): Promise<Product[]> => {
-    if (USE_MOCK) {
-      return MockDB.getProducts();
-    }
-    const response = await apiClient.get<Product[]>("/products");
-    return response.data;
+  getProducts: async (params?: { includeInactive?: boolean }): Promise<Product[]> => {
+    const response = await apiClient.get("/products", { params });
+    return unwrapApiList<any>(response.data, "products").map(normalizeProduct);
   },
 
   getProductById: async (id: string): Promise<Product> => {
-    if (USE_MOCK) {
-      const prod = MockDB.getProduct(id);
-      if (prod) return prod;
-      throw new Error("Không tìm thấy sản phẩm");
-    }
-    const response = await apiClient.get<Product>(`/products/${id}`);
-    return response.data;
+    const response = await apiClient.get(`/products/${id}`);
+    return normalizeProduct(unwrapApiField<any>(response.data, "product"));
   },
 
   createProduct: async (payload: Partial<Product>): Promise<Product> => {
-    if (USE_MOCK) {
-      return MockDB.createProduct(payload);
-    }
-    const response = await apiClient.post<Product>("/products", payload);
-    return response.data;
+    const response = await apiClient.post("/products", normalizeProductPayload(payload));
+    return normalizeProduct(unwrapApiField<any>(response.data, "product"));
   },
 
   updateProduct: async (id: string, payload: Partial<Product>): Promise<Product> => {
-    if (USE_MOCK) {
-      return MockDB.updateProduct(id, payload);
-    }
-    const response = await apiClient.put<Product>(`/products/${id}`, payload);
-    return response.data;
+    const response = await apiClient.put(`/products/${id}`, normalizeProductPayload(payload));
+    return normalizeProduct(unwrapApiField<any>(response.data, "product"));
   },
 
   deleteProduct: async (id: string): Promise<void> => {
-    if (USE_MOCK) {
-      MockDB.deleteProduct(id);
-      return;
-    }
     await apiClient.delete(`/products/${id}`);
+  },
+
+  scheduleDeleteProduct: async (id: string): Promise<Product> => {
+    const response = await apiClient.patch(`/products/${id}/schedule-delete`);
+    return normalizeProduct(unwrapApiField<any>(response.data, "product"));
+  },
+
+  restoreProduct: async (id: string): Promise<Product> => {
+    const response = await apiClient.patch(`/products/${id}/restore`);
+    return normalizeProduct(unwrapApiField<any>(response.data, "product"));
+  },
+
+  purgeProduct: async (id: string): Promise<void> => {
+    await apiClient.delete(`/products/${id}/purge`);
   },
 };

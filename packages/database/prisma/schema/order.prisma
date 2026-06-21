@@ -14,17 +14,23 @@ enum PaymentStatus {
 
 enum PaymentMethod {
   CASH
-  CARD
   BANK_TRANSFER
-  E_WALLET
+  VIET_QR
 }
 
 model Order {
   id          String      @id @default(cuid())
   userId      String
   user        User        @relation(fields: [userId], references: [id])
-  status      OrderStatus @default(PENDING)
-  totalAmount Decimal     @default(0) @db.Decimal(12, 2)
+  status          OrderStatus @default(PENDING)
+  totalAmount     Decimal     @default(0) @db.Decimal(12, 2)
+  shippingFee     Decimal     @default(0) @db.Decimal(12, 2)
+  shippingZone    String?
+  shippingName    String?
+  shippingPhone   String?
+  shippingAddress String?
+  note            String?
+  stockDeductedAt DateTime?
 
   items   OrderItem[]
   payment Payment?

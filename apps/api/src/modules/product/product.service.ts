@@ -1,5 +1,5 @@
 import { Prisma } from '@cafe-project/database';
-import { cloudinary } from '../../common/cloudinary';
+import { deleteCloudinaryImage, extractCloudinaryPublicId } from '../../common/cloudinary';
 import { HttpError } from '../../common/http-error';
 import { productRepository, type ProductRecord } from './product.repository';
 import type { CreateProductInput, UpdateProductInput } from './product.validator';
@@ -26,6 +26,8 @@ export type ProductDto = {
         unit: string;
     } | null;
     inventoryQuantity: number | null;
+    deletedAt: Date | null;
+    pendingDeleteUntil: Date | null;
     createdAt: Date;
     updatedAt: Date;
 };
@@ -54,6 +56,8 @@ const toProductDto = (product: ProductRecord): ProductDto => ({
           }
         : null,
     inventoryQuantity: product.inventory?.quantity ?? null,
+    deletedAt: (product as any).deletedAt ?? null,
+    pendingDeleteUntil: (product as any).pendingDeleteUntil ?? null,
     createdAt: product.createdAt,
     updatedAt: product.updatedAt
 });
@@ -128,50 +132,6 @@ const generateUniqueSku = async (name: string, ignoreId?: string): Promise<strin
     }
 };
 
-const getCloudinaryPublicId = (imageUrl: string | null): string | null => {
-    if (!imageUrl) return null;
-
-    try {
-        const parsedUrl = new URL(imageUrl);
-
-        if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'res.cloudinary.com') {
-            return null;
-        }
-
-        const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
-        const uploadIndex = pathParts.findIndex((segment) => segment === 'upload');
-
-        if (uploadIndex === -1) {
-            return null;
-        }
-
-        const afterUploadParts = pathParts.slice(uploadIndex + 1);
-        const versionIndex = afterUploadParts.findIndex((segment) => /^v\d+$/.test(segment));
-        const publicIdParts = versionIndex >= 0 ? afterUploadParts.slice(versionIndex + 1) : afterUploadParts;
-
-        const publicIdWithExtension = publicIdParts.join('/');
-        const publicId = publicIdWithExtension.replace(/\.[^/.]+$/, '');
-
-        return publicId || null;
-    } catch {
-        return null;
-    }
-};
-
-const deleteCloudinaryImage = async (imageUrl: string | null): Promise<void> => {
-    const publicId = getCloudinaryPublicId(imageUrl);
-
-    if (!publicId) {
-        return;
-    }
-
-    const result = await cloudinary.uploader.destroy(publicId);
-
-    if (result.result !== 'ok') {
-        console.warn(`[product] Cloudinary image delete skipped. publicId=${publicId}, result=${result.result ?? 'unknown'}`);
-    }
-};
-
 const getDeleteBlockedMessage = async (productId: string): Promise<string | null> => {
     const blockers = await productRepository.getDeleteBlockers(productId);
     const hasOrderItems = blockers.orderItems > 0;
@@ -198,6 +158,26 @@ const getDeleteBlockedMessage = async (productId: string): Promise<string | null
     return null;
 };
 
+const deleteProductImageForPurge = async (product: ProductRecord): Promise<void> => {
+    if (!product.imageUrl) {
+        return;
+    }
+
+    const publicId = extractCloudinaryPublicId(product.imageUrl);
+
+    if (!publicId) {
+        console.warn(`[product] Cannot extract Cloudinary public_id for product ${product.id}; image cleanup skipped.`);
+        return;
+    }
+
+    try {
+        await deleteCloudinaryImage(publicId);
+    } catch (error: any) {
+        console.error(`[product] Failed to delete Cloudinary image for product ${product.id}. Reason: ${error.message}`);
+        throw new HttpError(502, error.message || 'Failed to delete product image from Cloudinary.');
+    }
+};
+
 export const getProducts = async (includeInactive = false): Promise<ProductDto[]> => {
     const products = await productRepository.findMany(includeInactive);
 
@@ -221,7 +201,7 @@ export const createProduct = async (input: CreateProductInput): Promise<ProductD
             description: normalizeOptionalString(input.description),
             price: input.price,
             costPrice: input.costPrice ?? 0,
-            unit: input.unit?.trim() || 'Ly',
+            unit: input.unit?.trim() || 'hộp',
             categoryId: input.categoryId,
             imageUrl: normalizeOptionalString(input.imageUrl),
             isActive: input.isActive ?? true
@@ -257,7 +237,7 @@ export const updateProduct = async (id: string, input: UpdateProductInput): Prom
             ...(input.description !== undefined ? { description: normalizeOptionalString(input.description) } : {}),
             ...(input.price !== undefined ? { price: input.price } : {}),
             ...(input.costPrice !== undefined ? { costPrice: input.costPrice } : {}),
-            ...(input.unit !== undefined ? { unit: input.unit.trim() || 'Ly' } : {}),
+            ...(input.unit !== undefined ? { unit: input.unit.trim() || 'hộp' } : {}),
             ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
             ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
             ...(input.imageUrl !== undefined ? { imageUrl: normalizeOptionalString(input.imageUrl) } : {})
@@ -281,7 +261,53 @@ export const deleteProduct = async (id: string): Promise<ProductDto> => {
         throw new HttpError(409, blockedMessage);
     }
 
-    await deleteCloudinaryImage(product.imageUrl);
+    return toProductDto(await productRepository.delete(id));
+};
+
+export const scheduleDelete = async (id: string): Promise<ProductDto> => {
+    await ensureProductExists(id, true);
+
+    const pendingDeleteUntil = new Date();
+    pendingDeleteUntil.setDate(pendingDeleteUntil.getDate() + 7);
+
+    const updatedProduct = await productRepository.update(id, {
+        isActive: false,
+        // @ts-ignore
+        deletedAt: new Date(),
+        // @ts-ignore
+        pendingDeleteUntil
+    });
+
+    return toProductDto(updatedProduct);
+};
+
+export const restore = async (id: string): Promise<ProductDto> => {
+    await ensureProductExists(id, true);
+
+    const updatedProduct = await productRepository.update(id, {
+        isActive: true,
+        // @ts-ignore
+        deletedAt: null,
+        // @ts-ignore
+        pendingDeleteUntil: null
+    });
+
+    return toProductDto(updatedProduct);
+};
+
+export const purge = async (id: string): Promise<ProductDto> => {
+    const product = await ensureProductExists(id, true);
+
+    if (!product.pendingDeleteUntil || new Date(product.pendingDeleteUntil) > new Date()) {
+        throw new HttpError(400, 'Sản phẩm chỉ có thể xoá vĩnh viễn sau 7 ngày.');
+    }
+
+    const blockedMessage = await getDeleteBlockedMessage(id);
+    if (blockedMessage) {
+        throw new HttpError(409, blockedMessage);
+    }
+
+    await deleteProductImageForPurge(product);
 
     return toProductDto(await productRepository.delete(id));
 };
