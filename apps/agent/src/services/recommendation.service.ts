@@ -1,181 +1,387 @@
-﻿import { agentRepository, type AgentInventoryRecord } from '../repositories/agent.repository';
+import { agentRepository } from '../repositories/agent.repository';
 import { geminiService } from './gemini.service';
-import { env } from '../config/env';
-import { logger } from '../utils/logger';
 
 const isSupplierActive = (supplier: { status?: string | null; deletedAt?: Date | null }): boolean =>
     supplier.status !== 'INACTIVE' && !supplier.deletedAt;
 
+type ReorderPlanningPeriod = 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
+
+const parsePositiveIntSetting = (value: string | null): number | null => {
+    if (value === null) return null;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const parseReorderPlanningPeriod = (value: string | null): ReorderPlanningPeriod => {
+    if (value === 'MONTHLY' || value === 'CUSTOM') return value;
+    return 'WEEKLY';
+};
+
+const planningDaysForPeriod = (period: ReorderPlanningPeriod, customDays: number | null): number => {
+    if (period === 'MONTHLY') return 30;
+    if (period === 'CUSTOM') return customDays && customDays > 0 ? customDays : 14;
+    return 7;
+};
+
+const planningPeriodText = (period: ReorderPlanningPeriod): string => {
+    if (period === 'MONTHLY') return 'chu ky nhap hang hang thang';
+    if (period === 'CUSTOM') return 'chu ky nhap hang tuy chinh';
+    return 'chu ky nhap hang hang tuan';
+};
+
+const formatRecommendationQuantity = (quantity: number, inventory: any, supplierProduct: any) => {
+    const inventoryUnit = inventory.unit || 'don vi';
+    const purchaseUnit = supplierProduct?.purchaseUnit;
+    const conversionQuantity = Number(supplierProduct?.conversionQuantity || 0);
+    const conversionTargetUnit = supplierProduct?.conversionTargetUnit;
+
+    if (!purchaseUnit || !conversionQuantity || conversionTargetUnit !== inventoryUnit) {
+        return {
+            recommendedQtyDisplay: `${quantity} ${inventoryUnit}`,
+            conversionMissing: true,
+            purchaseQuantity: null,
+            purchaseUnit: null,
+            convertedQuantity: quantity,
+            inventoryUnit
+        };
+    }
+
+    const purchaseQuantity = Math.ceil(quantity / conversionQuantity);
+    const convertedQuantity = Math.ceil(purchaseQuantity * conversionQuantity);
+    return {
+        recommendedQtyDisplay: `${purchaseQuantity} ${purchaseUnit} = ${convertedQuantity} ${inventoryUnit}`,
+        conversionMissing: false,
+        purchaseQuantity,
+        purchaseUnit,
+        conversionQuantity,
+        conversionTargetUnit,
+        convertedQuantity,
+        inventoryUnit
+    };
+};
+
 export const recommendationService = {
-    async recommendForProduct(inventory: AgentInventoryRecord, triggerType: 'SCHEDULED' | 'MANUAL') {
-        const product = inventory.product;
+    async getSalesData(productId: string) {
+        return agentRepository.getSalesData(productId);
+    },
 
-        // 1. Fetch supplier list from product.supplierProducts
-        const supplierProducts = product.supplierProducts;
-        if (supplierProducts.length === 0) {
+    async getPlanningSettings() {
+        const [periodValue, customDaysValue] = await Promise.all([
+            agentRepository.getSettingValue('inventory.reorderPlanningPeriod'),
+            agentRepository.getSettingValue('inventory.reorderPlanningCustomDays')
+        ]);
+        const reorderPlanningPeriod = parseReorderPlanningPeriod(periodValue);
+        return {
+            reorderPlanningPeriod,
+            reorderPlanningDays: planningDaysForPeriod(reorderPlanningPeriod, parsePositiveIntSetting(customDaysValue))
+        };
+    },
+
+    async generateForProduct(productId: string, force = false, userId: string) {
+        const inventories = await agentRepository.findInventories([productId]);
+        const inventory = inventories[0];
+        const product = inventory?.product;
+
+        if (!inventory || !product) {
+            return { skipped: true, reason: 'Product or inventory not found.' };
+        }
+
+        if (inventory.quantity > inventory.minThreshold) {
+            const reasoning = 'San pham chua duoi nguong ton kho.';
+            const log = await agentRepository.createLog({
+                action: 'RECOMMEND_REORDER_SKIP_THRESHOLD',
+                input: JSON.stringify({ productId, force }),
+                output: JSON.stringify({ skipped: true, reason: 'ABOVE_THRESHOLD' }),
+                reasoning,
+                result: 'SKIPPED',
+                fallback_used: false,
+                reference_type: 'Product',
+                reference_id: productId,
+                creator: userId ? { connect: { id: userId } } : undefined
+            });
             return {
-                status: 'FAILED' as const,
-                reason: 'Sản phẩm chưa được liên kết với nhà cung cấp.'
+                logId: log.id,
+                skipped: true,
+                reason: 'ABOVE_THRESHOLD',
+                skippedProduct: {
+                    productId,
+                    productName: product.name,
+                    sku: product.sku,
+                    currentQuantity: inventory.quantity,
+                    minThreshold: inventory.minThreshold,
+                    reasonCode: 'ABOVE_THRESHOLD',
+                    reason: reasoning
+                }
             };
         }
 
-        const activeSupplierProducts = supplierProducts.filter((sp) => isSupplierActive(sp.supplier));
+        const hasActive = await agentRepository.hasOpenPurchaseRequest(productId, inventory.id);
+        if (hasActive) {
+            const reasoning = 'San pham da co yeu cau nhap hang dang xu ly.';
+            const log = await agentRepository.createLog({
+                action: 'RECOMMEND_REORDER_SKIP',
+                input: JSON.stringify({ productId, force }),
+                output: JSON.stringify({ skipped: true, reason: 'ACTIVE_PR_EXISTS' }),
+                reasoning,
+                result: 'SKIPPED_DUPLICATE',
+                fallback_used: false,
+                reference_type: 'Product',
+                reference_id: productId,
+                creator: userId ? { connect: { id: userId } } : undefined
+            });
+            return {
+                logId: log.id,
+                skipped: true,
+                reason: 'ACTIVE_PR_EXISTS',
+                skippedProduct: {
+                    productId,
+                    productName: product.name,
+                    sku: product.sku,
+                    currentQuantity: inventory.quantity,
+                    minThreshold: inventory.minThreshold,
+                    reasonCode: 'ACTIVE_PR_EXISTS',
+                    reason: reasoning
+                }
+            };
+        }
+
+        if (product.supplierProducts.length === 0) {
+            const reasoning = 'San pham chua duoc lien ket voi nha cung cap.';
+            const log = await agentRepository.createLog({
+                action: 'RECOMMEND_REORDER_NO_SUPPLIER',
+                input: JSON.stringify({ productId, force }),
+                output: JSON.stringify({ skipped: true, reason: 'NO_SUPPLIERS_MAPPED' }),
+                reasoning,
+                result: 'NO_SUPPLIER',
+                fallback_used: false,
+                reference_type: 'Product',
+                reference_id: productId,
+                creator: userId ? { connect: { id: userId } } : undefined
+            });
+            return {
+                logId: log.id,
+                skipped: true,
+                reason: 'NO_SUPPLIERS_MAPPED',
+                skippedProduct: {
+                    productId,
+                    productName: product.name,
+                    sku: product.sku,
+                    currentQuantity: inventory.quantity,
+                    minThreshold: inventory.minThreshold,
+                    reasonCode: 'NO_SUPPLIERS_MAPPED',
+                    reason: reasoning
+                }
+            };
+        }
+
+        const activeSupplierProducts = product.supplierProducts.filter((sp) => isSupplierActive(sp.supplier));
         if (activeSupplierProducts.length === 0) {
+            const reasoning = 'Nha cung cap cua san pham dang bi vo hieu hoa.';
+            const log = await agentRepository.createLog({
+                action: 'RECOMMEND_REORDER_INACTIVE_SUPPLIER',
+                input: JSON.stringify({ productId, force }),
+                output: JSON.stringify({ skipped: true, reason: 'SUPPLIERS_INACTIVE' }),
+                reasoning,
+                result: 'NO_SUPPLIER',
+                fallback_used: false,
+                reference_type: 'Product',
+                reference_id: productId,
+                creator: userId ? { connect: { id: userId } } : undefined
+            });
             return {
-                status: 'FAILED' as const,
-                reason: 'Nhà cung cấp của sản phẩm đang bị vô hiệu hóa.'
+                logId: log.id,
+                skipped: true,
+                reason: 'SUPPLIERS_INACTIVE',
+                skippedProduct: {
+                    productId,
+                    productName: product.name,
+                    sku: product.sku,
+                    currentQuantity: inventory.quantity,
+                    minThreshold: inventory.minThreshold,
+                    reasonCode: 'SUPPLIERS_INACTIVE',
+                    reason: reasoning
+                }
             };
         }
 
-        // 2. Load sales history (7 days and 30 days)
-        const salesData = await agentRepository.getSalesData(product.id);
-
-        // 3. Map suppliers for selection
         const suppliers = activeSupplierProducts.map((sp) => {
             const spRaw = sp as any;
-            const leadTime = Number(spRaw.leadTimeDays) || Number(spRaw.leadTime) || 3;
             return {
                 supplierId: sp.supplierId,
                 supplierName: sp.supplier.name,
                 price: Number(sp.price),
                 supplyPrice: Number(sp.price),
-                leadTimeDays: leadTime,
+                leadTimeDays: Number(spRaw.leadTimeDays) || Number(spRaw.leadTime) || 3,
                 minOrderQuantity: Number(spRaw.minOrderQuantity) || 1,
                 isPreferred: Boolean(spRaw.isPreferred),
                 supplierProduct: sp
             };
         });
 
-        // Sort suppliers:
-        // 1. isPreferred desc (true before false)
-        // 2. price asc
-        // 3. leadTimeDays asc
-        const sortedSuppliers = [...suppliers].sort((a, b) => {
-            const prefA = a.isPreferred ? 1 : 0;
-            const prefB = b.isPreferred ? 1 : 0;
-            if (prefB !== prefA) return prefB - prefA;
-
-            if (a.price !== b.price) return a.price - b.price;
-
-            return a.leadTimeDays - b.leadTimeDays;
-        });
-
-        const bestSupplier = sortedSuppliers[0];
-
-        // 4. Calculate rule-based quantity
-        const dailySales = Math.max(salesData.salesVelocity7d, salesData.salesVelocity30d, 1);
-        const safetyStock = inventory.minThreshold;
-        const leadTime = bestSupplier.leadTimeDays;
-
-        let recommendedQty = Math.ceil((dailySales * leadTime) + safetyStock - inventory.quantity);
-        if (recommendedQty <= 0) {
-            recommendedQty = inventory.minThreshold * 2;
-        }
-
-        recommendedQty = Math.max(recommendedQty, bestSupplier.minOrderQuantity || 1);
-
-        const ruleBasedReasoning = `Sản phẩm có mức tồn hiện tại là ${inventory.quantity} so với ngưỡng an toàn là ${safetyStock}. Dựa trên tốc độ bán hàng hàng ngày ước lượng là ${dailySales.toFixed(2)} đơn vị/ngày và thời gian giao hàng của nhà cung cấp là ${leadTime} ngày, hệ thống đề xuất nhập thêm ${recommendedQty} đơn vị từ nhà cung cấp ${bestSupplier.supplierName}.`;
-
-        const ruleBasedEmailDraft = `Kính gửi đối tác ${bestSupplier.supplierName},
-
-        Chúng tôi cần đặt hàng bổ sung sản phẩm ${product.name} (${product.sku}):
-        Số lượng: ${recommendedQty} ${inventory.unit}.
-        
-        Trân trọng,
-        Cafe AI System`;
-
-        // 5. Try Gemini if Key exists
-        let geminiRecommendation = null;
+        const sales = await this.getSalesData(productId);
+        let aiRecommendation: {
+            recommendedQuantity: number;
+            recommendedSupplierId: string;
+            confidence: number;
+            reasoning: string;
+            emailDraft: string;
+        } | null = null;
         let fallbackUsed = false;
         let errorMessage: string | null = null;
-        let geminiPrompt: string | null = null;
-        let geminiResponse: string | null = null;
 
-        const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY1 || process.env.GEMINI_API_KEY2 || process.env.GEMINI_API_KEY3;
+        const planningSettings = await this.getPlanningSettings();
 
-        if (apiKey) {
+        if (process.env.AGENT_RECOMMENDATION_MODE === 'gemini' && process.env.GEMINI_API_KEY) {
             try {
-                geminiPrompt = `You are an AI inventory reorder assistant for a cafe product inventory system.
-                
-                Analyze this product:
-                - product name: ${product.name}
-                - sku: ${product.sku}
-                - current quantity: ${inventory.quantity}
-                - minimum threshold: ${inventory.minThreshold}
-                - sold last 7 days: ${salesData.totalSold7d}
-                - sold last 30 days: ${salesData.totalSold30d}
-                - sales velocity 7d (average per day): ${salesData.salesVelocity7d.toFixed(2)}
-                - sales velocity 30d (average per day): ${salesData.salesVelocity30d.toFixed(2)}
-                - suppliers list with id, name, price, min order quantity, lead time, isPreferred:
-                ${suppliers.map((s) => `- id: ${s.supplierId}, name: ${s.supplierName}, price: ${s.price}, min order quantity: ${s.minOrderQuantity}, lead time: ${s.leadTimeDays} days, isPreferred: ${s.isPreferred}`).join('\n')}
-                
-                Return ONLY valid JSON:
-                {
-                  "recommendedQuantity": number,
-                  "recommendedSupplierId": string,
-                  "confidence": number,
-                  "reasoning": string,
-                  "emailDraft": string
-                }
-                
-                Rules:
-                - No markdown
-                - No explanation outside JSON`;
+                const prompt = this.buildPrompt(product, inventory, sales, suppliers);
+                const geminiResult = await geminiService.getRecommendation(prompt);
 
-                const result = await geminiService.getRecommendation(geminiPrompt);
-                geminiResponse = JSON.stringify(result);
-
-                // Validate Gemini response bounds
-                const supplierExists = suppliers.some((s) => s.supplierId === result.recommendedSupplierId);
-                const quantityValid = result.recommendedQuantity > 0 && result.recommendedQuantity < 10000;
-                const confidenceValid = result.confidence >= 0 && result.confidence <= 1;
-                const reasoningValid = typeof result.reasoning === 'string' && result.reasoning.trim().length > 0;
+                const supplierExists = suppliers.some((s) => s.supplierId === geminiResult.recommendedSupplierId);
+                const quantityValid = geminiResult.recommendedQuantity > 0 && geminiResult.recommendedQuantity < 1000;
+                const confidenceValid = geminiResult.confidence >= 0 && geminiResult.confidence <= 1;
+                const reasoningValid = geminiResult.reasoning.trim().length > 0;
 
                 if (supplierExists && quantityValid && confidenceValid && reasoningValid) {
-                    geminiRecommendation = result;
+                    aiRecommendation = geminiResult;
                 } else {
                     let failReason = '';
-                    if (!supplierExists) failReason += `Supplier ID ${result.recommendedSupplierId} does not exist. `;
-                    if (!quantityValid) failReason += `Quantity ${result.recommendedQuantity} is invalid. `;
-                    if (!confidenceValid) failReason += `Confidence ${result.confidence} out of bounds. `;
+                    if (!supplierExists) failReason += `Supplier ID ${geminiResult.recommendedSupplierId} does not exist. `;
+                    if (!quantityValid) failReason += `Quantity ${geminiResult.recommendedQuantity} is invalid. `;
+                    if (!confidenceValid) failReason += `Confidence ${geminiResult.confidence} out of bounds. `;
                     if (!reasoningValid) failReason += 'Reasoning is empty. ';
-                    throw new Error(`Gemini response validation failed: ${failReason}`);
+                    throw new Error(`Gemini validation failed: ${failReason}`);
                 }
             } catch (err: any) {
                 fallbackUsed = true;
-                errorMessage = err.message || String(err);
-                logger.warn(`Gemini recommendation failed for product ${product.name}. Fallback to rule-based logic: ${errorMessage}`);
+                errorMessage = err instanceof Error ? err.message : 'Unknown Gemini error';
             }
         } else {
             fallbackUsed = true;
-            errorMessage = 'GEMINI_API_KEY is missing.';
+            errorMessage = 'Rule-based recommendation mode is active. Gemini was not called.';
         }
 
-        const selectedRecommendation = geminiRecommendation || {
-            recommendedQuantity: recommendedQty,
-            recommendedSupplierId: bestSupplier.supplierId,
-            confidence: 0.5,
-            reasoning: `[Rule-Based Fallback] ${ruleBasedReasoning}`,
-            emailDraft: ruleBasedEmailDraft
+        if (fallbackUsed || !aiRecommendation) {
+            const ruleBased = this.calculateRuleBased(inventory, sales, suppliers, planningSettings);
+            aiRecommendation = {
+                recommendedQuantity: ruleBased.recommendedQuantity,
+                recommendedSupplierId: ruleBased.supplier.supplierId,
+                confidence: 0.5,
+                reasoning: `[Rule-Based Fallback] ${ruleBased.reasoning}`,
+                emailDraft: `Kinh gui doi tac ${ruleBased.supplier.supplierName},\n\nCafe Admin dang co nhu cau dat hang/bao gia:\n- ${product.name}: ${ruleBased.quantityDisplay.recommendedQtyDisplay}${ruleBased.quantityDisplay.conversionMissing ? '' : `\n  Quy cach: 1 ${ruleBased.quantityDisplay.purchaseUnit} = ${ruleBased.quantityDisplay.conversionQuantity} ${ruleBased.quantityDisplay.conversionTargetUnit}`}\n\nTran trong,\nCafe Admin`
+            };
+        }
+
+        const selectedSupplier = suppliers.find((s) => s.supplierId === aiRecommendation!.recommendedSupplierId)!;
+        const outputPayload = {
+            productId,
+            productName: product.name,
+            sku: product.sku,
+            currentQuantity: inventory.quantity,
+            minThreshold: inventory.minThreshold,
+            salesVelocity7d: sales.salesVelocity7d,
+            salesVelocity30d: sales.salesVelocity30d,
+            recommendedQuantity: aiRecommendation.recommendedQuantity,
+            reorderPlanningPeriod: planningSettings.reorderPlanningPeriod,
+            reorderPlanningDays: planningSettings.reorderPlanningDays,
+            recommendedSupplierId: aiRecommendation.recommendedSupplierId,
+            recommendedSupplierName: selectedSupplier.supplierName,
+            confidence: aiRecommendation.confidence,
+            reasoning: aiRecommendation.reasoning,
+            emailDraft: aiRecommendation.emailDraft,
+            fallbackUsed
         };
 
-        const chosenSupplier = suppliers.find((s) => s.supplierId === selectedRecommendation.recommendedSupplierId)!;
+        const log = await agentRepository.createLog({
+            action: 'RECOMMEND_REORDER',
+            input: JSON.stringify({ productId, force }),
+            output: JSON.stringify(outputPayload),
+            reasoning: aiRecommendation.reasoning,
+            result: 'RECOMMENDED',
+            fallback_used: fallbackUsed,
+            error_message: errorMessage,
+            reference_type: 'Product',
+            reference_id: productId,
+            creator: userId ? { connect: { id: userId } } : undefined
+        });
 
         return {
-            status: 'SUCCESS' as const,
-            recommendedQty: selectedRecommendation.recommendedQuantity,
-            supplierProduct: chosenSupplier.supplierProduct,
-            reasoning: selectedRecommendation.reasoning,
-            emailDraft: selectedRecommendation.emailDraft,
-            confidence: selectedRecommendation.confidence,
-            fallbackUsed,
-            errorMessage,
-            geminiPrompt,
-            geminiResponse,
-            dailySales,
-            salesVelocity7d: salesData.salesVelocity7d,
-            salesVelocity30d: salesData.salesVelocity30d
+            logId: log.id,
+            skipped: false,
+            recommendation: outputPayload
         };
+    },
+
+    calculateRuleBased(inventory: any, sales: any, suppliers: any[], planningSettings: { reorderPlanningPeriod: ReorderPlanningPeriod; reorderPlanningDays: number }) {
+        const rawDailySales = Math.max(sales.salesVelocity7d, sales.salesVelocity30d, 0);
+        const dailySales = rawDailySales > 0 ? rawDailySales : 0;
+        const sorted = [...suppliers].sort((a, b) => {
+            const prefA = a.isPreferred ? 1 : 0;
+            const prefB = b.isPreferred ? 1 : 0;
+            if (prefB !== prefA) return prefB - prefA;
+            if (a.price !== b.price) return a.price - b.price;
+            return (a.leadTimeDays || 3) - (b.leadTimeDays || 3);
+        });
+
+        const selectedSupplier = sorted[0]!;
+        const leadTime = selectedSupplier.leadTimeDays || 3;
+        const bufferDays = 2;
+        const safetyStock = inventory.minThreshold;
+        const targetStock = dailySales > 0
+            ? Math.ceil(dailySales * (planningSettings.reorderPlanningDays + leadTime + bufferDays))
+            : safetyStock;
+        const recommendedQuantity = Math.ceil(targetStock - inventory.quantity);
+        const finalQuantity = Math.max(recommendedQuantity, selectedSupplier.minOrderQuantity || 1);
+        const quantityDisplay = formatRecommendationQuantity(finalQuantity, inventory, selectedSupplier.supplierProduct);
+        const conversionText = quantityDisplay.conversionMissing
+            ? `San pham chua co quy cach nhap hang theo nha cung cap, hien thi ${quantityDisplay.recommendedQtyDisplay}.`
+            : `Theo quy cach nha cung cap: 1 ${quantityDisplay.purchaseUnit} = ${quantityDisplay.conversionQuantity} ${quantityDisplay.conversionTargetUnit}. He thong lam tron so luong dat thanh ${quantityDisplay.recommendedQtyDisplay}.`;
+        const reasoning = `He thong dang tinh de xuat theo ${planningPeriodText(planningSettings.reorderPlanningPeriod)}. San pham can bo sung de dap ung nhu cau ban trong ${planningSettings.reorderPlanningDays} ngay tiep theo, co tinh them thoi gian nhap hang ${leadTime} ngay va muc du phong an toan ${bufferDays} ngay. Toc do ban trung binh moi ngay dung lam du lieu nen la ${dailySales.toFixed(2)} ${inventory.unit}/ngay. So luong de xuat: ${quantityDisplay.recommendedQtyDisplay}. ${conversionText}`;
+
+        return {
+            recommendedQuantity: finalQuantity,
+            supplier: selectedSupplier,
+            reasoning,
+            quantityDisplay
+        };
+    },
+
+    buildPrompt(product: any, inventory: any, sales: any, suppliers: any[]): string {
+        return `You are an AI inventory reorder assistant for a cafe product inventory system.
+
+Analyze this product:
+
+Product:
+- name: ${product.name}
+- sku: ${product.sku}
+- category: ${product.category?.name || 'Uncategorized'}
+- current quantity: ${inventory.quantity}
+- min threshold: ${inventory.minThreshold}
+
+Sales:
+- sold in last 7 days: ${sales.totalSold7d}
+- sold in last 30 days: ${sales.totalSold30d}
+- sales velocity 7d (average per day): ${sales.salesVelocity7d.toFixed(2)}
+- sales velocity 30d (average per day): ${sales.salesVelocity30d.toFixed(2)}
+
+Suppliers:
+${suppliers.map((s) => `- supplier id: ${s.supplierId}
+  supplier name: ${s.supplierName}
+  supply price: ${s.supplyPrice}
+  min order quantity: ${s.minOrderQuantity}
+  lead time: ${s.leadTimeDays} days
+  is preferred: ${s.isPreferred}`).join('\n')}
+
+Return ONLY valid JSON:
+
+{
+  "recommendedQuantity": number,
+  "recommendedSupplierId": string,
+  "confidence": number,
+  "reasoning": string,
+  "emailDraft": string
+}
+
+Do not include markdown.
+Do not include explanation outside JSON.`;
     }
 };
-    

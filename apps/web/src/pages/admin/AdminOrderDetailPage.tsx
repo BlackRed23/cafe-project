@@ -8,7 +8,7 @@ import { Badge } from "../../components/common/Badge";
 import { Loading } from "../../components/common/Loading";
 import { Button } from "../../components/common/Button";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
-import { ArrowLeft, Check, Play, Ban, ShieldCheck, Mail, User, Phone, MapPin, MessageSquare, BadgeCheck } from "lucide-react";
+import { ArrowLeft, Check, Ban, ShieldCheck, Mail, User, Phone, MapPin, BadgeCheck } from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
 import { getOrderErrorMessage } from "../../api/orders.api";
 import { getZoneLabel } from "../../utils/shipping";
@@ -51,26 +51,36 @@ export const AdminOrderDetailPage: React.FC = () => {
     toast.info("Đang cập nhật đơn hàng...");
 
     try {
+      let actionMessage = "Cập nhật trạng thái đơn hàng thành công.";
+
       if (actionType === "confirm") {
         const res: any = await ordersApi.confirmOrder(id);
+        actionMessage = "Đơn hàng đã chuyển sang đang xử lý. Hàng vẫn đang được giữ.";
         setSuccessInfo({
-          message: "Đơn hàng đã xác nhận thành công. Tồn kho đã được trừ tương ứng.",
+          message: actionMessage,
           prId: res?.purchaseRequestId || res?.purchaseRequest?.id || undefined,
         });
       } else if (actionType === "confirm_payment") {
         await ordersApi.updateOrderStatus(id, { status: order.status, paymentStatus: "PAID" } as any);
-        setSuccessInfo({ message: "Đã xác nhận thanh toán thành công." });
+        actionMessage = "Đã xác nhận thanh toán thành công.";
+        setSuccessInfo({ message: actionMessage });
       } else if (actionType === "processing") {
         await ordersApi.updateOrderStatus(id, { status: "PROCESSING" });
+        actionMessage = "Đơn hàng đã chuyển sang đang xử lý. Hàng vẫn đang được giữ.";
+        setSuccessInfo({ message: actionMessage });
       } else if (actionType === "completed") {
         await ordersApi.updateOrderStatus(id, { status: "COMPLETED", paymentStatus: "PAID" });
+        actionMessage = "Đơn hàng đã hoàn thành. Tồn kho thật đã được trừ.";
+        setSuccessInfo({ message: actionMessage });
       } else if (actionType === "cancel") {
         await ordersApi.updateOrderStatus(id, { status: "CANCELLED" });
+        actionMessage = "Đơn hàng đã hủy. Hàng đang giữ đã được hoàn lại vào khả dụng.";
+        setSuccessInfo({ message: actionMessage });
       }
       
       const updated = await ordersApi.getOrderById(id);
       setOrder(updated);
-      toast.success("Cập nhật trạng thái đơn hàng thành công.");
+      toast.success(actionMessage);
     } catch (err: any) {
       const msg = getOrderErrorMessage(
         err,
@@ -105,7 +115,6 @@ export const AdminOrderDetailPage: React.FC = () => {
   }
 
   const isPending = order.status === "PENDING";
-  const isConfirmed = order.status === "CONFIRMED";
   const isProcessing = order.status === "PROCESSING";
   const isCancelled = order.status === "CANCELLED";
   const isCompleted = order.status === "COMPLETED";
@@ -289,16 +298,7 @@ export const AdminOrderDetailPage: React.FC = () => {
                 onClick={() => setActionType("confirm")}
                 className="bg-amber-800 hover:bg-amber-900 text-white"
               >
-                <Check size={14} className="mr-1.5" /> Xác nhận & Trừ kho
-              </Button>
-            )}
-
-            {isConfirmed && (
-              <Button
-                onClick={() => setActionType("processing")}
-                className="bg-amber-800 hover:bg-amber-900 text-white"
-              >
-                <Play size={14} className="mr-1.5" /> Bắt đầu chế biến
+                <Check size={14} className="mr-1.5" /> Xác nhận xử lý
               </Button>
             )}
 
@@ -307,7 +307,7 @@ export const AdminOrderDetailPage: React.FC = () => {
                 onClick={() => setActionType("completed")}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
-                <ShieldCheck size={14} className="mr-1.5" /> Hoàn thành đơn hàng
+                <ShieldCheck size={14} className="mr-1.5" /> Hoàn thành & Trừ kho
               </Button>
             )}
           </div>
@@ -321,7 +321,7 @@ export const AdminOrderDetailPage: React.FC = () => {
         onConfirm={handleActionConfirm}
         title={
           actionType === "confirm"
-            ? "Xác nhận đơn hàng"
+            ? "Xác nhận xử lý"
             : actionType === "confirm_payment"
             ? "Xác nhận đã nhận tiền"
             : actionType === "processing"
@@ -332,7 +332,7 @@ export const AdminOrderDetailPage: React.FC = () => {
         }
         message={
           actionType === "confirm"
-            ? "Khi xác nhận đơn hàng, hệ thống sẽ tự động trừ sản phẩm tương ứng trong kho và kích hoạt AI Agent kiểm tra tồn kho. Bạn có muốn duyệt ngay?"
+            ? "Đơn hàng sẽ chuyển sang Đang xử lý. Hàng vẫn được giữ trong reservedStock và chưa trừ tồn kho thật."
             : actionType === "confirm_payment"
             ? "Xác nhận đã nhận được tiền chuyển khoản từ khách hàng. Trạng thái thanh toán sẽ được cập nhật thành ĐÃ THANH TOÁN."
             : actionType === "cancel"

@@ -1,50 +1,61 @@
 import type { Response } from 'express';
+import {
+    createPurchaseRequestFromRecommendationViaAgentService,
+    getAgentLogsViaAgentService,
+    getRecommendationsViaAgentService,
+    recommendReorderViaAgentService,
+    scanInventoryViaAgentService
+} from './agent.client';
 import { sendError, sendSuccess } from '../../common/response';
 import type { AuthenticatedRequest } from '../auth/auth.middleware';
-import { agentService } from './agent.service';
-import type { ScanInventoryInput, RecommendReorderInput } from './agent.validator';
+
+const statusFromError = (error: any): number => error?.statusCode || error?.status || 500;
+const messageFromError = (error: any, fallback: string): string => error?.message || fallback;
+
+export const getLogs = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+        const result = await getAgentLogsViaAgentService(req.query);
+        sendSuccess(res, 200, 'Get agent logs successfully.', result);
+    } catch (error: any) {
+        sendError(res, statusFromError(error), messageFromError(error, 'Unable to retrieve agent logs.'));
+    }
+};
 
 export const scanInventory = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     if (!req.user) return sendError(res, 401, 'Authentication is required.');
-    const result = await agentService.scanInventory(req.body as ScanInventoryInput, req.user.id);
-    sendSuccess(res, 200, 'Inventory scan completed.', result);
-};
-
-export const listAgentLogs = async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-        const logs = await agentService.logs();
-        sendSuccess(res, 200, 'Get agent logs successfully.', { logs });
+        const result = await scanInventoryViaAgentService(req.body, req.user.id);
+        sendSuccess(res, 200, 'Inventory scan completed.', result);
     } catch (error: any) {
-        sendError(res, 500, error.message || 'Unable to retrieve agent logs.');
+        sendError(res, statusFromError(error), messageFromError(error, 'Inventory scan failed.'));
     }
 };
 
 export const recommendReorder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     if (!req.user) return sendError(res, 401, 'Authentication is required.');
     try {
-        const result = await agentService.recommendReorder(req.body as RecommendReorderInput, req.user.id);
+        const result = await recommendReorderViaAgentService(req.body, req.user.id);
         sendSuccess(res, 200, 'AI inventory reorder recommendations generated successfully.', result);
     } catch (error: any) {
-        sendError(res, 500, error.message || 'Failed to generate recommendations.');
+        sendError(res, statusFromError(error), messageFromError(error, 'Failed to generate recommendations.'));
     }
 };
 
 export const getRecommendations = async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-        const result = await agentService.getRecommendations();
+        const result = await getRecommendationsViaAgentService();
         sendSuccess(res, 200, 'Recommendations fetched successfully.', result);
     } catch (error: any) {
-        sendError(res, 500, error.message || 'Failed to fetch recommendations.');
+        sendError(res, statusFromError(error), messageFromError(error, 'Failed to fetch recommendations.'));
     }
 };
 
 export const createPurchaseRequestFromRecommendation = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     if (!req.user) return sendError(res, 401, 'Authentication is required.');
     try {
-        const result = await agentService.createPurchaseRequestFromRecommendation(req.params.id, req.user.id);
+        const result = await createPurchaseRequestFromRecommendationViaAgentService(req.params.id, req.user.id);
         sendSuccess(res, 201, 'Purchase request created from AI recommendation successfully.', { purchaseRequest: result });
     } catch (error: any) {
-        const status = error.status || 500;
-        sendError(res, status, error.message || 'Failed to create purchase request.');
+        sendError(res, statusFromError(error), messageFromError(error, 'Failed to create purchase request.'));
     }
 };

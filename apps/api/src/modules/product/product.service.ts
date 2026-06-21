@@ -201,7 +201,7 @@ export const createProduct = async (input: CreateProductInput): Promise<ProductD
             description: normalizeOptionalString(input.description),
             price: input.price,
             costPrice: input.costPrice ?? 0,
-            unit: input.unit?.trim() || 'Ly',
+            unit: input.unit?.trim() || 'hộp',
             categoryId: input.categoryId,
             imageUrl: normalizeOptionalString(input.imageUrl),
             isActive: input.isActive ?? true
@@ -237,7 +237,7 @@ export const updateProduct = async (id: string, input: UpdateProductInput): Prom
             ...(input.description !== undefined ? { description: normalizeOptionalString(input.description) } : {}),
             ...(input.price !== undefined ? { price: input.price } : {}),
             ...(input.costPrice !== undefined ? { costPrice: input.costPrice } : {}),
-            ...(input.unit !== undefined ? { unit: input.unit.trim() || 'Ly' } : {}),
+            ...(input.unit !== undefined ? { unit: input.unit.trim() || 'hộp' } : {}),
             ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
             ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
             ...(input.imageUrl !== undefined ? { imageUrl: normalizeOptionalString(input.imageUrl) } : {})

@@ -20,4 +20,10 @@ export interface SupplierProduct {
   lead_time?: number;
   priorityScore?: number;
   priority_score?: number;
+  purchaseUnit?: string | null;
+  purchase_unit?: string | null;
+  conversionQuantity?: number | null;
+  conversion_quantity?: number | null;
+  conversionTargetUnit?: string | null;
+  conversion_target_unit?: string | null;
 }

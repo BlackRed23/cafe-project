@@ -42,33 +42,32 @@ export const orderRepository = {
             const productById = new Map(products.map((product) => [product.id, product]));
             let totalAmount = 0;
 
-            // === KIỂM TRA TỒN KHO TRƯỚC KHI ĐẶT ===
             for (const item of input.items) {
                 const product = productById.get(item.productId);
-                if (!product) throw new Error(`Không tìm thấy sản phẩm.`);
-                if (!product.inventory || product.inventory.quantity < item.quantity) {
+                if (!product) throw new Error('Không tìm thấy sản phẩm.');
+
+                const availableStock = product.inventory ? product.inventory.quantity - product.inventory.reservedStock : 0;
+                if (!product.inventory || availableStock < item.quantity) {
                     throw new Error(
-                        `Sản phẩm "${product.name}" không đủ hàng. ` +
-                        `Còn lại: ${product.inventory?.quantity ?? 0}, bạn đặt: ${item.quantity}.`
+                        `Không đủ tồn kho khả dụng để tạo đơn hàng. Sản phẩm "${product.name}" khả dụng: ${availableStock}, bạn đặt: ${item.quantity}.`
                     );
                 }
+
                 totalAmount += Number(product.price) * item.quantity;
             }
 
-            // === TÍNH PHÍ GIAO HÀNG ===
             const subtotal = totalAmount;
             const shippingZone = detectShippingZone(input.shippingAddress ?? '');
             const shippingFee = calculateShippingFee(shippingZone, subtotal);
             const grandTotal = subtotal + shippingFee;
 
-            // === TẠO ĐƠN HÀNG ===
             const order = await tx.order.create({
                 data: {
                     userId,
                     status: OrderStatus.PENDING,
                     totalAmount: grandTotal,
-                    shippingFee: shippingFee,
-                    shippingZone: shippingZone,
+                    shippingFee,
+                    shippingZone,
                     shippingName: input.shippingName,
                     shippingPhone: input.shippingPhone,
                     shippingAddress: input.shippingAddress,
@@ -86,25 +85,33 @@ export const orderRepository = {
                 include: orderInclude
             });
 
-            // === TRỪ KHO NGAY KHI ĐẶT HÀNG ===
             for (const item of input.items) {
                 const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
                 if (!inventory) continue;
+
+                const availableStock = inventory.quantity - inventory.reservedStock;
+                if (availableStock < item.quantity) {
+                    const product = productById.get(item.productId)!;
+                    throw new Error(`Không đủ tồn kho khả dụng để tạo đơn hàng. Sản phẩm "${product.name}" vừa hết hàng.`);
+                }
+
                 const updated = await tx.inventory.updateMany({
-                    where: { id: inventory.id, quantity: { gte: item.quantity } },
-                    data: { quantity: { decrement: item.quantity } }
+                    where: { id: inventory.id, quantity: { gte: inventory.reservedStock + item.quantity } },
+                    data: { reservedStock: { increment: item.quantity } }
                 });
+
                 if (updated.count !== 1) {
                     const product = productById.get(item.productId)!;
-                    throw new Error(`Sản phẩm "${product.name}" vừa hết hàng. Vui lòng thử lại.`);
+                    throw new Error(`Không đủ tồn kho khả dụng để tạo đơn hàng. Sản phẩm "${product.name}" vừa hết hàng.`);
                 }
+
                 await tx.inventoryTransaction.create({
                     data: {
                         productId: item.productId,
                         userId,
                         type: InventoryTransactionType.ORDER,
-                        quantity: -item.quantity,
-                        reason: `Đặt hàng ${order.id}`
+                        quantity: item.quantity,
+                        reason: `Giữ hàng cho đơn ${order.id}`
                     }
                 });
             }
@@ -115,28 +122,79 @@ export const orderRepository = {
 
     async updateStatus(order: OrderRecord, nextStatus: OrderStatus, userId: string): Promise<OrderRecord> {
         return prisma.$transaction(async (tx) => {
-            // === HOÀN KHO KHI HỦY ĐƠN (ở bất kỳ trạng thái nào) ===
-            if (nextStatus === OrderStatus.CANCELLED) {
+            const shouldFinalizeStock = !order.stockDeductedAt && nextStatus === OrderStatus.COMPLETED;
+            const shouldReleaseReserved =
+                !order.stockDeductedAt &&
+                nextStatus === OrderStatus.CANCELLED &&
+                (order.status === OrderStatus.PENDING || order.status === OrderStatus.PROCESSING);
+
+            if (shouldFinalizeStock) {
                 for (const item of order.items) {
                     const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
                     if (!inventory) continue;
-                    await tx.inventory.update({
-                        where: { id: inventory.id },
-                        data: { quantity: { increment: item.quantity } }
+
+                    const updated = await tx.inventory.updateMany({
+                        where: {
+                            id: inventory.id,
+                            quantity: { gte: item.quantity },
+                            reservedStock: { gte: item.quantity }
+                        },
+                        data: {
+                            quantity: { decrement: item.quantity },
+                            reservedStock: { decrement: item.quantity }
+                        }
                     });
+
+                    if (updated.count !== 1) {
+                        throw new Error('Không đủ số lượng hàng đang giữ để cập nhật đơn hàng.');
+                    }
+
                     await tx.inventoryTransaction.create({
                         data: {
                             productId: item.productId,
                             userId,
-                            type: InventoryTransactionType.CANCEL,
-                            quantity: item.quantity,
-                            reason: `Hủy đơn hàng ${order.id}`
+                            type: InventoryTransactionType.ORDER,
+                            quantity: -item.quantity,
+                            reason: `Trừ kho thật cho đơn ${order.id}`
                         }
                     });
                 }
             }
 
-            return tx.order.update({ where: { id: order.id }, data: { status: nextStatus }, include: orderInclude });
+            if (shouldReleaseReserved) {
+                for (const item of order.items) {
+                    const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
+                    if (!inventory) continue;
+
+                    const updated = await tx.inventory.updateMany({
+                        where: { id: inventory.id, reservedStock: { gte: item.quantity } },
+                        data: { reservedStock: { decrement: item.quantity } }
+                    });
+
+                    if (updated.count !== 1) {
+                        throw new Error('Không đủ số lượng hàng đang giữ để cập nhật đơn hàng.');
+                    }
+
+                    await tx.inventoryTransaction.create({
+                        data: {
+                            productId: item.productId,
+                            userId,
+                            type: InventoryTransactionType.CANCEL,
+                            quantity: -item.quantity,
+                            reason: `Nhả giữ hàng cho đơn ${order.id}`
+                        }
+                    });
+                }
+            }
+
+            return tx.order.update({
+                where: { id: order.id },
+                data: {
+                    status: nextStatus,
+                    ...(shouldFinalizeStock ? { stockDeductedAt: new Date() } : {})
+                },
+                include: orderInclude
+            });
         });
     }
 };

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+﻿import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { getOrderErrorMessage, ordersApi } from "../api/orders.api";
@@ -77,6 +77,12 @@ export const CheckoutPage: React.FC = () => {
   const [apiError, setApiError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const validPaymentMethods = new Set<PaymentMethod>(["CASH", "BANK_TRANSFER", "VIET_QR"]);
+
+  const showSubmitError = (message: string) => {
+    setApiError(message);
+    toast.error(message);
+  };
 
   const getCartProductId = (item: (typeof items)[number]) => {
     return String(item.product.id ?? (item.product as any).product_id ?? "").trim();
@@ -87,37 +93,37 @@ export const CheckoutPage: React.FC = () => {
     setApiError(null);
 
     if (items.length === 0) {
-      toast.warning("Giỏ hàng đang trống.");
+      showSubmitError("Giỏ hàng đang trống.");
       return;
     }
 
     if (!shippingName.trim()) {
-      toast.warning("Vui lòng nhập họ tên người nhận.");
+      showSubmitError("Vui lòng nhập họ tên người nhận.");
       return;
     }
 
     if (!shippingPhone.trim()) {
-      toast.warning("Vui lòng nhập số điện thoại người nhận.");
+      showSubmitError("Vui lòng nhập số điện thoại người nhận.");
       return;
     }
 
     if (!shippingAddress.trim()) {
-      toast.warning("Vui lòng nhập địa chỉ giao hàng.");
+      showSubmitError("Vui lòng nhập địa chỉ giao hàng.");
       return;
     }
 
-    if (!paymentMethod) {
-      toast.warning("Vui lòng chọn phương thức thanh toán.");
+    if (!paymentMethod || !validPaymentMethods.has(paymentMethod)) {
+      showSubmitError("Vui lòng chọn phương thức thanh toán.");
       return;
     }
 
     if (items.some((item) => !getCartProductId(item))) {
-      toast.warning("Sản phẩm trong giỏ hàng không hợp lệ.");
+      showSubmitError("Sản phẩm trong giỏ hàng không hợp lệ, vui lòng cập nhật giỏ hàng.");
       return;
     }
 
     if (items.some((item) => !Number.isInteger(Number(item.quantity)) || Number(item.quantity) <= 0)) {
-      toast.warning("Số lượng sản phẩm không hợp lệ.");
+      showSubmitError("Số lượng sản phẩm không hợp lệ.");
       return;
     }
 
@@ -169,10 +175,10 @@ export const CheckoutPage: React.FC = () => {
         <div className="absolute inset-0 opacity-10 mix-blend-overlay bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1507133750040-4a8f57021571?auto=format&fit=crop&q=80&w=800')" }}></div>
         <div className="relative z-10 flex flex-col items-center gap-2">
           <span className="text-[#c49b76] text-xs font-bold uppercase tracking-widest flex items-center gap-1">
-            <Sparkles size={12} /> Hoàn tất đơn hàng
+            <Sparkles size={12} /> Hoàn tất đặt hàng
           </span>
           <h1 className="text-3xl sm:text-4xl font-extrabold font-serif">Thanh Toán</h1>
-          <p className="text-sm text-amber-200/60 font-light max-w-md">Điền đầy đủ thông tin giao hàng và chọn phương thức thanh toán</p>
+          <p className="text-sm text-amber-200/60 font-light max-w-md">Điền đầy đủ các thông tin giao hàng và chọn phương thức thanh toán</p>
         </div>
       </section>
 
@@ -430,7 +436,7 @@ export const CheckoutPage: React.FC = () => {
           {/* Right Summary */}
           <div className="bg-white border border-amber-900/5 rounded-3xl p-6 sm:p-8 shadow-xl flex flex-col gap-6 sticky top-24">
             <h3 className="text-base font-bold text-slate-850 border-b border-amber-900/5 pb-4 uppercase tracking-wider">
-              Sản phẩm đặt mua
+              Sản phẩm đã mua
             </h3>
 
             <div className="divide-y divide-amber-900/5 max-h-72 overflow-y-auto pr-1">
@@ -485,7 +491,7 @@ export const CheckoutPage: React.FC = () => {
               )}
 
               <div className="flex justify-between text-base font-black text-slate-900 border-t border-amber-900/5 pt-3">
-                <span>Tổng cộng</span>
+                <span>Tổng thanh toán</span>
                 <span className="text-amber-800 text-lg font-black">{formatCurrency(grandTotal)}</span>
               </div>
             </div>

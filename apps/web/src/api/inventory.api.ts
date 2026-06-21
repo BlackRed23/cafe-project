@@ -5,6 +5,8 @@ type ThresholdSuggestionParams = {
   salesWindowDays?: number;
   bufferDays?: number;
   delayBufferDays?: number;
+  planningPeriod?: 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
+  planningDays?: number;
 };
 
 const normalizeInventoryMutation = (payload: any) => {

@@ -9,6 +9,7 @@ import { Button } from "../../components/common/Button";
 import { Loading } from "../../components/common/Loading";
 import { getErrorMessage } from "../../api/client";
 import { AlertOctagon, AlertTriangle, ArrowLeft, CheckCircle, Save, Image, Info, UploadCloud, X } from "lucide-react";
+import { ALLOWED_PRODUCT_UNITS, isAllowedProductUnit } from "../../constants/units";
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 const TOAST_DURATION = 5000;
@@ -111,7 +112,7 @@ export const AdminProductFormPage: React.FC = () => {
           setName(product.name);
           setDescription(product.description || "");
           setPrice(product.price);
-          setUnit(product.unit);
+          setUnit(isAllowedProductUnit(product.unit) ? product.unit : "");
           setImageUrl(product.image_url || product.imageUrl || "");
           setSelectedImageName("");
           setImageUploadError(null);
@@ -319,13 +320,29 @@ export const AdminProductFormPage: React.FC = () => {
                 onChange={(e) => setPrice(e.target.value === "" ? NaN : Number(e.target.value))}
                 error={errors.price}
               />
-              <Input
-                label="Đơn vị tính"
-                placeholder="hộp / bịch / túi..."
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                error={errors.unit}
-              />
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Đơn vị bán
+                </label>
+                <select
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
+                  className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-slate-900 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
+                >
+                  <option value="">Chọn đơn vị bán</option>
+                  {ALLOWED_PRODUCT_UNITS.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+                {errors.unit && <p className="mt-1 text-xs text-rose-600 font-medium">{errors.unit}</p>}
+                {!unit && isEdit && (
+                  <p className="mt-1 text-xs text-amber-700 font-medium">
+                    Đơn vị cũ không còn được khuyến nghị. Vui lòng chọn đơn vị mới.
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="grid sm:grid-cols-2 gap-4">

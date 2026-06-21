@@ -53,7 +53,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
       const recentLogs = logs.slice(0, 8);
       setNotifications(recentLogs);
       
-      const hasErrors = recentLogs.some(log => log.status === "ERROR" || log.error || log.errorMessage || log.error_message || log.status === "FAILED");
+      const hasErrors = recentLogs.some(log => log.status === "FAILED" || log.error || log.errorMessage || log.error_message);
       setHasUnread(hasErrors || recentLogs.length > 0);
     } catch (err) {
       setLoadError(true);
@@ -173,11 +173,11 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
                   ) : (
                     <div className="divide-y divide-slate-100">
                       {notifications.map((log) => {
-                        const isError = log.status === "ERROR" || log.error || log.errorMessage || log.error_message || log.status === "FAILED";
-                        const isWarning = log.status === "WARNING" || log.status === "NO_SUPPLIER" || log.status === "SKIPPED_DUPLICATE";
-                        const isSuccess = log.status === "SUCCESS" || log.status === "CREATED_PURCHASE_REQUEST";
+                        const isError = log.status === "FAILED" || log.error || log.errorMessage || log.error_message;
+                        const isWarning = log.status === "SKIPPED";
+                        const isSuccess = log.status === "SUCCESS";
                         
-                        let message = log.reasoning || log.errorMessage || log.error_message || log.error;
+                        let message = log.message || log.reasoning || log.errorMessage || log.error_message || log.error;
                         if (!message && log.output) {
                           try {
                             const parsed = typeof log.output === "string" ? JSON.parse(log.output) : log.output;

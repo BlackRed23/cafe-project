@@ -23,6 +23,28 @@ const normalizeOrderFilters = (filters?: OrderFilters) => {
   return Object.keys(params).length > 0 ? params : undefined;
 };
 
+const extractBackendMessage = (error: any): string | undefined => {
+  const data = error?.response?.data;
+  const errors = data?.errors;
+
+  if (Array.isArray(errors) && errors.length > 0) {
+    return errors
+      .map((item) => item?.message || item)
+      .filter(Boolean)
+      .join(". ");
+  }
+
+  if (errors && typeof errors === "object") {
+    return Object.values(errors)
+      .flat()
+      .map((item: any) => item?.message || item)
+      .filter(Boolean)
+      .join(". ");
+  }
+
+  return data?.message || data?.error || error?.message;
+};
+
 const translateOrderErrorMessage = (message?: string): string | null => {
   if (!message) return null;
 
@@ -31,6 +53,9 @@ const translateOrderErrorMessage = (message?: string): string | null => {
     lower.includes("not enough inventory") ||
     lower.includes("current stock") ||
     lower.includes("requested") ||
+    lower.includes("inventory") ||
+    lower.includes("stock") ||
+    lower.includes("not enough") ||
     lower.includes("không đủ tồn kho") ||
     lower.includes("không đủ hàng") ||
     lower.includes("vừa hết hàng");
@@ -39,16 +64,18 @@ const translateOrderErrorMessage = (message?: string): string | null => {
 
   const currentStock =
     message.match(/current stock[^0-9]*(\d+)/i)?.[1] ??
-    message.match(/tồn kho[^0-9]*(\d+)/i)?.[1];
+    message.match(/tồn kho[^0-9]*(\d+)/i)?.[1] ??
+    message.match(/còn lại[^0-9]*(\d+)/i)?.[1];
   const requested =
     message.match(/requested[^0-9]*(\d+)/i)?.[1] ??
-    message.match(/yêu cầu[^0-9]*(\d+)/i)?.[1];
+    message.match(/yêu cầu[^0-9]*(\d+)/i)?.[1] ??
+    message.match(/bạn đặt[^0-9]*(\d+)/i)?.[1];
 
   if (currentStock && requested) {
-    return `Không đủ tồn kho để tạo đơn hàng. Tồn kho hiện tại: ${currentStock}, số lượng yêu cầu: ${requested}.`;
+    return `Không đủ tồn kho để tạo đơn hàng. Tồn kho hiện tại: ${currentStock}, số lượng yêu cầu: ${requested}. Vui lòng giảm số lượng hoặc cập nhật giỏ hàng.`;
   }
 
-  return "Không đủ tồn kho để tạo đơn hàng.";
+  return "Không đủ tồn kho để tạo đơn hàng, vui lòng giảm số lượng hoặc cập nhật giỏ hàng.";
 };
 
 const translateValidationErrorMessage = (message?: string): string | null => {
@@ -64,11 +91,15 @@ const translateValidationErrorMessage = (message?: string): string | null => {
     return "Vui lòng chọn phương thức thanh toán.";
   }
 
-  if (
-    lower.includes("order items cannot be empty") ||
-    lower.includes("product is required") ||
-    lower.includes("items")
-  ) {
+  if (lower.includes("product is required")) {
+    return "Sản phẩm trong giỏ hàng không hợp lệ, vui lòng cập nhật giỏ hàng.";
+  }
+
+  if (lower.includes("order items cannot be empty")) {
+    return "Giỏ hàng đang trống.";
+  }
+
+  if (lower.includes("items")) {
     return "Giỏ hàng không hợp lệ, vui lòng kiểm tra lại sản phẩm.";
   }
 
@@ -76,16 +107,22 @@ const translateValidationErrorMessage = (message?: string): string | null => {
     return "Số lượng sản phẩm không hợp lệ.";
   }
 
+  if (
+    lower.includes("product not found") ||
+    lower.includes("product is inactive") ||
+    lower.includes("not available") ||
+    lower.includes("inactive") ||
+    lower.includes("không tìm thấy sản phẩm") ||
+    lower.includes("sản phẩm không còn")
+  ) {
+    return "Sản phẩm không còn khả dụng, vui lòng cập nhật giỏ hàng.";
+  }
+
   return null;
 };
 
 export const getOrderErrorMessage = (error: any, fallback: string): string => {
-  const raw =
-    error?.friendlyMessage ||
-    error?.response?.data?.message ||
-    error?.response?.data?.error ||
-    error?.message;
-
+  const raw = error?.friendlyMessage || extractBackendMessage(error);
   return translateOrderErrorMessage(raw) ?? translateValidationErrorMessage(raw) ?? raw ?? fallback;
 };
 
@@ -107,17 +144,17 @@ const normalizeOrder = (order: any): Order => ({
   })),
 });
 
-const normalizeOrderPayload = (payload: CreateOrderPayload) => {
-  const normalized: CreateOrderPayload = {
+const normalizeOrderPayload = (payload: CreateOrderPayload): CreateOrderPayload => {
+  const normalized = {
     items: payload.items.map((item) => ({
       productId: String(item.productId ?? "").trim(),
       quantity: Number(item.quantity),
     })),
     paymentMethod: payload.paymentMethod,
-    shippingName: payload.shippingName?.trim() || undefined,
-    shippingPhone: payload.shippingPhone?.trim() || undefined,
-    shippingAddress: payload.shippingAddress?.trim() || undefined,
-  } as any;
+    shippingName: payload.shippingName.trim(),
+    shippingPhone: payload.shippingPhone.trim(),
+    shippingAddress: payload.shippingAddress.trim(),
+  } as CreateOrderPayload;
 
   const note = payload.note?.trim();
   if (note) normalized.note = note;
@@ -155,7 +192,7 @@ export const ordersApi = {
   },
 
   confirmOrder: async (id: string): Promise<Order> => {
-    return ordersApi.updateOrderStatus(id, { status: "CONFIRMED" });
+    return ordersApi.updateOrderStatus(id, { status: "PROCESSING" });
   },
 
   updateOrderStatus: async (id: string, payload: { status?: string; paymentStatus?: string }): Promise<Order> => {

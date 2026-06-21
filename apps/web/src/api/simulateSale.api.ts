@@ -30,4 +30,14 @@ export const simulateSaleApi = {
       prCreated: !!purchaseRequest,
     };
   },
+
+  restoreSimulation: async (transactionId: string): Promise<any> => {
+    const response = await apiClient.post(`/simulate-sale/${transactionId}/restore`);
+    return unwrapApiData<any>(response.data);
+  },
+
+  getPendingRestore: async (): Promise<any> => {
+    const response = await apiClient.get("/simulate-sale/pending-restore");
+    return unwrapApiData<any>(response.data);
+  },
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { productsApi } from "../../api/products.api";
 import { inventoryApi } from "../../api/inventory.api";
@@ -8,9 +8,11 @@ import type { Inventory } from "../../types/inventory.types";
 import { Button } from "../../components/common/Button";
 import { Loading } from "../../components/common/Loading";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
-import { Play, Sparkles, Terminal, Mail, RefreshCw, AlertTriangle, ShieldCheck, X, CheckCircle, Info, AlertOctagon } from "lucide-react";
+import { Play, Sparkles, Terminal, Mail, RefreshCw, AlertTriangle, ShieldCheck, Info } from "lucide-react";
 
 import { useToast } from "../../contexts/ToastContext";
+
+const LAST_SIMULATION_TRANSACTION_KEY = "lastSimulationTransactionId";
 
 export const AdminSimulateSalePage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -25,6 +27,7 @@ export const AdminSimulateSalePage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
   const toast = useToast();
@@ -33,10 +36,15 @@ export const AdminSimulateSalePage: React.FC = () => {
   const [result, setResult] = useState<{
     success: boolean;
     productId?: string;
+    inventoryId?: string;
+    transactionId?: string;
     productName?: string;
     stockBefore: number;
     stockAfter: number;
     decreasedQuantity: number;
+    restored?: boolean;
+    restoredStock?: number;
+    restoreTransactionId?: string;
     statusAfter: "OK" | "WARNING" | "NEED_RESTOCK";
     minThreshold: number;
     prCreated: boolean;
@@ -46,15 +54,45 @@ export const AdminSimulateSalePage: React.FC = () => {
     hasDuplicateSkip?: boolean;
   } | null>(null);
 
-  const loadData = async () => {
+  const loadData = async (hydratePendingRestore = false) => {
     try {
       setIsLoading(true);
-      const [prods, invs] = await Promise.all([
+      const [prods, invs, pendingResponse] = await Promise.all([
         productsApi.getProducts(),
         inventoryApi.getInventories().catch(() => [] as Inventory[]),
+        hydratePendingRestore ? simulateSaleApi.getPendingRestore().catch(() => null) : Promise.resolve(null),
       ]);
       setProducts(prods.filter((p) => p.isActive !== false));
       setInventories(invs);
+
+      const pending = pendingResponse?.pendingRestore;
+      if (pending) {
+        const stockAfter = pending.stockAfter ?? 0;
+        const stockBefore = pending.stockBefore ?? stockAfter + (pending.decreasedQuantity ?? 0);
+        const inventory = invs.find((item) => item.id === pending.inventoryId || item.productId === pending.productId);
+        const minThreshold = inventory?.minThreshold ?? inventory?.min_threshold ?? 0;
+        let status: "OK" | "WARNING" | "NEED_RESTOCK" = "OK";
+        if (stockAfter < minThreshold) status = "NEED_RESTOCK";
+        else if (stockAfter === minThreshold) status = "WARNING";
+
+        setSelectedProductId(pending.productId);
+        setResult({
+          success: true,
+          productId: pending.productId,
+          inventoryId: pending.inventoryId,
+          transactionId: pending.transactionId,
+          productName: pending.productName,
+          stockBefore,
+          stockAfter,
+          decreasedQuantity: pending.decreasedQuantity,
+          statusAfter: status,
+          minThreshold,
+          prCreated: false,
+        });
+        localStorage.setItem(LAST_SIMULATION_TRANSACTION_KEY, pending.transactionId);
+      } else if (hydratePendingRestore) {
+        localStorage.removeItem(LAST_SIMULATION_TRANSACTION_KEY);
+      }
     } catch (err) {
       setApiError("Không thể tải thông tin sản phẩm và kho.");
     } finally {
@@ -63,7 +101,7 @@ export const AdminSimulateSalePage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadData();
+    loadData(true);
   }, []);
 
   const selectedInventory = inventories.find((inv) => inv.productId === selectedProductId);
@@ -89,7 +127,7 @@ export const AdminSimulateSalePage: React.FC = () => {
   const localSimulatedDemand = localNumberOfDays * (dailySimulatedQuantity || 0);
 
   const handleSimulate = async () => {
-    if (!selectedProductId || localSimulatedDemand <= 0) return;
+    if (isSimulating || !selectedProductId || localSimulatedDemand <= 0) return;
     setIsSimulating(true);
     setApiError(null);
     setResult(null);
@@ -149,6 +187,8 @@ export const AdminSimulateSalePage: React.FC = () => {
       setResult({
         success: true,
         productId: affected.productId ?? res?.productId ?? selectedProductId,
+        inventoryId: affected.inventoryId ?? res?.inventoryId,
+        transactionId: affected.transactionId ?? res?.transactionId,
         productName: affected.productName ?? res?.productName ?? selectedProduct?.name,
         stockBefore,
         stockAfter,
@@ -181,8 +221,11 @@ export const AdminSimulateSalePage: React.FC = () => {
         toast.warning("Sản phẩm sắp hết hàng", `Tồn kho hiện tại: ${stockAfter} ${unit}, ngưỡng cảnh báo: ${minThreshold} ${unit}.`);
       }
 
-      // Refresh inventory stock values locally
-      await loadData();
+      const simulationTransactionId = affected.transactionId ?? res?.transactionId;
+      if (simulationTransactionId) {
+        localStorage.setItem(LAST_SIMULATION_TRANSACTION_KEY, simulationTransactionId);
+      }
+      await loadData(false);
     } catch (err: any) {
       // Case Error toasts
       const status = err.response?.status;
@@ -198,6 +241,41 @@ export const AdminSimulateSalePage: React.FC = () => {
     } finally {
       setIsSimulating(false);
       setShowConfirm(false);
+    }
+  };
+
+  const handleRestoreSimulation = async () => {
+    if (!result?.transactionId || result.restored) return;
+
+    setIsRestoring(true);
+    setApiError(null);
+
+    try {
+      const restored = await simulateSaleApi.restoreSimulation(result.transactionId);
+      const restoredStock = restored?.restoredStock ?? result.stockBefore;
+
+      setResult((prev) => prev ? {
+        ...prev,
+        restored: true,
+        restoredStock,
+        restoreTransactionId: restored?.restoreTransactionId,
+      } : prev);
+
+      toast.success("Đã khôi phục mô phỏng", "Tồn kho đã được cộng lại.");
+      localStorage.removeItem(LAST_SIMULATION_TRANSACTION_KEY);
+      await loadData(false);
+    } catch (err: any) {
+      const status = err.response?.status;
+      const message = err.response?.data?.message || err.message || "Không thể khôi phục mô phỏng.";
+      if (status === 409) {
+        setResult((prev) => prev ? { ...prev, restored: true } : prev);
+        toast.warning("Mô phỏng đã được khôi phục", message);
+      } else {
+        toast.error("Khôi phục thất bại", message);
+      }
+      setApiError(message);
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -220,7 +298,7 @@ export const AdminSimulateSalePage: React.FC = () => {
           <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
             <Play size={20} className="text-amber-800" /> Giả lập bán hàng (Simulate Sale)
           </h3>
-          <button onClick={loadData} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-50">
+          <button onClick={() => loadData(true)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-50">
             <RefreshCw size={14} />
           </button>
         </div>
@@ -348,7 +426,7 @@ export const AdminSimulateSalePage: React.FC = () => {
             <Button
               onClick={() => setShowConfirm(true)}
               className="px-6 py-3"
-              disabled={localSimulatedDemand <= 0}
+              disabled={localSimulatedDemand <= 0 || isSimulating}
             >
               Apply Simulation
             </Button>
@@ -384,6 +462,35 @@ export const AdminSimulateSalePage: React.FC = () => {
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-800">Bình thường</span>
                 )}
               </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs text-slate-600 space-y-1">
+              <p className="font-bold text-slate-800">
+                {result.restored ? "Đã khôi phục mô phỏng" : "Có thể khôi phục tồn kho mô phỏng"}
+              </p>
+              <p>
+                {result.restored
+                  ? `Tồn kho sau khôi phục: ${result.restoredStock ?? result.stockBefore} ${unit}.`
+                  : `Hoàn tác cộng lại ${result.decreasedQuantity} ${unit} đã trừ từ giao dịch mô phỏng này.`}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link to="/admin/agent-logs?tab=simulation">
+                <Button size="sm" variant="outline" className="text-xs flex items-center gap-1 bg-white">
+                  <Terminal size={12} /> Nhật ký mô phỏng
+                </Button>
+              </Link>
+              <Button
+                size="sm"
+                onClick={handleRestoreSimulation}
+                disabled={!result.transactionId || result.restored || isRestoring}
+                className="text-xs flex items-center gap-1"
+              >
+                <RefreshCw size={12} className={isRestoring ? "animate-spin" : ""} />
+                {result.restored ? "Đã khôi phục" : "Khôi phục mô phỏng"}
+              </Button>
             </div>
           </div>
 

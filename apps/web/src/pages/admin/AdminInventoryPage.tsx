@@ -24,6 +24,8 @@ export const AdminInventoryPage: React.FC = () => {
   const [modalLoading, setModalLoading] = useState(false);
   const [thresholdSuggestion, setThresholdSuggestion] = useState<any>(null);
   const [isSuggesting, setIsSuggesting] = useState(false);
+  const [planningPeriod, setPlanningPeriod] = useState<"WEEKLY" | "MONTHLY" | "CUSTOM">("WEEKLY");
+  const [planningDays, setPlanningDays] = useState<number>(14);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" | "warning" } | null>(null);
 
   const showToast = (message: string, type: "success" | "error" | "info" | "warning" = "info") => {
@@ -89,14 +91,32 @@ export const AdminInventoryPage: React.FC = () => {
     if (type === "threshold") {
       setIsSuggesting(true);
       setThresholdSuggestion(null);
+      setPlanningPeriod("WEEKLY");
+      setPlanningDays(14);
       try {
-        const suggestion = await inventoryApi.getThresholdSuggestion((inv as any).inventoryId ?? inv.id);
+        const suggestion = await inventoryApi.getThresholdSuggestion((inv as any).inventoryId ?? inv.id, { planningPeriod: "WEEKLY", planningDays: 14 });
         setThresholdSuggestion(suggestion);
       } catch (err) {
         console.error("Failed to load suggestion");
       } finally {
         setIsSuggesting(false);
       }
+    }
+  };
+
+  const fetchSuggestion = async (period: "WEEKLY" | "MONTHLY" | "CUSTOM", days: number) => {
+    if (!selectedInventory) return;
+    setIsSuggesting(true);
+    try {
+      const suggestion = await inventoryApi.getThresholdSuggestion((selectedInventory as any).inventoryId ?? selectedInventory.id, {
+        planningPeriod: period,
+        planningDays: days,
+      });
+      setThresholdSuggestion(suggestion);
+    } catch (err) {
+      console.error("Failed to load suggestion");
+    } finally {
+      setIsSuggesting(false);
     }
   };
 
@@ -365,14 +385,43 @@ export const AdminInventoryPage: React.FC = () => {
         >
           <form onSubmit={handleModalSubmit} className="space-y-4">
             {modalType === "threshold" && (
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-4 space-y-2 text-sm text-slate-700 relative overflow-hidden">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-4 space-y-3 text-sm text-slate-700 relative overflow-hidden">
                 {isSuggesting && (
                   <div className="absolute inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center z-10">
                     <Loading message="Đang tính toán..." />
                   </div>
                 )}
-                <div className="flex justify-between border-b border-slate-200 pb-2 mb-2">
-                  <span className="font-semibold text-slate-900">Thông tin đề xuất</span>
+                <div className="space-y-2 pb-3 border-b border-slate-200">
+                  <label className="block font-semibold text-slate-900">Chu kỳ tính ngưỡng đề xuất</label>
+                  <div className="flex gap-2">
+                    {(['WEEKLY', 'MONTHLY', 'CUSTOM'] as const).map(period => (
+                      <button
+                        key={period}
+                        type="button"
+                        onClick={() => {
+                          setPlanningPeriod(period);
+                          fetchSuggestion(period, planningDays);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${planningPeriod === period ? 'bg-amber-100 border-amber-300 text-amber-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        {period === 'WEEKLY' ? 'Theo tuần' : period === 'MONTHLY' ? 'Theo tháng' : 'Tùy chỉnh'}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {planningPeriod === 'CUSTOM' && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-xs font-medium text-slate-600">Số ngày dự trữ:</span>
+                      <input 
+                        type="number" 
+                        min="1"
+                        value={planningDays}
+                        onChange={(e) => setPlanningDays(parseInt(e.target.value) || 1)}
+                        onBlur={() => fetchSuggestion('CUSTOM', planningDays)}
+                        className="w-20 px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="flex justify-between">
                   <span>Tồn kho hiện tại:</span>
@@ -387,6 +436,12 @@ export const AdminInventoryPage: React.FC = () => {
                     <span className="font-semibold text-emerald-700">Ngưỡng đề xuất:</span>
                     <span className="font-bold text-lg text-emerald-700">{thresholdSuggestion?.recommendedThreshold ?? 0}</span>
                   </div>
+                  {thresholdSuggestion?.explanation && (
+                    <div className="text-xs text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200 my-2 leading-relaxed">
+                      <Info size={14} className="inline mr-1 text-blue-500 mb-0.5" />
+                      {thresholdSuggestion.explanation}
+                    </div>
+                  )}
                   
                   {thresholdSuggestion && (
                     <div className="flex flex-col gap-2">

@@ -4,8 +4,19 @@ export const inventoryIdSchema = z.string().trim().min(1, 'Mã tồn kho là b�
 
 export const importInventorySchema = z.object({
     inventoryId: inventoryIdSchema,
-    quantity: z.coerce.number().int('Số lượng phải là số nguyên.').positive('Số lượng phải lớn hơn 0.'),
+    supplierProductId: z.string().trim().min(1, 'Supplier product is required.').optional(),
+    supplierId: z.string().trim().min(1, 'Supplier is required.').optional(),
+    quantity: z.coerce.number().int('Số lượng phải là số nguyên.').positive('Số lượng phải lớn hơn 0.').optional(),
+    purchaseQuantity: z.coerce.number().positive('Số lượng nhập phải lớn hơn 0.').optional(),
     note: z.string().trim().max(1000, 'Ghi chú tối đa 1000 ký tự.').optional().nullable()
+}).superRefine((data, ctx) => {
+    if (data.quantity === undefined && data.purchaseQuantity === undefined) {
+        ctx.addIssue({
+            code: 'custom',
+            message: 'Quantity or purchaseQuantity is required.',
+            path: ['quantity']
+        });
+    }
 });
 
 export const adjustInventorySchema = z.object({

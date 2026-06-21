@@ -1,4 +1,4 @@
-﻿import { apiClient, unwrapApiField, unwrapApiList } from "./client";
+import { apiClient, unwrapApiField, unwrapApiList } from "./client";
 import type { Supplier, SupplierProduct } from "../types/supplier.types";
 
 const normalizeSupplier = (supplier: any): Supplier => ({
@@ -16,15 +16,25 @@ const normalizeSupplierProduct = (item: any): SupplierProduct => ({
   min_order_quantity: item?.min_order_quantity ?? item?.minOrderQuantity,
   leadTime: item?.leadTime ?? item?.lead_time ?? item?.leadTimeDays,
   lead_time: item?.lead_time ?? item?.leadTime ?? item?.leadTimeDays,
+  purchaseUnit: item?.purchaseUnit ?? item?.purchase_unit,
+  purchase_unit: item?.purchase_unit ?? item?.purchaseUnit,
+  conversionQuantity: item?.conversionQuantity ?? item?.conversion_quantity,
+  conversion_quantity: item?.conversion_quantity ?? item?.conversionQuantity,
+  conversionTargetUnit: item?.conversionTargetUnit ?? item?.conversion_target_unit,
+  conversion_target_unit: item?.conversion_target_unit ?? item?.conversionTargetUnit,
 });
 
-const normalizeSupplierProductPayload = (payload: Partial<SupplierProduct>) => ({
-  ...payload,
+const normalizeSupplierProductPayload = (payload: any) => ({
   supplierId: payload.supplierId ?? payload.supplier_id,
   productId: payload.productId ?? payload.product_id,
-  price: payload.importPrice ?? payload.import_price,
+  price: payload.price ?? payload.importPrice ?? payload.import_price,
   minOrderQuantity: payload.minOrderQuantity ?? payload.min_order_quantity,
-  leadTimeDays: payload.leadTime ?? payload.lead_time,
+  leadTimeDays: payload.leadTimeDays ?? payload.leadTime ?? payload.lead_time,
+  isPreferred: payload.isPreferred ?? false,
+  supplierSku: payload.supplierSku ?? payload.supplier_sku ?? null,
+  purchaseUnit: payload.purchaseUnit ?? payload.purchase_unit ?? null,
+  conversionQuantity: payload.conversionQuantity ? Number(payload.conversionQuantity) : payload.conversion_quantity ? Number(payload.conversion_quantity) : null,
+  conversionTargetUnit: payload.conversionTargetUnit ?? payload.conversion_target_unit ?? null,
 });
 
 export const suppliersApi = {

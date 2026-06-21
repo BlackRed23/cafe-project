@@ -8,6 +8,8 @@ const DEFAULT_SETTINGS: Record<string, string> = {
     'ai.promptPrefix': '',
     'ai.scanCron': '*/5 * * * *',
     'inventory.defaultMinThreshold': '10',
+    'inventory.reorderPlanningPeriod': 'WEEKLY',
+    'inventory.reorderPlanningCustomDays': '14',
     'store.name': 'Cafe System',
     'store.email': '',
     'store.phone': ''

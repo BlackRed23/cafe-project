@@ -1,4 +1,9 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
+import { ALLOWED_PRODUCT_UNITS } from '../../common/units';
+
+const unitSchema = z.enum(ALLOWED_PRODUCT_UNITS, {
+    message: 'Unit is not supported.'
+});
 
 export const createProductSchema = z.object({
     name: z.string().trim().min(1, 'Product name is required.').max(255, 'Product name must be at most 255 characters.'),
@@ -6,7 +11,7 @@ export const createProductSchema = z.object({
     description: z.string().trim().max(1000, 'Description must be at most 1000 characters.').optional().nullable(),
     price: z.coerce.number().min(0, 'Price must be greater than or equal to 0.'),
     costPrice: z.coerce.number().min(0, 'Cost price must be greater than or equal to 0.').optional(),
-    unit: z.string().trim().min(1, 'Unit is required.').max(50, 'Unit must be at most 50 characters.').optional(),
+    unit: unitSchema.optional(),
     isActive: z.boolean().optional(),
     categoryId: z.string().trim().min(1, 'Category is required.'),
     imageUrl: z.string().trim().url('Image URL must be a valid URL.').optional().nullable().or(z.literal(''))

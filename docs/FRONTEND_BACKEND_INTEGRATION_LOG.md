@@ -1,7 +1,7 @@
-# Frontend Backend Integration Log
+﻿# Frontend Backend Integration Log
 
 ## 1. Mục tiêu
-Đối chiếu và đồng bộ giao tiếp (contract) giữa Frontend và Backend cho luồng Cafe Agent. Sửa các endpoint, method, payload bị lệch, đảm bảo hai bên nói chung một ngôn ngữ. Không thực hiện refactor hay can thiệp sâu vào các logic độc lập của từng bên.
+�?i chi?u v� d?ng b? giao ti?p (contract) gi?a Frontend v� Backend cho lu?ng Cafe Agent. S?a c�c endpoint, method, payload b? l?ch, d?m b?o hai b�n n�i chung m?t ng�n ng?. Kh�ng th?c hi?n refactor hay can thi?p s�u v�o c�c logic d?c l?p c?a t?ng b�n.
 
 ## 2. File scan log đã dùng
 - `docs/BACKEND_SCAN_LOG.md`
@@ -24,11 +24,11 @@
 
 | File | Đã sửa gì | Lý do |
 | ---- | --------- | ----- |
-| `apps/web/src/pages/CheckoutPage.tsx` | Xóa các field và logic validate `shippingName`, `shippingPhone`, `shippingAddress`. | Database/Backend không lưu các trường này. Đây là ứng dụng bán tại quầy mô phỏng. |
+| `apps/web/src/pages/CheckoutPage.tsx` | X�a c�c field v� logic validate `shippingName`, `shippingPhone`, `shippingAddress`. | Database/Backend kh�ng luu c�c tru?ng n�y. ��y l� ?ng d?ng b�n t?i qu?y m� ph?ng. |
 | `apps/web/src/types/order.types.ts` | Xóa `shippingName`, `shippingPhone`, `shippingAddress` khỏi interface `Order` và `CreateOrderPayload`. | Đồng bộ type với API thực tế của Backend. |
 | `apps/web/src/api/orders.api.ts` | Xóa logic đọc/ghi các trường `shipping` khỏi `normalizeOrder` và `normalizeOrderPayload`. | Đồng bộ payload gửi đi theo yêu cầu BE. |
 | `apps/web/src/pages/admin/AdminProductFormPage.tsx` | Thêm validate bắt buộc chọn `categoryId` trước khi submit. | Backend yêu cầu `categoryId` (required), tránh gặp lỗi HTTP 400. |
-| `apps/web/src/api/agentLogs.api.ts` | Xóa param `limit` khỏi hàm `getAgentLogs`. | Backend API `/agent/logs` không hỗ trợ phân trang/limit. |
+| `apps/web/src/api/agentLogs.api.ts` | X�a param `limit` kh?i h�m `getAgentLogs`. | Backend API `/agent/logs` kh�ng h? tr? ph�n trang/limit. |
 
 ## 5. Contract đã đồng bộ
 - **Tạo đơn hàng (`POST /orders`)**: FE chỉ gửi `items`, `paymentMethod`, `note`. Backend nhận đủ và xử lý chính xác.
@@ -76,9 +76,9 @@
 | --------- | ---------- | ------- |
 | `packages/types/src/product.type.ts` | **MỚI TẠO** | Thêm `Product`, `CreateProductPayload`, `UpdateProductPayload`, `ProductCategory`, `ProductInventory`. Khớp BE `ProductDto`. |
 | `packages/types/src/category.type.ts` | **MỚI TẠO** | Thêm `Category`, `CreateCategoryPayload`, `UpdateCategoryPayload`. Khớp BE `CategoryDto` và Prisma schema. |
-| `packages/types/src/index.ts` | **ĐÃ SỬA** | Export thêm `product.type` và `category.type`. |
+| `packages/types/src/index.ts` | **�� S?A** | Export th�m `product.type` v� `category.type`. |
 | `apps/web/src/types/product.types.ts` | Giữ nguyên | FE local type vẫn dùng song song (hỗ trợ dual-case `image_url`/`imageUrl`, `category_id`/`categoryId`). Không xóa để tránh sửa lan. |
-| `apps/web/src/types/category.types.ts` | **ĐÃ SỬA** | Xóa `isActive` vì DB/BE Category không có field này. Thêm `createdAt`, `updatedAt` cho khớp BE response. |
+| `apps/web/src/types/category.types.ts` | **�� S?A** | X�a `isActive` v� DB/BE Category kh�ng c� field n�y. Th�m `createdAt`, `updatedAt` cho kh?p BE response. |
 
 ### 10.2 Bảng đối chiếu Product CRUD
 
@@ -100,7 +100,7 @@
 | PUT update | `categoriesApi.updateCategory(id, payload)` → PUT `/categories/:id` | `PUT /api/categories/:id` → `patchCategory` → Zod validate `updateCategorySchema` (partial) | Tương tự create nhưng partial. | ✅ Khớp | Không |
 | DELETE | `categoriesApi.deleteCategory(id)` → DELETE `/categories/:id` | `DELETE /api/categories/:id` → `removeCategory` | BE kiểm tra còn product thuộc category không → trả 400 nếu còn. | ✅ Khớp | Không |
 
-**Lưu ý Category CRUD**: API layer (`categories.api.ts`) đã có đủ 5 hàm CRUD. Tuy nhiên FE **chưa có UI admin riêng** cho Category (không có `AdminCategoriesPage` hay `AdminCategoryFormPage`). Các hàm create/update/delete category ở FE hiện chưa được gọi từ UI nào. Đây là thiếu UI, không phải thiếu contract — không thuộc phạm vi sửa trong lần này.
+**Luu � Category CRUD**: API layer (`categories.api.ts`) d� c� d? 5 h�m CRUD. Tuy nhi�n FE **chua c� UI admin ri�ng** cho Category (kh�ng c� `AdminCategoriesPage` hay `AdminCategoryFormPage`). C�c h�m create/update/delete category ? FE hi?n chua du?c g?i t? UI n�o. ��y l� thi?u UI, kh�ng ph?i thi?u contract � kh�ng thu?c ph?m vi s?a trong l?n n�y.
 
 ### 10.4 File đã sửa thêm
 
@@ -225,7 +225,7 @@ Backend đã có đủ CRUD cho Category:
 
 - **`isActive` không tồn tại**: Phiên bản cũ có form field `isActive`, cột "Trạng thái" hiển thị Active/Inactive, logic `category.isActive !== false`. Tất cả đều vô nghĩa vì DB Category không có field `isActive` và BE validator không nhận field này.
 - **`alert()` thay vì inline error**: Phiên bản cũ dùng `alert("Đã có lỗi xảy ra")` và `alert("Không thể xóa danh mục này")` → mất message cụ thể từ backend.
-- **Payload gửi thừa field**: Phiên bản cũ gửi `{ name, description, isActive }` → `isActive` bị Zod strip, không gây lỗi nhưng misleading.
+- **Payload g?i th?a field**: Phi�n b?n cu g?i `{ name, description, isActive }` ? `isActive` b? Zod strip, kh�ng g�y l?i nhung misleading.
 
 ### 11.8 Việc không sửa
 
@@ -320,7 +320,7 @@ Product:
 - Status code: Không có status lỗi.
 - Backend terminal log: Không quan sát thấy lỗi backend trong quá trình test.
 - File nghi ngờ liên quan: Không có.
-- Ghi chú dữ liệu: Lần chạy automation đầu bị lỗi encoding từ script test làm phát sinh thêm một category/product có ký tự `??`; đây là artifact của test harness, không phải lỗi UI/backend. Lần chạy lại bằng Unicode escape đã tạo đúng dữ liệu tiếng Việt ở trên.
+- Ghi ch� d? li?u: L?n ch?y automation d?u b? l?i encoding t? script test l�m ph�t sinh th�m m?t category/product c� k� t? `??`; d�y l� artifact c?a test harness, kh�ng ph?i l?i UI/backend. L?n ch?y l?i b?ng Unicode escape d� t?o d�ng d? li?u ti?ng Vi?t ? tr�n.
 
 ### 12.6 Kết luận
 
@@ -435,7 +435,7 @@ Ghi chú: Không có field tồn kho trong `AdminProductFormPage.tsx`, nên khô
 
 ## 14. Product Delete 409 Handling
 
-- **Nguyên nhân lỗi 409**: Backend cố tình chặn xoá những product đã có liên kết kho (inventoryTransactions), đơn hàng (orderItems) hoặc purchaseRequestItems để đảm bảo toàn vẹn dữ liệu. Khi bị chặn, backend trả về HTTP 409 Conflict.
+- **Nguy�n nh�n l?i 409**: Backend c? t�nh ch?n xo� nh?ng product d� c� li�n k?t kho (inventoryTransactions), don h�ng (orderItems) ho?c purchaseRequestItems d? d?m b?o to�n v?n d? li?u. Khi b? ch?n, backend tr? v? HTTP 409 Conflict.
 - **File đã sửa**: `apps/web/src/pages/admin/AdminProductsPage.tsx`.
 - **UI hiển thị**: Khi bắt được lỗi 409, thay vì alert chung chung, UI sẽ hiển thị một ConfirmDialog cảnh báo riêng với nội dung: `Không thể xoá sản phẩm "[Tên sản phẩm]" vì đã có lịch sử kho/đơn hàng liên quan. Hãy ngưng bán sản phẩm thay vì xoá.`
 - **Hành động ngưng bán**: Modal cung cấp tuỳ chọn "Ngưng bán" (cập nhật `isActive: false`). Nếu admin đồng ý, hệ thống gọi API update để ẩn sản phẩm khỏi các chức năng bán hàng mà không làm mất dữ liệu lịch sử.
@@ -534,7 +534,7 @@ Hiển thị nội dung email agent đề xuất nếu backend có dữ liệu, 
 ### 16.3 File đã sửa
 | File | Đã sửa gì | Lý do |
 | ---- | --------- | ----- |
-| `apps/web/src/pages/admin/AdminPurchaseRequestDetailPage.tsx` | Thêm inline toast local, bỏ success/error message inline, tách duyệt yêu cầu khỏi gửi email, thêm khối email preview và nút `Gửi email` khi request đã duyệt nhưng chưa gửi | Không gửi email âm thầm, cho admin xem email trước khi gửi, mọi thao tác dùng toast |
+| `apps/web/src/pages/admin/AdminPurchaseRequestDetailPage.tsx` | Th�m inline toast local, b? success/error message inline, t�ch duy?t y�u c?u kh?i g?i email, th�m kh?i email preview v� n�t `G?i email` khi request d� duy?t nhung chua g?i | Kh�ng g?i email �m th?m, cho admin xem email tru?c khi g?i, m?i thao t�c d�ng toast |
 | `apps/web/src/api/purchaseRequests.api.ts` | Thêm normalize field email, thêm `getEmailPreview`, thêm `sendEmail` | Gọi đúng backend endpoint preview/gửi email hiện có |
 | `apps/web/src/types/purchaseRequest.types.ts` | Bổ sung type field email và `PurchaseRequestEmailPreview` | Type frontend khớp dữ liệu email backend có thể trả |
 
@@ -560,7 +560,7 @@ Hiển thị nội dung email agent đề xuất nếu backend có dữ liệu, 
 - Không refactor toàn dự án.
 - Không cài thêm thư viện toast mới.
 
-## 18. Admin Notification Bell Agent Logs
+## 17. Admin Notification Bell Agent Logs
 
 ### 18.1 Mục tiêu
 Thêm dropdown thông báo khi click icon chuông trên header admin, hiển thị log hệ thống/Agent Logs gần nhất mà không lạm dụng toast.
@@ -603,10 +603,10 @@ Thêm dropdown thông báo khi click icon chuông trên header admin, hiển th�
 - Không sửa chức năng Simulate Sale/Purchase Request/Product/Order.
 - Không can thiệp toast nghiệp vụ ở các page khác.
 
-## 16. Category Delete Product Guard Check
+## 18. Category Delete Product Guard Check
 
-- Nguyên nhân vì sao danh mục không xoá được: UI trang Products mặc định chỉ hiển thị các sản phẩm đang active (2 sản phẩm), nhưng trong database mọi category hiện tại đều đang có các sản phẩm (cả active và inactive). API backend count toàn bộ products theo categoryId nên đã trả về lỗi vì database constraints không cho phép xoá category nếu vẫn còn product.
-- UI có hard-code message gây hiểu nhầm không: Có, ban đầu có đoạn warning cứng trong modal: 'Hành động này không thể hoàn tác. Nếu danh mục còn sản phẩm, hệ thống sẽ không cho phép xóa.' gây nhầm tưởng đây là lỗi hệ thống sau khi xoá thất bại.
+- Nguy�n nh�n v� sao danh m?c kh�ng xo� du?c: UI trang Products m?c d?nh ch? hi?n th? c�c s?n ph?m dang active (2 s?n ph?m), nhung trong database m?i category hi?n t?i d?u dang c� c�c s?n ph?m (c? active v� inactive). API backend count to�n b? products theo categoryId n�n d� tr? v? l?i v� database constraints kh�ng cho ph�p xo� category n?u v?n c�n product.
+- UI c� hard-code message g�y hi?u nh?m kh�ng: C�, ban d?u c� do?n warning c?ng trong modal: 'H�nh d?ng n�y kh�ng th? ho�n t�c. N?u danh m?c c�n s?n ph?m, h? th?ng s? kh�ng cho ph�p x�a.' g�y nh?m tu?ng d�y l� l?i h? th?ng sau khi xo� th?t b?i.
 - Backend đang chặn theo điều kiện nào: Chặn xoá danh mục nếu `productCount > 0` (bao gồm tất cả sản phẩm, kể cả có `isActive: false`).
 - File đã sửa:
   + `apps/web/src/pages/admin/AdminCategoriesPage.tsx`: Đổi text warning mặc định thành 'Lưu ý: Nếu danh mục còn sản phẩm, hệ thống sẽ không cho phép xoá.' để rõ ràng hơn.
@@ -766,7 +766,7 @@ Tự động xoá product khỏi database khi product nằm trong `Chờ xoá` v
 
 ### 22.2 Backend job đã thêm
 
-- **Job chạy ở đâu**: `apps/api/src/modules/cron/cron.service.ts`.
+- **Job ch?y ? d�u**: `apps/api/src/modules/cron/cron.service.ts`.
 - **Tần suất chạy**: Mỗi ngày một lần vào lúc nửa đêm (`0 0 * * *`).
 - **Điều kiện query product cần xoá**:
   - `pendingDeleteUntil` không phải `null`.
@@ -810,9 +810,9 @@ Tự động xoá product khỏi database khi product nằm trong `Chờ xoá` v
 - Không refactor toàn dự án.
 
 
-## 22. Fix Cron Job TS2345 (Pending Delete)
+## 23. Fix Cron Job TS2345 (Pending Delete)
 - **Lỗi**: `TS2345: Argument of type '{ where: ... }' is not assignable to parameter of type 'boolean | undefined'` trong `cron.service.ts`.
-- **Nguyên nhân**: Hàm `findMany` của `productRepository` được định nghĩa chỉ nhận `includeInactive?: boolean`, nhưng `cron.service.ts` lại truyền vào Prisma query object.
+- **Nguy�n nh�n**: H�m `findMany` c?a `productRepository` du?c d?nh nghia ch? nh?n `includeInactive?: boolean`, nhung `cron.service.ts` l?i truy?n v�o Prisma query object.
 - **Cách khắc phục**:
   - Không phá vỡ `findMany` contract cũ.
   - Thêm phương thức `findExpiredPendingDeleteProducts(now: Date)` vào `product.repository.ts` để query riêng danh sách cần xóa vĩnh viễn (có `pendingDeleteUntil <= now`).
@@ -820,7 +820,7 @@ Tự động xoá product khỏi database khi product nằm trong `Chờ xoá` v
 - **Kết quả**: Backend không còn crash, build typescript pass. Chức năng auto delete qua cron vẫn chạy bình thường.
 
 
-## 23. Inventory Actions UX And Contract Fix
+## 24. Inventory Actions UX And Contract Fix
 
 ### 23.1 Mục tiêu
 Làm rõ và sửa nghiệp vụ `Nhập kho`, `Điều chỉnh`, `Ngưỡng` trong màn tồn kho. Đảm bảo đúng UI, validate, gửi đúng payload lên backend và làm rõ hành vi của các endpoint hiện có.
@@ -830,7 +830,7 @@ Làm rõ và sửa nghiệp vụ `Nhập kho`, `Điều chỉnh`, `Ngưỡng` tr
 | --- | --- | --- | --- | --- |
 | Danh sách tồn kho | GET | `/inventories` | | Lấy danh sách inventory |
 | Nhập kho | POST | `/inventories/import` | `inventoryId`, `quantity`, `note` | Cộng thêm `quantity` vào `quantity` hiện tại. |
-| Điều chỉnh | POST | `/inventories/adjust` | `inventoryId`, `quantity`, `note` | Cộng thêm `quantity` vào `quantity` hiện tại (hỗ trợ âm để trừ). |
+| �i?u ch?nh | POST | `/inventories/adjust` | `inventoryId`, `quantity`, `note` | C?ng th�m `quantity` v�o `quantity` hi?n t?i (h? tr? �m d? tr?). |
 | Cập nhật ngưỡng | POST | `/inventories/threshold` | `inventoryId`, `minThreshold` | Cập nhật `minThreshold` mới (Endpoint được thêm mới). |
 
 ### 23.3 File đã kiểm tra
@@ -845,18 +845,18 @@ Làm rõ và sửa nghiệp vụ `Nhập kho`, `Điều chỉnh`, `Ngưỡng` tr
 ### 23.4 File đã sửa
 | File | Đã sửa gì | Lý do |
 | --- | --- | --- |
-| `inventory.repository.ts` | Thêm hàm `updateThreshold` | Backend trước đây không có API để set riêng ngưỡng tồn kho. |
+| `inventory.repository.ts` | Th�m h�m `updateThreshold` | Backend tru?c d�y kh�ng c� API d? set ri�ng ngu?ng t?n kho. |
 | `inventory.service.ts` | Thêm `updateInventoryThreshold` | Xử lý logic gọi repo cập nhật ngưỡng. |
 | `inventory.validator.ts` | Thêm `updateThresholdSchema` | Validate payload gửi lên. |
 | `inventory.controller.ts` | Thêm `updateThreshold` | Expose API endpoint. |
 | `inventory.route.ts` | Thêm route `POST /threshold` | Gắn route với controller mới. |
 | `inventory.api.ts` | Cập nhật hàm `updateInventory` | Đổi lỗi `chưa hỗ trợ` thành gọi endpoint `/inventories/threshold`. |
-| `AdminInventoryPage.tsx` | Sửa logic payload, cập nhật UI (Toast) | Thay vì gửi quantity điều chỉnh trực tiếp lên API, frontend đã đổi thành tính độ lệch (`diff`) và gửi lên. Bổ sung `Toast` notification đẹp mắt cho từng hành động thành công/thất bại và validate không cho nhập số âm ở những trường không hợp lệ. |
+| `AdminInventoryPage.tsx` | S?a logic payload, c?p nh?t UI (Toast) | Thay v� g?i quantity di?u ch?nh tr?c ti?p l�n API, frontend d� d?i th�nh t�nh d? l?ch (`diff`) v� g?i l�n. B? sung `Toast` notification d?p m?t cho t?ng h�nh d?ng th�nh c�ng/th?t b?i v� validate kh�ng cho nh?p s? �m ? nh?ng tru?ng kh�ng h?p l?. |
 
 ### 23.5 UI sau khi sửa
 * `Nhập kho` dùng label: `Số lượng nhập thêm` (chỉ cho phép nhập số dương).
 * `Điều chỉnh` dùng label: `Số lượng thực tế sau kiểm kê` (hiển thị sẵn số lượng tồn kho hiện tại, admin đổi thành số thực tế).
-* `Ngưỡng` dùng label: `Ngưỡng tối thiểu mới` (không được âm).
+* `Ngu?ng` d�ng label: `Ngu?ng t?i thi?u m?i` (kh�ng du?c �m).
 * Sử dụng Toast notification để hiển thị thông báo thay cho `alert()` cũ.
 * Danh sách Inventory tự động reload sau khi submit thành công.
 
@@ -876,7 +876,7 @@ Làm rõ và sửa nghiệp vụ `Nhập kho`, `Điều chỉnh`, `Ngưỡng` tr
 * Không refactor toàn bộ dự án, chỉ sửa trong khuôn khổ page Inventory.
 
 
-## 24. Inventory Reorder After Sale Logic
+## 25. Inventory Reorder After Sale Logic
 
 ### 24.1 Đã kiểm tra file nào
 - `apps/api/src/modules/order/order.repository.ts`: Xử lý trừ tồn kho.
@@ -907,7 +907,7 @@ Làm rõ và sửa nghiệp vụ `Nhập kho`, `Điều chỉnh`, `Ngưỡng` tr
 - Không sửa UI phức tạp do backend đã gánh phần tự động tính toán bằng Agent.
 - UI giữ nguyên hành vi hiển thị `Cần nhập hàng` cơ bản nhưng ở backend lệnh mua hàng (PR) đã được lo xa.
 
-## 23. Product Delete Cloudinary Cleanup
+## 26. Product Delete Cloudinary Cleanup
 
 ### 23.1 Mục tiêu
 
@@ -968,14 +968,14 @@ Khi product bị xoá vĩnh viễn khỏi database qua luồng `purge`, ảnh Cl
 - Không refactor toàn dự án.
 
 
-## 25. Fix AdminInventoryPage TSX Parse Error
+## 27. Fix AdminInventoryPage TSX Parse Error
 
 - **Lỗi là gì:** Lỗi `[PARSE_ERROR] Unexpected token. Did you mean {'}'} or &rbrace;?` khi build/chạy frontend.
-- **Nguyên nhân:** Do khi bọc thẻ Fragment `<></>` cho `AdminInventoryPage.tsx` để chứa Toast Container, thẻ đóng `</div>` của `<div className="flex flex-col gap-6">` gốc đã bị xoá nhầm, khiến JSX không hợp lệ do lệch thẻ đóng.
+- **Nguy�n nh�n:** Do khi b?c th? Fragment `<></>` cho `AdminInventoryPage.tsx` d? ch?a Toast Container, th? d�ng `</div>` c?a `<div className="flex flex-col gap-6">` g?c d� b? xo� nh?m, khi?n JSX kh�ng h?p l? do l?ch th? d�ng.
 - **File đã sửa:** `apps/web/src/pages/admin/AdminInventoryPage.tsx`
 - **Kết quả:** Đã bổ sung lại thẻ `</div>`. Chạy lại `npx tsc --noEmit` pass hoàn toàn, lỗi cú pháp đã được xử lý triệt để.
 
-## 26. Inventory Threshold Suggestion And Reorder Flow
+## 28. Inventory Threshold Suggestion And Reorder Flow
 
 ### 26.1 Mục tiêu
 
@@ -1075,142 +1075,16 @@ Gợi ý ngưỡng tồn kho thông minh dựa trên lịch sử bán, lead time
 - Không tự kết luận nhà cung cấp đủ/thiếu khi database chưa có capacity.
 - Không refactor toàn dự án.
 - Không sửa Product pending delete, Cloudinary, Category CRUD, Customer menu, Notification bell hoặc Cron auto delete.
-# #   2 7 .   T h r e s h o l d   S u g g e s t i o n   Z e r o   V a l u e   F i x 
- 
- N g u y � n   n h � n   h i �n   t h �  0 : 
- -   B a c k e n d   f a l l b a c k   k h i   \ l e a d T i m e D a y s \   l �   0   a n g   d � n g   t o � n   t �  \ ? ?   3 \   n � n   v �n   n h �n   0 . 
- -   F r o n t e n d   g �i   \ g e t T h r e s h o l d S u g g e s t i o n \   l �y   k �t   q u �  b �n g   \ u n w r a p A p i F i e l d \   n h �n g   c �   t h �  f a i l   m a p p i n g   d o   r e s p o n s e   l �n g   g h � p   h o �c   u n d e f ,   n � n   c �n   �m   b �o   \  e s p o n s e . d a t a ? . d a t a ? . s u g g e s t i o n \   l �y   ��c   c h � n h   x � c . 
- -   B i �n   \  u f f e r D a y s \   t r � n   U I   b �  n h �m   s a n g   \ d e l a y B u f f e r D a y s \   k h i �n   \ d e l a y B u f f e r D a y s \   k h � n g   h i �n   t h �. 
- 
- B a c k e n d   f a l l b a c k   �   s �a : 
- -   \ i n v e n t o r y . s e r v i c e . t s \   �i   t �  \ ? ?   3 \   t h � n h   \ | |   3 \   �  n h �n   \ 3 \   n g � y   k h i   \ l e a d T i m e D a y s \   l �   \   \ . 
- -   �   t h � m   w a r n i n g   k h i   \ s u p p l i e r P r o d u c t s . l e n g t h   = = =   0 \   n h �  y � u   c �u . 
- 
- F r o n t e n d   r e s p o n s e   m a p p i n g   �   s �a : 
- -   C �p   n h �t   \ g e t T h r e s h o l d S u g g e s t i o n \   t r o n g   \ i n v e n t o r y . a p i . t s \   a n   t o � n   h �n   v �i   \ d a t a ? . s u g g e s t i o n   | |   d a t a   | |   { } \ . 
- -   U I   m o d a l   h i �n   t h �  r �   \ d e l a y B u f f e r D a y s \   ( T h �i   g i a n   d �  p h � n g ) ,   v �   \ l e a d T i m e D a y s \   ( T h �i   g i a n   n h �p   h � n g )   v �i   t e x t   \ ( m �c   �n h ) \   n �u   k h � n g   c �   s u p p l i e r . 
- 
- T r ��n g   h �p   c h �a   c �   l �c h   s �  b � n : 
- -   U I   h i �n   t h �  c �n h   b � o :   \  
- C h �a  
- c �  
- d � 
- l i �u  
- b � n  
- t r o n g  
- 3 0  
- n g � y  
- g �n  
- n h �t .  
- H � 
- t h �n g  
- a n g  
- � 
- x u �t  
- n g ��n g  
- a n  
- t o � n  
- m �c  
- �n h . \   t h a y   v �   �  t r �n g . 
- -   N � t   \ L �u  
- n g ��n g  
- � 
- x u �t \   s �  b �  d i s a b l e   n �u   \  e c o m m e n d e d T h r e s h o l d   = = =   m i n T h r e s h o l d \   k � m   t h e o   t h � n g   b � o . 
- 
- F i l e   �   s �a : 
- -   a p p s / a p i / s r c / m o d u l e s / i n v e n t o r y / i n v e n t o r y . s e r v i c e . t s 
- -   a p p s / w e b / s r c / a p i / i n v e n t o r y . a p i . t s 
- -   a p p s / w e b / s r c / p a g e s / a d m i n / A d m i n I n v e n t o r y P a g e . t s x 
- 
- K �t   q u �: 
- -   C � c   t r ��n g   h i �n   t h �  f a l l b a c k   s �  l i �u   c h � n h   x � c   t h a y   v �   t o � n   s �  0 . 
-  
- # #   2 8 .   F i x   A d m i n I n v e n t o r y P a g e   P a r s e   E r r o r   A f t e r   T h r e s h o l d   S u g g e s t i o n 
- 
- L �i   n �m   �: 
- -   F i l e :   \  p p s / w e b / s r c / p a g e s / a d m i n / A d m i n I n v e n t o r y P a g e . t s x \ 
- -   F u n c t i o n :   C o m p o n e n t   J S X   r e n d e r   v �   \ h a n d l e M o d a l S u b m i t \   c a t c h   b l o c k . 
- 
- N g u y � n   n h � n : 
- -   D o   t o o l   e d i t   c o d e   t �  �n g   ( A I )   t � m   k i �m   t h a y   t h �  s a i   v �  t r �   ( m a t c h   n h �m   d � n g ) ,   d �n   �n   t i � m   n h �m   c a t c h   b l o c k   c �a   \ h a n d l e M o d a l S u b m i t \   v �   l �p   l �i   t o � n   b �  l o g i c   c o m p o n e n t   ( g �m   1 9 2   d � n g   c o d e   b �  d u p l i c a t e   v �   c �t   x � n )   v � o   g i �a   o �n   J S X   c �a   M o d a l   �  d � n g   3 8 6 . 
- -   K �t   q u �  l �   J S X   b �  g � y   t r � c ,   s i n h   r a   l �i   \ [ P A R S E _ E R R O R ]   U n e x p e c t e d   t o k e n .   D i d   y o u   m e a n   { ' } ' }   o r   & r b r a c e ; ? \   k h i   V i t e   c o m p i l e . 
- 
- F i l e   �   s �a : 
- -   \  p p s / w e b / s r c / p a g e s / a d m i n / A d m i n I n v e n t o r y P a g e . t s x \   ( X � a   b �  c � c   d � n g   t h �a   v �   k h � i   p h �c   � n g   l u �n g   c o d e   g �c ) . 
- 
- K �t   q u �  \ 
- p x   t s c   - - n o E m i t \ : 
- -   H o � n   t o � n   k h � n g   b � o   l �i ,   T y p e S c r i p t   b i � n   d �c h   t h � n h   c � n g . 
- 
- F r o n t e n d   c h �y   l �i   ��c   c h �a : 
- -   F r o n t e n d   �   c h �y   l �i   b � n h   t h ��n g ,   V i t e   k h � n g   c � n   b � o   l �i   p a r s e ,   U I   h i �n   t h �  � n g . 
-  
- # #   2 9 .   S i m p l i f y   I n v e n t o r y   T h r e s h o l d   M o d a l   U I 
- 
- �   r � t   g �n   m o d a l   N g ��n g : 
- -   G i a o   d i �n   c h � n h   c �a   m o d a l   c h �  t �p   t r u n g   v � o   c � c   c h �  s �  q u y �t   �n h :   T �n   h i �n   t �i ,   N g ��n g   h i �n   t �i ,   B � n   t r u n g   b � n h / n g � y ,   T h �i   g i a n   c h �  n h �p ,   N g ��n g   �  x u �t . 
- -   �   t h � m   t r �n g   t h � i   � n h   g i �   n h a n h   b �n g   c h �  ( V D :   \  
- N � n  
- t n g  
- n g ��n g  
- � 
- t r � n h  
- t h i �u  
- h � n g \ ,   \ N g ��n g  
- h i �n  
- t �i  
- a n g  
- a n  
- t o � n  
- h �n  
- n g ��n g  
- � 
- x u �t \ ) . 
- -   N � t   \ L �u  
- n g ��n g  
- � 
- x u �t \   s �  t h a y   �i   m � u   s �c   v �   k h � n g   c � n   n �i   b �t   ( t h � n h   m � u   x � m   n h �)   n �u   n g ��n g   �  x u �t   t h �p   h �n   h o �c   b �n g   n g ��n g   h i �n   t �i . 
- 
- T h � n g   t i n   c h i   t i �t   �   �n : 
- -   �   �a   t o � n   b �  c � c   c h �  s �  n h �  T �n g   b � n   3 0   n g � y ,   L e a d   t i m e   n h �   c u n g   c �p ,   T h �i   g i a n   d �  p h � n g ,   S a f e t y   s t o c k ,   N h u   c �u   c h �  n h �p ,   N h �   c u n g   c �p   c h � n h ,   v �   c � c   w a r n i n g   v � o   t r o n g   m �t   b l o c k   c �   t h �  m �  r �n g   ( c o l l a p s e )   v �i   t i � u   �  \ X e m  
- c h i  
- t i �t  
- t � n h  
- t o � n \ . 
- 
- K h � n g   t h a y   �i   l o g i c : 
- -   H o � n   t o � n   k h � n g   s �a   b a c k e n d ,   A P I   h a y   l o g i c   t � n h   t o � n ,   c h �  t �  c h �c   l �i   U I   �  F r o n t e n d . 
- 
- F i l e   �   s �a : 
- -   a p p s / w e b / s r c / p a g e s / a d m i n / A d m i n I n v e n t o r y P a g e . t s x 
- 
- K �t   q u �  t e s t   f r o n t e n d : 
- -   G i a o   d i �n   m o d a l   g �n   g � n g   h �n ,   c � c   c �n h   b � o   h i �n   t h �  � n g   t h e o   l o g i c   s o   s � n h   g i �a   n g ��n g   h i �n   t �i   v �   n g ��n g   �  x u �t .   C o l l a p s e   h o �t   �n g   t r �n   t r u . 
-  
- # #   3 0 .   S i m p l i f y   I n v e n t o r y   T h r e s h o l d   M o d a l   F o r   A d m i n 
- 
- T h a y   �i   U I : 
- -   �   b �  h o � n   t o � n   p h �n   ' X e m   c h i   t i �t   t � n h   t o � n '   v �   c � c   c h �  s �  k �  t h u �t   p h �c   t �p   ( B � n   t r u n g   b � n h / n g � y ,   T h �i   g i a n   c h �  n h �p ,   T �n g   b � n   3 0   n g � y ,   L e a d   t i m e ,   S a f e t y   s t o c k ,   W a r n i n g ) . 
- -   M o d a l   h i �n   t �i   r �t   g �n   g � n g ,   c h �  t �p   t r u n g   h i �n   t h �:   T �n   k h o   h i �n   t �i ,   N g ��n g   h i �n   t �i ,   N g ��n g   �  x u �t   v �   T r �n g   t h � i   g �i   �   n g �n   g �n . 
- -   N � t   ' L �u   n g ��n g   �  x u �t '   ��c   e n a b l e   c h o   c �  t r ��n g   h �p   t n g   h o �c   g i �m   n g ��n g   ( r e c o m m e n d e d T h r e s h o l d   k h � c   c u r r e n t T h r e s h o l d ) ,   v �   c h �  b �  d i s a b l e   k h i   h a i   g i �   t r �  b �n g   n h a u . 
- -   K h � n g   t h a y   �i   b �t   k �  l o g i c   t � n h   t o � n   n g ��n g   n � o   �  b a c k e n d   h a y   A P I . 
- 
- F i l e   �   s �a : 
- -   a p p s / w e b / s r c / p a g e s / a d m i n / A d m i n I n v e n t o r y P a g e . t s x 
- 
- K �t   q u �: 
- -   F r o n t e n d   c h �y   t h � n h   c � n g ,   U I   g �n   v �   t h � n   t h i �n   v �i   A d m i n   h �n . 
-  
- 
+## Duplicate Encoding Block Cleaned
 
----
+Block duplicate bi loi encoding cua cac muc Threshold Suggestion / AdminInventory Parse Error / Simplify Inventory Threshold Modal da duoc gop vao cac muc doc duoc ngay sau 'Log merged from feature/postgresql-prisma'. Noi dung nghiep vu quan trong duoc giu lai o cac muc sau do.
 
 ## Log merged from feature/postgresql-prisma
 
 
-## 27. Threshold Suggestion Zero Value Fix
+## 29. Threshold Suggestion Zero Value Fix
 
-**Nguyên nhân hiển thị 0:**
+**Nguy�n nh�n hi?n th? 0:**
 - Backend fallback khi `leadTimeDays` là 0 đang dùng toán tử `?? 3` nên vẫn nhận 0.
 - Frontend gọi `getThresholdSuggestion` lấy kết quả bằng `unwrapApiField` nhưng có thể fail mapping do response lồng ghép.
 - Biến `bufferDays` trên UI bị nhầm sang `delayBufferDays` khiến `delayBufferDays` không hiển thị.
@@ -1231,14 +1105,14 @@ Gợi ý ngưỡng tồn kho thông minh dựa trên lịch sử bán, lead time
 - `apps/web/src/api/inventory.api.ts`
 - `apps/web/src/pages/admin/AdminInventoryPage.tsx`
 
-## 28. Fix AdminInventoryPage Parse Error After Threshold Suggestion
+## 30. Fix AdminInventoryPage Parse Error After Threshold Suggestion
 
 **Lỗi là gì:** Lỗi `[PARSE_ERROR] Unexpected token. Did you mean {'}'} or &rbrace;?` khi build/chạy frontend.
-**Nguyên nhân:** Do sửa nhầm mã JSX khiến mất thẻ `</div>`.
+**Nguy�n nh�n:** Do s?a nh?m m� JSX khi?n m?t th? `</div>`.
 **File đã sửa:** `apps/web/src/pages/admin/AdminInventoryPage.tsx`
 **Kết quả:** Đã bổ sung lại thẻ `</div>`, lỗi cú pháp đã được xử lý triệt để.
 
-## 29. Simplify Inventory Threshold Modal UI
+## 31. Simplify Inventory Threshold Modal UI
 
 **Đã rút gọn modal Ngưỡng:**
 - Giao diện chính của modal chỉ tập trung vào các chỉ số quyết định: Tồn hiện tại, Ngưỡng hiện tại, Bán trung bình/ngày, Thời gian chờ nhập, Ngưỡng đề xuất.
@@ -1254,7 +1128,7 @@ Gợi ý ngưỡng tồn kho thông minh dựa trên lịch sử bán, lead time
 **File đã sửa:**
 - `apps/web/src/pages/admin/AdminInventoryPage.tsx`
 
-## 30. Simplify Inventory Threshold Modal For Admin
+## 32. Simplify Inventory Threshold Modal For Admin
 
 **Thay đổi UI:**
 - Đã bỏ hoàn toàn phần 'Xem chi tiết tính toán' và các chỉ số kỹ thuật phức tạp (Bán trung bình/ngày, Thời gian chờ nhập, Tổng bán 30 ngày, Lead time, Safety stock, Warning).
@@ -1266,7 +1140,7 @@ Gợi ý ngưỡng tồn kho thông minh dựa trên lịch sử bán, lead time
 - `apps/web/src/pages/admin/AdminInventoryPage.tsx`
 
 **Kết quả:**
-- Frontend chạy thành công, UI gọn và thân thiện với Admin hơn.
+- Frontend ch?y th�nh c�ng, UI g?n v� th�n thi?n v?i Admin hon.
 
 ---
 
@@ -1358,7 +1232,7 @@ Thoi gian cap nhat: 2026-06-18 17:33:27 +07:00.
 - lint: con 193 problems trong frontend, se xu ly sau.
 - File env/test bi cam: khong duoc commit.
 - Ket luan: merge da hoan tat commit.
-## 31. Order Checkout And Admin Order UX
+## 33. Order Checkout And Admin Order UX
 
 ### 31.1 Mục tiêu
 
@@ -1465,7 +1339,7 @@ Build frontend: `npm run build -w @cafe-project/web` chưa pass vì lỗi TypeSc
 * Không thêm shipping fields trở lại.
 * Không tạo file mới vì không bắt buộc.
 
-## 31. Fix Order Create 400 Bad Request
+## 34. Fix Order Create 400 Bad Request
 
 ### 31.1 Lỗi
 
@@ -1492,7 +1366,7 @@ Build frontend: `npm run build -w @cafe-project/web` chưa pass vì lỗi TypeSc
 * Không còn các field shipping trong frontend source trước lần sửa này: `shippingName`, `shippingPhone`, `shippingAddress`, `shipping_address`, `shipping_phone`.
 * Chưa mở được browser Network trong phiên này; payload trên được xác định bằng scan source trực tiếp. Điểm lỗi thật trong code là nếu cart cũ/hỏng có `product.id` rỗng hoặc quantity không phải số nguyên dương thì frontend vẫn gọi API và backend trả 400.
 
-### 31.2 Nguyên nhân
+### 31.2 Nguy�n nh�n
 
 * Backend validator thật yêu cầu `items` là mảng không rỗng.
 * Mỗi item bắt buộc có `productId` dạng string non-empty và `quantity` là số nguyên dương.
@@ -1500,7 +1374,7 @@ Build frontend: `npm run build -w @cafe-project/web` chưa pass vì lỗi TypeSc
 * `note` là optional/null, không required.
 * Shipping fields không bắt buộc và frontend không gửi lại.
 * Frontend trước khi sửa chưa chặn case item thiếu `productId`, chưa kiểm tra integer cho `quantity`, và `orders.api.ts` vẫn tạo payload có `note: undefined` khi ghi chú rỗng.
-* Backend Order service trước khi sửa mask một số lỗi tồn kho tiếng Việt thành fallback chung nên UI khó xác định nguyên nhân 400.
+* Backend Order service tru?c khi s?a mask m?t s? l?i t?n kho ti?ng Vi?t th�nh fallback chung n�n UI kh� x�c d?nh nguy�n nh�n 400.
 
 ### 31.3 File đã kiểm tra
 
@@ -1566,7 +1440,7 @@ Kiểm tra đã chạy:
 * `npm run build -w @cafe-project/api`: PASS.
 * `npm run build -w @cafe-project/web`: FAIL do lỗi có sẵn ngoài phạm vi Order trong `apps/web/src/pages/admin/AdminSimulateSalePage.tsx` unused imports (`useCallback`, `AlertTriangle`, `X`, `CheckCircle`, `AlertOctagon`). Không sửa file này vì ngoài phạm vi lỗi `POST /api/orders 400` và đang có thay đổi sẵn.
 
-## 32. Fix Orders 400 Bad Request
+## 35. Fix Orders 400 Bad Request
 
 ### Method / Request kiểm tra
 
@@ -1609,11 +1483,11 @@ Kiểm tra đã chạy:
   * `paymentMethod` không thuộc enum backend.
 * Backend service trước đó có thể mask lỗi tồn kho thành fallback chung.
 
-### Nguyên nhân thật
+### Nguy�n nh�n th?t
 
 * Không xác nhận được 400 qua DevTools trong phiên này.
 * Với `GET /api/orders`: source không có query param sai; backend route không validate query; terminal không reproduce 400.
-* Với `POST /api/orders`: nguyên nhân 400 hợp lệ theo validator là cart item thiếu `productId`, `quantity` không hợp lệ, hoặc `paymentMethod` sai enum. Frontend đã được sửa để chặn/normalize các case này trước khi gọi API.
+* V?i `POST /api/orders`: nguy�n nh�n 400 h?p l? theo validator l� cart item thi?u `productId`, `quantity` kh�ng h?p l?, ho?c `paymentMethod` sai enum. Frontend d� du?c s?a d? ch?n/normalize c�c case n�y tru?c khi g?i API.
 * Đã bổ sung thêm safeguard cho `GET /api/orders`: nếu sau này truyền filter, frontend chỉ gửi `status`/`paymentStatus` hợp lệ, không gửi `undefined`, `null`, object rỗng hoặc status sai.
 
 ### File đã scan
@@ -1635,7 +1509,7 @@ Kiểm tra đã chạy:
 
 | File | Đã sửa gì | Lý do |
 | ---- | --------- | ----- |
-| apps/web/src/api/orders.api.ts | Thêm sanitizer cho `getOrders(filters)` chỉ gửi `status`/`paymentStatus` hợp lệ; không gửi params rỗng/undefined/null/sai enum. | Nếu request là GET, loại trừ nguyên nhân query param gây 400. |
+| apps/web/src/api/orders.api.ts | Th�m sanitizer cho `getOrders(filters)` ch? g?i `status`/`paymentStatus` h?p l?; kh�ng g?i params r?ng/undefined/null/sai enum. | N?u request l� GET, lo?i tr? nguy�n nh�n query param g�y 400. |
 | apps/web/src/pages/CheckoutPage.tsx | Giữ validate `productId`, `quantity`, `paymentMethod`; payload POST dùng `productId` non-empty và quantity number. | Nếu request là POST, chặn payload sai trước khi gọi API. |
 | apps/api/src/modules/order/order.service.ts | Giữ lỗi tồn kho trả `Không đủ tồn kho để tạo đơn hàng.` | Không để UI nhận raw/fallback khó hiểu khi backend 400 do tồn kho. |
 
@@ -1681,3 +1555,850 @@ và bỏ toàn bộ giá trị không hợp lệ/undefined/null.
 * `npm run build -w @cafe-project/api`: PASS.
 * `npm run build -w @cafe-project/web`: FAIL do lỗi có sẵn ngoài phạm vi Order ở `apps/web/src/pages/admin/AdminSimulateSalePage.tsx` unused imports (`useCallback`, `X`, `CheckCircle`, `AlertOctagon`).
 * Scan frontend source: không còn shipping fields/COD.
+
+## 36. Project Current Scan After Recent Changes
+
+### Muc tieu scan
+
+Scan lai trang thai tong the du an Cafe Agent sau cac lan sua gan day, chi doc va bao cao hien trang. Khong sua code, khong refactor, khong tao endpoint moi, khong format toan du an, khong chay migration.
+
+### File da doc
+
+| File | Ket qua |
+| ---- | ------- |
+| `docs/FRONTEND_BACKEND_INTEGRATION_LOG.md` | Da doc log tich hop gan nhat, gom cac muc Order/Checkout va sua loi `/api/orders`. |
+| `docs/AI_AGENT_CAFE_SCAN_LOG.md` | Da doc cac muc scan AI Agent, Purchase Request, Inventory Threshold va ghi chu rui ro gan day. |
+| `docs/BACKEND_SCAN_LOG.md` | Da doc trang thai backend truoc do. |
+| `docs/FRONTEND_CAFE_AGENT_SCAN_LOG.md` | Da doc trang thai frontend truoc do, mot so noi dung da cu so voi source hien tai. |
+
+### Bang doi chieu API hien tai
+
+| Chuc nang | FE call | BE endpoint | Payload | Response mapping | Trang thai |
+| --------- | ------- | ----------- | ------- | ---------------- | ---------- |
+| Auth | Token tu `access_token` trong localStorage | Khong scan sau trong lan nay | Header `Authorization: Bearer ...` | API client interceptor | OK o muc client. |
+| Products | `GET/POST/PUT/DELETE /products`, schedule/restore/purge | `/api/products` | name, price, categoryId, imageUrl, isActive... | FE unwrap `res.data.data` | OK. |
+| Product pending delete | `PATCH /products/:id/schedule-delete` | `/api/products/:id/schedule-delete` | Khong body | FE dung response product/message | OK. |
+| Product restore | `PATCH /products/:id/restore` | `/api/products/:id/restore` | Khong body | FE dung response product/message | OK. |
+| Product purge | `DELETE /products/:id/purge` | `/api/products/:id/purge` | Khong body | FE dung message | OK, backend xoa Cloudinary neu co public id. |
+| Categories | `GET/POST/PUT/DELETE /categories` | `/api/categories` | name, description | FE unwrap list/detail | OK, khong gui `isActive`. |
+| Inventory | `GET /inventories` | `/api/inventories` | Query filters | FE unwrap list | OK. |
+| Inventory import | `POST /inventories/import` | `/api/inventories/import` | inventoryId, quantity, note | FE unwrap stockAfter/warnings | OK, quantity la cong them. |
+| Inventory adjust | `POST /inventories/adjust` | `/api/inventories/adjust` | inventoryId, quantity diff, note | FE gui diff tu so luong thuc te | OK. |
+| Inventory threshold | `POST /inventories/threshold` | `/api/inventories/threshold` | inventoryId, minThreshold | FE unwrap result | OK. |
+| Inventory suggest-threshold | `GET /inventories/:id/suggest-threshold` | `/api/inventories/:id/suggest-threshold` | Khong body | FE unwrap suggestion | OK. |
+| Orders list | `GET /orders` | `/api/orders` | Query filters da sanitize | FE unwrap list/pagination | OK ve query. |
+| Order create | `POST /orders` | `/api/orders` | items, paymentMethod, note, shippingName/Phone/Address neu co | FE unwrap `order` | Can thong nhat contract vi source hien tai van co shipping fields. |
+| Order status | `PATCH /orders/:id/status` | `/api/orders/:id/status` | status | FE unwrap order | OK. |
+| Simulate sale | `POST /simulate-sale` | `/api/simulate-sale` | productId, quantity, simulationMode, dailySimulatedQuantity... | FE unwrap data | OK voi validator hien tai. |
+| Purchase requests | `GET /purchase-requests` | `/api/purchase-requests` | Query params | FE unwrap list | OK co ban. |
+| Purchase request create | `POST /purchase-requests` | `/api/purchase-requests` | supplierId, notes, items inventoryId/quantity | FE unwrap request | OK, nhung unitPrice khong gui nen tong co the bang 0. |
+| Purchase approve/reject | `PATCH approve/reject` | `/api/purchase-requests/:id/approve|reject` | reason optional | FE unwrap request | OK. |
+| Purchase email preview | `GET /email-preview` | `/api/purchase-requests/:id/email-preview` | Khong body | FE unwrap preview | OK. |
+| Purchase send email | `POST /send-email` | `/api/purchase-requests/:id/send-email` | FE chi gui subject/body | Backend nhan them `to` optional | Chua tan dung editable recipient o FE. |
+| Suppliers | CRUD `/suppliers` | `/api/suppliers` | name, email, phone, address, contactPerson, isActive | FE unwrap data | OK. |
+| Supplier products | CRUD `/supplier-products` | `/api/supplier-products` | supplierId, productId, price, minOrderQuantity, leadTimeDays | FE unwrap data | OK co ban. |
+| Agent logs | `GET /agent/logs` | `/api/agent/logs` | Khong query | FE unwrap list | OK. |
+| Upload | `POST /upload/product-image` | `/api/upload/product-image` | FormData `image` | FE unwrap `imageUrl` | OK. |
+| Cron/product purge | Khong co FE call truc tiep ngoai purge product | Backend cron daily | Khong body | Log server | OK, co try/catch tung product. |
+
+### Ket qua scan tung module
+
+#### Product
+
+Product CRUD, pending delete, restore, purge va upload anh Cloudinary co endpoint/UI tuong ung. Product co `deletedAt`, `pendingDeleteUntil`, `isActive`. Purge kiem tra het thoi gian cho, check blocker va xoa anh Cloudinary neu co `imagePublicId`. Chua thay loi chinh trong pham vi scan.
+
+#### Category
+
+Category schema khong co `isActive`. Frontend Category CRUD chi gui name/description, khong gui `isActive`. Backend chan xoa category neu con product. Chua thay loi chinh trong pham vi scan.
+
+#### Inventory
+
+Import inventory gui quantity duong va backend cong them ton kho. Adjust inventory UI nhap so luong thuc te, frontend tinh diff roi gui backend. Update threshold va suggest-threshold co endpoint that. Modal nguong hien thong tin can thiet. Rui ro: import inventory chua trigger agent scan neu sau nhap van duoi nguong; adjust thi co trigger.
+
+#### Order/Checkout
+
+Backend co `POST /api/orders`, `GET /api/orders/me`, `GET /api/orders`, `GET /api/orders/:id`, `PATCH /api/orders/:id/status`. Validator create order nhan `items[{productId, quantity}]`, optional `shippingName`, `shippingAddress`, `shippingPhone`, optional `note`, `paymentMethod` enum `CASH`, `BANK_TRANSFER`, `VIET_QR`. Backend service hien dung shipping address de tinh `shippingZone`/`shippingFee`, giam inventory khi tao order va tao transaction `ORDER`. Khi order chuyen tu PENDING sang PROCESSING, backend async trigger agent scan voi `triggerType: ORDER`. Rui ro lon: backend TypeScript dang fail o module Order do generated Prisma type khong khop source/schema cho `shippingFee`, `shippingZone` va include type. Can thong nhat lai contract shipping fields vi source hien tai khac mot so log cu.
+
+#### Simulate Sale
+
+Frontend gui duoc `productId`, `quantity`, `simulationMode`, `dailySimulatedQuantity`. Backend tru ton kho, tao transaction `SIMULATE_SALE`, trigger agent scan va tra affected products / created purchase requests / agent logs. Backend tranh tao purchase request trung thong qua active request check. Chua thay loi chinh trong pham vi scan.
+
+#### Purchase Request
+
+List, create manual, approve, reject, email preview, send email deu co endpoint that. Create thu cong gui `supplierId`, `notes`, `items[{inventoryId, quantity}]`. Backend chan request trung neu da co PENDING/APPROVED/SENT cho cung inventory/supplier. Rui ro: manual create khong gui `unitPrice`, backend co the tao `totalAmount` bang 0. Rui ro: backend send email ho tro override `to`, `subject`, `body`, nhung frontend hien chi gui subject/body va chua co editable recipient.
+
+#### Supplier
+
+SupplierProduct co `price`, `supplierSku`, `minOrderQuantity`, `leadTimeDays`, `isPreferred`. SupplierProduct khong co `availableQuantity` hoac `capacity`; khong the ket luan he thong biet NCC du/thieu hang thuc te.
+
+#### Agent Logs
+
+Agent logs load qua `GET /api/agent/logs`. Admin Agent Logs page co bang, modal chi tiet, search/filter co ban. Header notification bell load logs khi mount va khi mo dropdown; khong thay spam toast. Agent scan inventory ghi log cho cac nhanh disabled, no inventory, enough stock, duplicate request, no supplier, created request, failed.
+
+#### Upload/Cloudinary
+
+Upload product image dung multipart field `image`, backend upload Cloudinary va tra `imageUrl`, `imagePublicId`. Product form dung upload API truoc khi submit product payload. Purge product xoa anh Cloudinary qua `imagePublicId` neu co.
+
+#### Cron Auto Delete
+
+Cron duoc schedule khi backend start. Cron query product co `pendingDeleteUntil <= now`. Moi purge nam trong try/catch rieng, purge fail duoc log va khong lam crash server. Cron dung lai `productService.purge`.
+
+### Ket qua TypeScript check
+
+| App | Lenh | Ket qua | Ghi chu |
+| --- | ---- | ------- | ------- |
+| Backend | `npx tsc --noEmit` | FAIL | Loi o `src/modules/order/order.repository.ts` va `src/modules/order/order.service.ts`: generated Prisma type khong thay `shippingFee`/`shippingZone` va include type `OrderRecord` khong khop result `findMany`. |
+| Frontend | `npx tsc --noEmit` | PASS | Khong co loi TypeScript voi lenh duoc yeu cau. |
+
+### Loi/rui ro phat hien
+
+| Muc do | Vi tri | Mo ta | De xuat xu ly |
+| ------ | ----- | ----- | ------------- |
+| HIGH | `apps/api/src/modules/order/order.repository.ts`, `apps/api/src/modules/order/order.service.ts` | Backend TypeScript fail do Prisma generated type khong khop source/schema hien tai cho `shippingFee`, `shippingZone` va include type `OrderRecord`. | Kiem tra generated Prisma client, chay generate neu duoc phep, hoac dong bo schema/source/type Order. |
+| MEDIUM | `apps/web/src/api/orders.api.ts`, backend Order schema/validator/service | Source hien tai van co shipping fields trong Order, khac mot so log cu tung yeu cau khong gui shipping fields. | Chot lai contract Order that: giu shipping neu backend can tinh phi giao hang, hoac bo dong bo ca FE/BE/schema neu nghiep vu khong can. |
+| MEDIUM | Order payment method | Backend enum co `VIET_QR`, frontend type/options Order hien chi the hien `CASH` va `BANK_TRANSFER`. | Bo sung UI/type neu can ho tro `VIET_QR`, hoac gioi han contract ro rang. |
+| MEDIUM | `AdminPurchaseRequestDetailPage.tsx`, `purchaseRequests.api.ts` | Backend send email ho tro `to` override, nhung frontend hien chi gui subject/body va chua co UI sua recipient. | Neu can email draft day du, them editable recipient vao UI/API hien co. |
+| MEDIUM | `AdminPurchaseRequestsPage.tsx`, Purchase Request create | Manual create khong gui `unitPrice`; backend co the tao tong tien bang 0. | Lay gia tu SupplierProduct hoac cho admin nhap unit price theo contract backend. |
+| LOW | `inventory.service.ts` | Import inventory cong ton kho dung nhung khong trigger agent scan neu sau nhap van duoi threshold; adjust thi co trigger. | Xac nhan nghiep vu co can import cung trigger agent scan khong. |
+| LOW | `suppliers` schema | SupplierProduct khong co `availableQuantity`/`capacity`. | Khong hien thi hoac ket luan NCC du hang neu chua co du lieu capacity that. |
+
+### De xuat buoc tiep theo
+
+1. Xu ly loi TypeScript backend o module Order bang cach dong bo Prisma generated client/schema/source, sau khi duoc phep chay lenh can thiet.
+2. Chot lai contract Order ve shipping fields vi source hien tai dang dung shipping nhung log cu co yeu cau bo.
+3. Hoan thien Purchase Request email/manual create neu nghiep vu yeu cau: editable recipient va unit price cho request thu cong.
+## Log Cleanup Summary
+
+- PROJECT_CURRENT_SCAN_LOG.md: da xoa/khong con ton tai tai thoi diem don log.
+- Noi dung scan project current status: da gop vao docs/FRONTEND_BACKEND_INTEGRATION_LOG.md trong muc Project Current Scan After Recent Changes.
+- Trung so muc da xu ly: cac muc danh so ## N. duoc danh lai theo thu tu xuat hien de khong con trung, bao gom cac cum tung trung 16, 22, 23, 31.
+- Block duplicate bi loi encoding nang cua cac muc Threshold Suggestion/AdminInventory/Simplify Inventory Modal da duoc gop thanh ghi chu; ban doc duoc cua noi dung nay van duoc giu lai trong phan Log merged from feature/postgresql-prisma.
+- Font/encoding: da sua cac chuoi mojibake pho bien va loai bo ky tu NUL; cac muc chinh hien doc duoc.
+- Noi dung quan trong duoc giu lai: Product CRUD, Category CRUD, Product upload Cloudinary, Product pending delete 7 days, Product purge Cloudinary cleanup, Purchase Request, Inventory import/adjust/threshold, Threshold suggestion, Scan project current status, cac loi/rui ro con lai.
+- Source code: khong sua.
+- File khac bi thay doi: khong.
+
+## 37. Scan Order Checkout 400 Bad Request Before Fix
+
+### 37.1 Lỗi hiện tại
+
+* Người dùng báo khi bấm `Đặt hàng ngay` ở frontend, request `POST http://localhost:5000/api/orders` trả `400 Bad Request`.
+* Console browser báo: `:5000/api/orders Failed to load resource: the server responded with a status of 400 (Bad Request)`.
+* Thời điểm scan: `2026-06-19 10:25:29 +07:00`.
+* Chưa bắt được payload runtime từ DevTools trong phiên này; payload dưới đây là payload suy ra từ source hiện tại và cần xác minh runtime bằng Network tab.
+
+### 37.2 File đã kiểm tra
+
+| Nhóm | File | Lý do kiểm tra |
+| ---- | ---- | -------------- |
+| Log hiện có | `docs/FRONTEND_BACKEND_INTEGRATION_LOG.md` | Kiểm tra lịch sử Order từng bỏ/giữ shipping fields và các mâu thuẫn sau merge. |
+| Frontend Checkout | `apps/web/src/pages/CheckoutPage.tsx` | Xác định handler `Đặt hàng ngay`, validate form, payload gửi `ordersApi.createOrder`. |
+| Frontend Cart | `apps/web/src/pages/CartPage.tsx` | Xác định flow từ cart sang checkout và quantity update. |
+| Frontend Cart source | `apps/web/src/contexts/CartContext.tsx` | Xác định cart item lấy `product.id`, quantity và localStorage có thể giữ dữ liệu cũ. |
+| Frontend API | `apps/web/src/api/orders.api.ts` | Xác định normalize payload, error mapping, response unwrap. |
+| Frontend type | `apps/web/src/types/order.types.ts` | Xác định `CreateOrderPayload`, `PaymentMethod`, shipping fields. |
+| Frontend util | `apps/web/src/utils/payment.ts` | Xác định payment labels và `VIET_QR`. |
+| Frontend util | `apps/web/src/utils/shipping.ts` | Xác định frontend chỉ preview shipping fee/zone, không gửi fee/zone. |
+| Backend route | `apps/api/src/modules/order/order.route.ts` | Xác định `POST /api/orders` dùng authenticate + validateBody + `storeOrder`. |
+| Backend controller | `apps/api/src/modules/order/order.controller.ts` | Xác định controller `storeOrder` và response wrapper. |
+| Backend validator | `apps/api/src/modules/order/order.validator.ts` | Xác định Zod schema cho create order. |
+| Backend service | `apps/api/src/modules/order/order.service.ts` | Xác định service mapping lỗi 400 và DTO. |
+| Backend repository | `apps/api/src/modules/order/order.repository.ts` | Xác định tạo order, kiểm tồn kho, tự tính shipping fee/zone, tạo payment và trừ kho. |
+| Backend shipping | `apps/api/src/modules/order/shipping.service.ts` | Xác định backend tự tính `shippingZone` và `shippingFee` từ address. |
+| Backend payment | `apps/api/src/modules/payment/*` | Xác định payment được tạo khi order create và enum/status liên quan. |
+| Backend inventory | `apps/api/src/modules/inventory/inventory.repository.ts` | Xác định tồn kho liên quan order là `Inventory.quantity` theo `productId`. |
+| Backend auth/response | `apps/api/src/modules/auth/auth.middleware.ts`, `apps/api/src/common/validate.ts`, `apps/api/src/common/error-handler.ts`, `apps/api/src/common/response.ts` | Xác định thiếu token trả 401, validator trả 400, service HttpError trả JSON `{ success:false, message, data:null }`. |
+| Prisma schema | `packages/database/prisma/schema/order.prisma`, `packages/database/prisma/schema/main.prisma` | Xác định Order/Payment fields và enum thật. |
+| Git diff | Các file Order được yêu cầu | Kiểm tra có diff local trong các file Order/Checkout chính không; các diff được phép chạy trả rỗng. |
+
+### 37.3 Payload frontend đang gửi
+
+Payload suy ra từ `CheckoutPage.tsx` + `orders.api.ts` hiện tại, cần xác minh runtime bằng DevTools Network:
+
+```json
+{
+  "items": [
+    {
+      "productId": "String(item.product.id ?? item.product.product_id ?? '').trim()",
+      "quantity": "Number(item.quantity)"
+    }
+  ],
+  "shippingName": "shippingName.trim()",
+  "shippingPhone": "shippingPhone.trim()",
+  "shippingAddress": "[address, wardName, districtName, provinceName].filter(Boolean).join(', ').trim()",
+  "paymentMethod": "CASH | BANK_TRANSFER | VIET_QR",
+  "note": "note.trim() || undefined"
+}
+```
+
+Ghi chú payload:
+
+* `items`: tạo từ cart items.
+* `productId`: lấy từ `item.product.id`, fallback `(item.product as any).product_id`. Nếu cart localStorage chứa product cũ/sai shape thì có thể thành chuỗi rỗng, nhưng Checkout đã có validate chặn trước khi gọi API.
+* `quantity`: ép `Number(item.quantity)` và Checkout đã validate integer dương.
+* `paymentMethod`: default `BANK_TRANSFER`, UI cho phép `CASH`, `BANK_TRANSFER`, `VIET_QR`.
+* `shippingName`, `shippingPhone`, `shippingAddress`: hiện frontend validate bắt buộc trước khi gọi API.
+* `shippingFee`, `shippingZone`: frontend có tính để preview tổng tiền nhưng không gửi lên API. Backend tự tính lại.
+* `note`: nếu rỗng thì normalize thành không gửi/`undefined`.
+
+### 37.4 Backend validator đang yêu cầu gì
+
+`POST /api/orders` route hiện tại:
+
+* `router.post('/', authenticate, validateBody(createOrderSchema), asyncHandler(storeOrder))`
+* Nếu thiếu token: auth middleware trả `401 Authorization token is required.`, không phải 400.
+* Nếu body fail Zod: `validateBody` trả `400` với message issue đầu tiên.
+
+`createOrderSchema` hiện yêu cầu/nhận:
+
+* `items`: required, array min 1.
+* `items[].productId`: required string trim min 1, message `Product is required.`
+* `items[].quantity`: coerce number, integer, positive.
+* `shippingName`: optional string trim.
+* `shippingAddress`: optional string trim.
+* `shippingPhone`: optional string trim.
+* `note`: optional nullable string trim.
+* `paymentMethod`: `z.nativeEnum(PaymentMethod).default(CASH)`.
+
+Prisma enum thật:
+
+* `PaymentMethod`: `CASH`, `BANK_TRANSFER`, `VIET_QR`.
+* `PaymentStatus`: `PENDING`, `PAID`, `FAILED`, `REFUNDED`.
+* `OrderStatus`: `PENDING`, `PROCESSING`, `COMPLETED`, `CANCELLED`.
+
+Backend service/repository:
+
+* Backend không yêu cầu frontend gửi `shippingFee` hoặc `shippingZone`.
+* Backend tự tính `shippingZone = detectShippingZone(input.shippingAddress ?? '')`.
+* Backend tự tính `shippingFee = calculateShippingFee(shippingZone, subtotal)`.
+* Backend tạo Payment trong order transaction với `method: input.paymentMethod`, `amount: grandTotal`, `status: 'PENDING'`.
+* Backend kiểm tra product active + inventory trước khi tạo order.
+* Nếu product không tìm thấy, inventory thiếu, hoặc trừ kho fail, service normalize thành `HttpError(400, ...)`.
+
+### 37.5 Đối chiếu FE payload và BE validator
+
+| Field | FE gửi | BE yêu cầu | Khớp/chưa khớp | Ghi chú |
+| ----- | ------ | ---------- | -------------- | ------- |
+| `items` | Có, từ cart | Required array min 1 | Khớp theo code | Cần xác minh runtime cart không rỗng và không stale. |
+| `items[].productId` | `String(item.product.id ?? product_id).trim()` | Required string min 1 | Khớp nếu cart product có id thật | Rủi ro nếu localStorage cart cũ chứa product thiếu `id` hoặc id không còn active trong DB. |
+| `items[].quantity` | `Number(item.quantity)` | Coerce number, int, positive | Khớp theo code | Checkout đã validate integer dương. |
+| `paymentMethod` | `CASH`, `BANK_TRANSFER`, `VIET_QR` | Prisma enum `CASH`, `BANK_TRANSFER`, `VIET_QR` | Khớp | Log cũ từng nói FE chỉ có 2 method, source hiện tại đã có `VIET_QR`. |
+| `note` | Optional, bỏ nếu rỗng | Optional nullable string | Khớp | Không phải nguyên nhân chính. |
+| `shippingName` | Có, required ở frontend | Optional ở backend | Khớp | Backend schema/schema DB có field này. |
+| `shippingPhone` | Có, required ở frontend | Optional ở backend | Khớp | Backend không validate format phone. |
+| `shippingAddress` | Có, required ở frontend | Optional ở backend | Khớp | Backend dùng address để tính shipping. |
+| `shippingFee` | Không gửi | Backend không nhận từ validator | Khớp | Frontend chỉ preview fee. |
+| `shippingZone` | Không gửi | Backend không nhận từ validator | Khớp | Backend tự tính zone. |
+| Auth token | API client gửi Bearer từ `access_token` nếu có | `authenticate` required | Cần xác minh runtime | Thiếu token sẽ là 401, không phải 400. |
+
+### 37.6 Nguyên nhân nghi ngờ
+
+**HIGH**
+
+* Product/inventory trong cart không còn hợp lệ ở backend: product đã inactive/deleted, không còn inventory, hoặc tồn kho hiện tại thấp hơn quantity trong cart. Đây là hướng nghi ngờ cao nhất vì FE payload/validator đang khớp, còn `order.repository.create` sẽ throw lỗi và `order.service.createOrder` normalize về `400`.
+* Cart localStorage có dữ liệu cũ/stale: `product.id` có thể là id sản phẩm đã bị xóa/ngưng bán hoặc quantity cao hơn tồn kho hiện tại. Frontend chỉ kiểm tồn kho nếu product trong cart còn `inventory.quantity`; dữ liệu cart cũ có thể không phản ánh tồn kho mới nhất.
+
+**MEDIUM**
+
+* Backend response body có message cụ thể nhưng UI/browser chỉ đang nhìn console `400`; cần mở Network response để biết là `Product is required.`, `Quantity...`, `Khong du ton kho...`, hoặc fallback service.
+* Source/log đang mâu thuẫn về shipping contract: log cũ từng yêu cầu không gửi shipping fields, nhưng source hiện tại đã quay lại flow giao hàng và backend schema/service đang hỗ trợ shipping fields. Tuy nhiên mâu thuẫn này không phải nguyên nhân 400 theo validator hiện tại vì shipping optional.
+* `shippingAddress` bị rỗng nếu API tỉnh/huyện/xã không load hoặc user chưa chọn đủ, nhưng frontend validate sẽ chặn trước khi gọi API; nếu bypass HTML/runtime thì backend vẫn optional và không 400 vì thiếu shipping.
+
+**LOW**
+
+* `paymentMethod` sai enum: hiện FE type/UI/API và Prisma enum đều có `CASH`, `BANK_TRANSFER`, `VIET_QR`, nên khả năng thấp.
+* `items` sai format: code hiện map đúng `{ productId, quantity }`, nên chỉ còn rủi ro runtime do cart stale.
+* Thiếu token: sẽ trả 401 từ auth middleware, không khớp lỗi người dùng báo 400.
+* Frontend gửi `shippingFee`/`shippingZone` thừa: source hiện tại không gửi hai field này.
+
+### 37.7 Chưa sửa gì
+
+* Chưa sửa source code.
+* Chưa chạy migration/db push.
+* Chưa chạy seed.
+* Chưa tạo file log mới.
+* Chỉ scan và append kết quả vào `docs/FRONTEND_BACKEND_INTEGRATION_LOG.md`.
+* Chưa test bằng DevTools runtime payload/response body.
+* Chưa gọi API POST `/api/orders` với token thật.
+
+### 37.8 Đề xuất hướng fix sau khi được duyệt
+
+| Hướng fix | File sẽ sửa | Sửa gì | Rủi ro | Lệnh/test sau sửa |
+| --------- | ----------- | ------ | ------ | ----------------- |
+| Hiển thị rõ response 400 từ backend | `apps/web/src/api/orders.api.ts`, `apps/web/src/pages/CheckoutPage.tsx` | Log/debug có kiểm soát hoặc map message backend rõ hơn cho product inactive/not found/stock shortage; không chỉ toast fallback. | Nếu log payload ra console cần xóa sau debug để tránh lộ dữ liệu. | Test đặt hàng lỗi, kiểm toast và Network response. |
+| Revalidate cart trước checkout | `apps/web/src/pages/CheckoutPage.tsx`, có thể cần API product/inventory hiện có | Trước submit, kiểm lại productId, tồn kho, active state từ backend hoặc refresh cart item. | Có thêm request trước checkout, cần tránh làm chậm UX. | Test cart stale, product inactive, tồn kho giảm. |
+| Clear/sửa cart item stale | `apps/web/src/contexts/CartContext.tsx`, `CheckoutPage.tsx` | Nếu backend báo product not found/inactive/not enough stock, hiển thị item lỗi và hướng người dùng cập nhật giỏ. | Cần cẩn thận không tự xóa cart khi lỗi không chắc chắn. | Test localStorage cart cũ và order fail. |
+| Xác minh runtime payload | Không sửa hoặc chỉ thêm log tạm nếu được duyệt | Mở DevTools Network lấy Request Payload và Response JSON thật; nếu cần thêm log tạm rồi xóa. | Không nên commit log tạm. | POST `/api/orders` runtime với token thật. |
+| Thống nhất lại contract shipping trong docs/source nếu cần | `CheckoutPage.tsx`, `orders.api.ts`, `order.types.ts`, backend order files nếu nghiệp vụ đổi | Chốt giữ shipping delivery flow hay bỏ shipping fields. | Thay đổi rộng, có thể ảnh hưởng admin orders/payment/shipping fee. | Build frontend/backend, test checkout delivery. |
+
+## 38. Fix Order Checkout 400 Bad Request After Scan
+
+### 38.1 Nguyên nhân thật đã xử lý
+
+* Payload frontend về cơ bản đã khớp backend validator: `items[{ productId, quantity }]`, `paymentMethod`, shipping fields hiện tại và optional `note`.
+* Lỗi `400 Bad Request` nhiều khả năng vẫn là lỗi nghiệp vụ từ backend khi cart/localStorage stale:
+  * productId trong cart không còn hợp lệ.
+  * product bị inactive/deleted hoặc không còn khả dụng.
+  * product không có inventory.
+  * quantity trong cart lớn hơn tồn kho thật.
+* Điểm đã xử lý trong lượt fix:
+  * Frontend không còn chỉ fallback chung khi backend trả 400.
+  * Frontend lấy message từ `error.response.data.message`, `error.response.data.error`, `error.response.data.errors`.
+  * Frontend map lỗi product/inventory/quantity/payment thành thông báo tiếng Việt rõ.
+  * Backend `order.service.ts` trả message rõ hơn cho lỗi tồn kho và sản phẩm không khả dụng thay vì fallback chung.
+* Chưa xác nhận runtime bằng browser/DevTools trong phiên này, nên chưa kết luận tất cả trường hợp POST hợp lệ đã hết 400 trên dữ liệu thật.
+
+### 38.2 File đã sửa
+
+| File | Đã sửa gì | Lý do |
+| ---- | --------- | ----- |
+| `apps/web/src/api/orders.api.ts` | Viết lại phần normalize/error mapping Order bằng UTF-8 rõ ràng; extract backend `message/error/errors`; map lỗi product/inventory/payment/items/quantity sang tiếng Việt; giữ payload không gửi `shippingFee/shippingZone`. | Không để user chỉ thấy console 400 hoặc fallback chung; không nuốt message backend. |
+| `apps/web/src/pages/CheckoutPage.tsx` | Sửa validation submit để hiển thị `apiError` + toast rõ trước khi gọi API; validate payment method thuộc `CASH/BANK_TRANSFER/VIET_QR`; giữ clear cart chỉ khi success. | Chặn payload sai trước API và giữ cart khi order fail. |
+| `apps/web/src/contexts/CartContext.tsx` | Lọc cart item đọc từ localStorage: bỏ item thiếu product id hoặc quantity không phải integer dương. | Giảm rủi ro cart stale/localStorage hỏng tạo payload invalid. Không tự xóa toàn bộ cart nếu không chắc chắn. |
+| `apps/api/src/modules/order/order.service.ts` | Mở rộng `normalizeOrderError` để trả message rõ cho inventory/stock và product not found/inactive/not available. | Frontend nhận được nguyên nhân 400 rõ hơn từ backend. |
+
+### 38.3 Payload trước/sau
+
+Payload trước khi sửa, suy ra từ source:
+
+```json
+{
+  "items": [
+    {
+      "productId": "string",
+      "quantity": 1
+    }
+  ],
+  "shippingName": "string",
+  "shippingPhone": "string",
+  "shippingAddress": "string",
+  "paymentMethod": "CASH | BANK_TRANSFER | VIET_QR",
+  "note": "optional"
+}
+```
+
+Payload sau khi sửa:
+
+```json
+{
+  "items": [
+    {
+      "productId": "string-trimmed",
+      "quantity": 1
+    }
+  ],
+  "shippingName": "string-trimmed",
+  "shippingPhone": "string-trimmed",
+  "shippingAddress": "string-trimmed",
+  "paymentMethod": "CASH | BANK_TRANSFER | VIET_QR",
+  "note": "optional non-empty string"
+}
+```
+
+Ghi chú:
+
+* Không thêm `shippingFee`.
+* Không thêm `shippingZone`.
+* Không bỏ shipping flow hiện tại.
+* Payload vẫn đúng contract backend hiện tại.
+
+### 38.4 Cách frontend hiển thị lỗi 400
+
+Frontend hiện xử lý lỗi theo thứ tự:
+
+1. Lấy backend message từ:
+   * `error.response.data.message`
+   * `error.response.data.error`
+   * `error.response.data.errors`
+   * fallback `error.message`
+2. Map các lỗi thường gặp:
+   * `Product is required.` -> `Sản phẩm trong giỏ hàng không hợp lệ, vui lòng cập nhật giỏ hàng.`
+   * `Quantity must be greater than 0.` / quantity issue -> `Số lượng sản phẩm không hợp lệ.`
+   * `Order items cannot be empty.` -> `Giỏ hàng đang trống.`
+   * product not found / inactive / not available -> `Sản phẩm không còn khả dụng, vui lòng cập nhật giỏ hàng.`
+   * inventory / stock / not enough -> `Không đủ tồn kho để tạo đơn hàng, vui lòng giảm số lượng hoặc cập nhật giỏ hàng.`
+   * payment method issue -> `Vui lòng chọn phương thức thanh toán.`
+3. `CheckoutPage` hiển thị lỗi bằng:
+   * inline `apiError`
+   * toast error
+4. Khi create order fail:
+   * không clear cart.
+   * không navigate sang trang success/orders.
+5. Khi create order success:
+   * toast success.
+   * clear cart.
+   * navigate `/my-orders?success=true`.
+
+### 38.5 Backend có sửa không
+
+Có sửa hẹp `apps/api/src/modules/order/order.service.ts`.
+
+* Không sửa database schema.
+* Không sửa validator vì validator hiện đúng contract.
+* Không sửa order repository/trừ kho.
+* Không đổi shipping flow.
+* Không thêm migration/db push.
+* Backend chỉ normalize lỗi rõ hơn:
+  * inventory/stock/không đủ/vừa hết hàng -> message tồn kho rõ.
+  * product not found/inactive/not available -> message sản phẩm không còn khả dụng.
+
+### 38.6 Kết quả test
+
+| Bước | Kết quả | Ghi chú |
+| ---- | ------- | ------- |
+| `npm run build -w @cafe-project/api` | PASS | Backend TypeScript build pass. |
+| `npm run build -w @cafe-project/web` | PASS | Frontend build pass; Vite chỉ cảnh báo chunk size lớn hơn 500 kB. |
+| Giỏ hàng trống -> không gọi API | NOT TESTED LIVE | Logic đã có guard và message rõ; chưa test browser. |
+| Cart item thiếu productId -> không gọi API | NOT TESTED LIVE | Logic Checkout guard + CartContext localStorage filter đã sửa; chưa test browser. |
+| Quantity <= 0 -> không gọi API | NOT TESTED LIVE | Logic guard đã sửa; chưa test browser. |
+| Số lượng vượt tồn kho -> backend trả lỗi, frontend hiện toast tiếng Việt rõ | NOT TESTED LIVE | Backend/frontend mapping đã sửa; chưa test với dữ liệu thật và token browser. |
+| Payload hợp lệ -> POST `/api/orders` tạo đơn thành công | NOT TESTED LIVE | Chưa test browser/API live trong phiên này. |
+
+### 38.7 Việc không sửa
+
+* Không tạo file mới.
+* Không tạo file log mới.
+* Không sửa Product/Category/Inventory/Purchase/Agent.
+* Không đổi contract Order nếu không cần.
+* Không thêm `shippingFee` / `shippingZone` vào frontend payload.
+* Không bỏ shipping flow hiện tại.
+* Không sửa database schema.
+* Không chạy migration/db push.
+* Không chạy npm install.
+* Không clear cart khi tạo order thất bại.
+## 39. Scan Live Order 400 Root Cause
+
+### 39.1 Bằng chứng lỗi live
+
+* Thời điểm scan: `2026-06-19 10:57:02 +07:00`.
+* Request URL: `http://localhost:5000/api/orders`.
+* Method: `POST`.
+* Status: `400 Bad Request`.
+* Response JSON người dùng cung cấp:
+
+```json
+{
+  "success": false,
+  "message": "Không thể tạo đơn hàng. Vui lòng kiểm tra lại thông tin đơn hàng.",
+  "data": null
+}
+```
+
+* Đã đọc lại `## 37. Scan Order Checkout 400 Bad Request Before Fix` và `## 38. Fix Order Checkout 400 Bad Request After Scan`.
+* Mục 38 đã sửa frontend error mapping/validation và backend có mapping một số lỗi tồn kho/sản phẩm, nhưng live test vẫn trả đúng fallback chung từ backend.
+
+### 39.2 Payload runtime
+
+* `CHƯA CÓ PAYLOAD RUNTIME`.
+* Phiên scan này không mở được DevTools Network trực tiếp và người dùng chưa cung cấp Request Payload.
+* Payload suy ra từ code hiện tại trong `apps/web/src/pages/CheckoutPage.tsx` và `apps/web/src/api/orders.api.ts`:
+
+```json
+{
+  "items": [
+    {
+      "productId": "<cart product id>",
+      "quantity": "<number>"
+    }
+  ],
+  "shippingName": "<trimmed string>",
+  "shippingPhone": "<trimmed string>",
+  "shippingAddress": "<trimmed string>",
+  "paymentMethod": "CASH | BANK_TRANSFER | VIET_QR",
+  "note": "<optional trimmed string>"
+}
+```
+
+* Frontend hiện không gửi `shippingFee` hoặc `shippingZone`; backend tự tính lại từ `shippingAddress`.
+* Cần xác minh runtime payload thật để biết chính xác `productId`, `quantity`, `paymentMethod`, shipping fields và `note`.
+
+### 39.3 Backend fallback đang che lỗi ở đâu
+
+| File | Hàm/đoạn logic | Nhận định |
+| ---- | -------------- | --------- |
+| `apps/api/src/modules/order/order.route.ts` | `router.post('/', authenticate, validateBody(createOrderSchema), asyncHandler(storeOrder))` | `POST /api/orders` đi qua auth, validator, rồi controller. Thiếu token sẽ là `401`, không phải response `400` hiện tại. |
+| `apps/api/src/modules/order/order.controller.ts` | `storeOrder` | Gọi `createOrder(req.user.id, req.body as CreateOrderInput)` và trả `201` nếu thành công. |
+| `apps/api/src/modules/order/order.service.ts` | `createOrder` catch mọi lỗi từ repository | Khi repository throw lỗi, service gọi `normalizeOrderError(error, 'Không thể tạo đơn hàng. Vui lòng kiểm tra lại thông tin đơn hàng.')`. |
+| `apps/api/src/modules/order/order.service.ts` | `normalizeOrderError` | Chỉ map một số lỗi chứa `inventory`, `stock`, `not enough`, `không đủ`, `vừa hết hàng`, `product not found`, `inactive`, `not available`. Các lỗi khác bị trả thành fallback chung. |
+| `apps/api/src/modules/order/order.repository.ts` | `orderRepository.create` | Có nhiều điểm có thể phát sinh lỗi thật: đọc product/inventory, tạo order với shipping fields, tạo payment nested, trừ kho, tạo inventory transaction. |
+
+Kết luận phần này: response live trùng chính xác fallback trong `createOrder`, nên lỗi thật nhiều khả năng phát sinh trong `orderRepository.create` hoặc Prisma transaction nhưng bị `normalizeOrderError` che lại vì không match các pattern đã map.
+
+### 39.4 Lỗi thật nghi ngờ hoặc đã xác định
+
+| Mức | Nghi ngờ | Cơ sở |
+| --- | -------- | ----- |
+| HIGH | Exception Prisma/DB schema mismatch đang bị backend mask | Repository đang ghi `shippingFee`, `shippingZone`, `shippingName`, `shippingPhone`, `shippingAddress`, nested `payment`. Prisma schema có field, nhưng DB thật có thể chưa đồng bộ column/enum. Lỗi kiểu `P2022 column does not exist`, enum mismatch hoặc constraint sẽ không match mapping hiện tại và bị trả fallback chung. |
+| HIGH | Backend không log root cause trước khi normalize | `createOrder` catch toàn bộ lỗi và trả `HttpError(400, fallback)` nếu không nhận diện được message. Phiên scan chưa có backend terminal log nên chưa thấy Prisma code/root stack. |
+| MEDIUM | Payment enum runtime/DB không khớp `VIET_QR`, `BANK_TRANSFER`, `CASH` | Validator dùng `z.nativeEnum(PaymentMethod)` và schema Prisma có đủ enum, nhưng DB enum thật có thể chưa cập nhật nếu chưa migrate/db push. |
+| MEDIUM | Cart/runtime payload chứa product stale hoặc inventory không đủ | Đây là nghi ngờ từ mục 37, nhưng nếu repository throw `Không tìm thấy sản phẩm` hoặc message chứa `không đủ/vừa hết hàng`, mapping hiện tại đáng lẽ trả message cụ thể hơn. Vẫn cần payload runtime để kiểm tra productId/quantity thật. |
+| MEDIUM | Lỗi nested create `payment` hoặc foreign key/constraint | Repository tạo `order` kèm `items.create` và `payment.create`; lỗi constraint/enum/column sẽ bị fallback. |
+| LOW | Payload frontend sai shape cơ bản | Code hiện tại normalize `items[{productId, quantity}]`, shipping fields, `paymentMethod`, optional `note`; shape khớp validator. Chưa loại trừ runtime vì chưa có Network Payload. |
+| LOW | Auth/token | Route dùng `authenticate`; thiếu token thường trả `401`, không khớp response `400` fallback hiện tại. |
+
+### 39.5 Kiểm tra schema/database
+
+Prisma schema `packages/database/prisma/schema/order.prisma` hiện có:
+
+* `Order.shippingFee Decimal @default(0) @db.Decimal(12, 2)`.
+* `Order.shippingZone String?`.
+* `Order.shippingName String?`.
+* `Order.shippingPhone String?`.
+* `Order.shippingAddress String?`.
+* `Payment.method PaymentMethod`.
+* `Payment.amount Decimal @db.Decimal(12, 2)`.
+* `Payment.status PaymentStatus @default(PENDING)`.
+
+Enum `PaymentMethod` trong schema:
+
+* `CASH`.
+* `BANK_TRANSFER`.
+* `VIET_QR`.
+
+Ghi nhận rủi ro:
+
+* Source và Prisma schema có shipping/payment fields, nhưng DB thật có thể chưa đồng bộ.
+* Nếu DB thật thiếu column shipping hoặc thiếu enum value `VIET_QR`, Prisma runtime sẽ lỗi và hiện đang bị service trả thành fallback chung.
+* Không chạy migration/db push trong lượt scan này.
+
+### 39.6 Kiểm tra product/inventory
+
+* `productId` trong payload: chưa xác định vì `CHƯA CÓ PAYLOAD RUNTIME`.
+* `quantity` trong payload: chưa xác định vì `CHƯA CÓ PAYLOAD RUNTIME`.
+* Product active không: chưa kiểm tra được vì thiếu `productId` thật.
+* Inventory tồn tại không: chưa kiểm tra được vì thiếu `productId` thật.
+* Quantity đủ không: chưa kiểm tra được vì thiếu `productId` và inventory quantity thật.
+
+Cần bổ sung sau khi có payload runtime:
+
+* Đọc product theo `productId`.
+* Xác nhận `isActive`.
+* Xác nhận `inventory.quantity`.
+* Đối chiếu với `quantity` user đặt.
+
+### 39.7 Kết luận scan
+
+* Đã xác định được vị trí backend đang che lỗi: `apps/api/src/modules/order/order.service.ts`, hàm `createOrder` và `normalizeOrderError`.
+* Chưa xác định được subtype lỗi thật vì thiếu 2 dữ liệu runtime quan trọng:
+  * Request Payload thật từ DevTools Network.
+  * Backend terminal log/root error tại thời điểm request.
+* Nguyên nhân nghi ngờ cao nhất hiện tại: một exception Prisma/DB không thuộc nhóm inventory/product đã map, nhiều khả năng liên quan DB schema chưa đồng bộ với Prisma schema/source khi repository tạo order với shipping/payment fields.
+* Nếu backend terminal không in root cause thì backend hiện đang mask lỗi và cần bổ sung log/mapping lỗi có kiểm soát trong lượt fix sau khi được duyệt.
+
+### 39.8 Đề xuất fix sau khi được duyệt
+
+| Hướng fix | File/đối tượng | Sửa gì | Rủi ro | Test sau sửa |
+| --------- | -------------- | ------ | ------ | ------------ |
+| Hướng 1 | `apps/api/src/modules/order/order.service.ts` | Không nuốt root cause hoàn toàn: log lỗi gốc ở server và map thêm Prisma known errors/constraint/enum/column sang message rõ hơn cho order create. | Cần tránh lộ lỗi kỹ thuật ra frontend; chỉ log server, message user vẫn Việt hoá. | Gọi lại `POST /api/orders`, kiểm tra backend log có root cause và frontend có message rõ. |
+| Hướng 2 | Dữ liệu product/cart/inventory | Sau khi có payload runtime, kiểm tra product/inventory; nếu product inactive/deleted hoặc inventory thiếu/không đủ thì xử lý dữ liệu/cart đúng nghiệp vụ. | Không tự sửa DB nếu chưa duyệt; cần xác nhận dữ liệu thật. | Test cart item stale, inventory thiếu, quantity vượt tồn kho. |
+| Hướng 3 | Database/schema | Nếu backend log cho thấy DB thiếu column/enum, đồng bộ DB theo migration/db push sau khi được duyệt riêng. | Có tác động DB; không làm trong scan này. | Sau đồng bộ, tạo order hợp lệ và xác nhận không còn Prisma column/enum error. |
+| Hướng 4 | Frontend payload | Nếu Network Payload thật sai, sửa `CheckoutPage.tsx` hoặc `orders.api.ts` để gửi đúng contract hiện tại. | Không đổi contract backend nếu không cần. | Network `POST /api/orders` có payload đúng và không còn 400 với dữ liệu hợp lệ. |
+
+### 39.9 Cam kết scan
+
+* Chưa sửa source code.
+* Chưa chạy migration/db push.
+* Chưa chạy `npm install`.
+* Chưa tạo file log mới.
+* Chỉ append kết quả scan vào `docs/FRONTEND_BACKEND_INTEGRATION_LOG.md`.
+## 40. Fix Vietnamese Mojibake Text In Frontend UI
+
+### 40.1 Mục tiêu
+
+Sửa lỗi text tiếng Việt bị mojibake trên giao diện frontend, ưu tiên trang checkout đang hiển thị sai dấu tiếng Việt.
+
+### 40.2 File đã scan
+
+| File/nhóm | Kết quả scan |
+| --------- | ------------ |
+| `apps/web/src` | Scan các file `.tsx`, `.ts`, `.jsx`, `.js` bằng pattern mojibake `Ã`, `Ä`, `áº`, `Æ`, `Â`, `ðŸ`, `â†`, `â€”`. |
+| `apps/web/src/pages/CheckoutPage.tsx` | Có nhiều text hiển thị checkout bị mojibake. |
+| `apps/web/src/pages/CartPage.tsx` | Không phát hiện text mojibake cần sửa trong lần này. |
+| `apps/web/src/pages/MyOrdersPage.tsx` | Không phát hiện text mojibake cần sửa trong lần này. |
+| `apps/web/src/pages/ProductListPage.tsx` | Không phát hiện text mojibake cần sửa trong lần này. |
+| `apps/web/src/pages/ProductDetailPage.tsx` | Không phát hiện text mojibake cần sửa trong lần này. |
+| `apps/web/src/components` | Không sửa component; các kết quả scan còn lại là tiếng Việt đúng hoặc không thuộc lỗi checkout lần này. |
+
+### 40.3 File đã sửa
+
+| File | Nhóm text đã sửa |
+| ---- | ---------------- |
+| `apps/web/src/pages/CheckoutPage.tsx` | Tiêu đề checkout, mô tả hero, link quay lại giỏ hàng, form giao hàng, placeholder địa chỉ, phương thức thanh toán, panel chuyển khoản/VietQR, ghi chú demo, nút đặt hàng, phần tóm tắt đơn hàng, phí vận chuyển và tổng thanh toán. |
+
+### 40.4 Ví dụ text đã sửa
+
+| Trước | Sau |
+| ----- | --- |
+| `Thanh ToÃ¡n` | `Thanh Toán` |
+| `HoÃ n táº¥t Ä‘Æ¡n hÃ ng` | `Hoàn tất đặt hàng` |
+| `ThÃ´ng tin giao hÃ ng` | `Thông tin giao hàng` |
+| `Há» vÃ  tÃªn ngÆ°á»i nháº­n` | `Họ và tên người nhận` |
+| `Sá»‘ Ä‘iá»‡n thoáº¡i` | `Số điện thoại` |
+| `Äá»‹a chá»‰ giao hÃ ng` | `Địa chỉ giao hàng` |
+| `Táº¡m tÃ­nh` | `Tạm tính` |
+| `PhÃ­ váº­n chuyá»ƒn` | `Phí vận chuyển` |
+| `Khu vá»±c` | `Khu vực` |
+| `Sáº£n pháº©m Ä‘áº·t mua` | `Sản phẩm đã mua` |
+| `Äáº·t hÃ ng ngay` | `Đặt hàng ngay` |
+| `Tá»•ng cá»™ng` | `Tổng thanh toán` |
+
+### 40.5 Kết quả kiểm tra
+
+* Build frontend: PASS.
+  * Lệnh: `npm run build -w @cafe-project/web`.
+  * Kết quả: `tsc -b && vite build` hoàn tất thành công.
+  * Ghi chú: Vite còn cảnh báo chunk lớn hơn 500 kB, không liên quan lỗi encoding.
+* Trang checkout còn lỗi font không:
+  * Đã scan lại `apps/web/src/pages/CheckoutPage.tsx` bằng các pattern mojibake cụ thể và không còn match.
+  * Chưa mở browser live trong phiên này, nên chưa xác nhận bằng mắt trên UI runtime.
+* Có sửa logic order không: Không.
+
+### 40.6 Việc không sửa
+
+* Không sửa Order logic.
+* Không sửa backend.
+* Không sửa database/schema.
+* Không chạy migration/db push.
+* Không chạy `npm install`.
+* Không sửa package-lock/package.json.
+* Không refactor UI.
+* Không đổi API contract.
+* Không tạo file log mới.
+
+## 41. Order Reserved Stock Flow
+
+### 41.1 Mục tiêu
+
+Chuyển nghiệp vụ order/inventory sang flow giữ hàng bằng `reservedStock`: tạo đơn chỉ giữ tồn kho khả dụng, admin xác nhận/hoàn thành mới trừ tồn kho thật, hủy đơn PENDING chỉ nhả phần giữ hàng.
+
+### 41.2 Nghiệp vụ trước khi sửa
+
+* `order.repository.create` tạo order `PENDING` rồi trừ ngay `Inventory.quantity`.
+* `order.repository.updateStatus` khi chuyển `CANCELLED` cộng lại `Inventory.quantity` ở mọi trạng thái.
+* Chưa có `reservedStock`, nên không phân biệt tồn kho thật và tồn kho khả dụng.
+* Chưa có cờ chống trừ kho hai lần ở Order.
+
+### 41.3 Nghiệp vụ sau khi sửa
+
+* Tạo order `PENDING` không trừ `quantity`.
+* Tạo order kiểm tra `availableStock = quantity - reservedStock`.
+* Tạo order tăng `reservedStock` theo từng order item.
+* Admin xác nhận/hoàn thành finalize kho bằng cách giảm `quantity` và giảm `reservedStock`.
+* Hủy đơn `PENDING` chưa finalize chỉ giảm `reservedStock`, không cộng lại `quantity`.
+* Đơn đã finalize kho không tự hoàn kho khi hủy trong lần sửa này.
+
+### 41.4 Schema cần thêm hoặc đã có
+
+* Inventory `reservedStock`: đã thêm `reservedStock Int @default(0)` vào `packages/database/prisma/schema/inventory.prisma`.
+* Order `stockDeductedAt`: đã thêm `stockDeductedAt DateTime?` vào `packages/database/prisma/schema/order.prisma`.
+* Cần migration/db push sau khi được duyệt riêng để DB thật có hai cột này. Chưa chạy migration/db push trong lần này.
+
+### 41.5 File đã sửa
+
+* `packages/database/prisma/schema/inventory.prisma`
+* `packages/database/prisma/schema/order.prisma`
+* `apps/api/src/modules/order/order.repository.ts`
+* `apps/api/src/modules/order/order.service.ts`
+* `apps/api/src/modules/inventory/inventory.service.ts`
+* `apps/web/src/types/order.types.ts`
+
+### 41.6 Luồng tạo order PENDING
+
+* Transaction lấy product kèm inventory.
+* Với từng item, tính `availableStock = inventory.quantity - inventory.reservedStock`.
+* Nếu `availableStock < item.quantity`, throw lỗi `Không đủ tồn kho khả dụng để tạo đơn hàng.`
+* Tạo order trạng thái `PENDING` và order items.
+* Tăng `inventory.reservedStock` theo số lượng đặt.
+* Không giảm `inventory.quantity`.
+
+### 41.7 Luồng admin xác nhận/hoàn thành
+
+* Khi trạng thái chuyển sang `PROCESSING` hoặc `COMPLETED`, hệ thống chỉ finalize nếu `stockDeductedAt` đang null.
+* Với từng item, giảm `inventory.quantity` và giảm `inventory.reservedStock`.
+* Điều kiện update yêu cầu `quantity >= item.quantity` và `reservedStock >= item.quantity`.
+* Sau khi finalize, set `order.stockDeductedAt = now`.
+
+### 41.8 Luồng admin huỷ đơn
+
+* Nếu hủy order `PENDING` và `stockDeductedAt` null, chỉ giảm `inventory.reservedStock`.
+* Không cộng lại `inventory.quantity` vì tồn kho thật chưa bị trừ.
+* Nếu order đã có `stockDeductedAt`, không tự hoàn kho trong lần này; nghiệp vụ hoàn kho cần flow refund/restock riêng.
+
+### 41.9 Chống trừ kho hai lần
+
+* `stockDeductedAt` là cờ chống finalize kho lặp lại.
+* Nếu order đã có `stockDeductedAt`, `updateStatus` không giảm `quantity` và không giảm `reservedStock` thêm lần nữa.
+* Transition hiện có cũng không cho thao tác tiếp trên đơn `COMPLETED`, nên bấm hoàn thành lại không thể trừ kho lần hai.
+
+### 41.10 Kết quả test
+
+* Test case nghiệp vụ cần chạy sau khi DB đã có field:
+  1. Sản phẩm stock = 12, reservedStock = 0.
+  2. Khách đặt 3: order = PENDING, stock = 12, reservedStock = 3, availableStock = 9.
+  3. Admin hủy đơn: stock = 12, reservedStock = 0, availableStock = 12.
+  4. Khách đặt lại 3: stock = 12, reservedStock = 3, availableStock = 9.
+  5. Admin hoàn thành/xác nhận trừ kho: stock = 9, reservedStock = 0, availableStock = 9.
+  6. Admin bấm hoàn thành lại lần nữa: stock vẫn = 9, không trừ lần hai.
+* `npm run build -w @cafe-project/api`: PASS.
+* `npm run build -w @cafe-project/web`: PASS.
+* `npm run generate -w @cafe-project/database`: FAIL exit code 1 do Windows khóa file `node_modules/.prisma/client/query_engine-windows.dll.node` khi rename; các generated TS type đã có `reservedStock` và `stockDeductedAt`, nên build vẫn PASS.
+
+### 41.11 Việc không sửa
+
+* Không sửa Product/Category/Purchase/Agent.
+* Không tạo endpoint giả.
+* Không chạy migration/db push.
+* Không chạy `npm install`.
+* Không tạo file log mới.
+* Không làm UI inventory lớn; backend đã trả thêm `stock`, `reservedStock`, `availableStock`, `minStock` và giữ `quantity` là tồn kho thật.
+* Không tự hoàn kho cho đơn đã finalize; refund/restock cần flow riêng.
+
+## 42. Scan Order Reserved Stock Status Transition Bug
+
+### 42.1 Bằng chứng lỗi hiện tại
+
+* Thao tác admin đã làm: từ chi tiết đơn hàng ở tab/trạng thái `Chờ xử lý` (`PENDING`), admin bấm nút `Xác nhận & Trừ kho`; frontend gọi `ordersApi.confirmOrder(id)`, API gửi payload `{ status: "CONFIRMED" }`, backend normalize `CONFIRMED` thành `PROCESSING`.
+* Kết quả thực tế: chuyển sang `Đang xử lý` đã trừ kho thật vì `order.repository.updateStatus` đặt `shouldFinalizeStock = !order.stockDeductedAt && (nextStatus === PROCESSING || nextStatus === COMPLETED)`, sau đó decrement cả `inventory.quantity` và `inventory.reservedStock`, rồi set `stockDeductedAt`.
+* Kết quả thực tế: hủy ở `Đang xử lý` không hoàn lại khả dụng đúng vì `shouldReleaseReserved` chỉ đúng khi `nextStatus === CANCELLED` và `order.status === PENDING`; với order `PROCESSING` thì không release `reservedStock`. Nếu trước đó `PROCESSING` đã finalize thì `stockDeductedAt` đã có giá trị, cancel cũng không tự hoàn kho.
+
+### 42.2 Luồng mong muốn
+
+* `PENDING`: giữ hàng bằng cách tăng `reservedStock`, không trừ kho thật.
+* `PROCESSING`: vẫn giữ hàng, chưa trừ kho thật, không giảm `reservedStock`, `availableStock = stock - reservedStock` vẫn giảm do hàng còn reserved.
+* `COMPLETED`: mới trừ kho thật bằng `stock = stock - orderItem.quantity`, đồng thời nhả giữ hàng bằng `reservedStock = reservedStock - orderItem.quantity`, set `stockDeductedAt = now`.
+* `CANCELLED` trước khi completed: nếu `stockDeductedAt` còn null thì chỉ release `reservedStock`, không cộng/trừ `stock` thật.
+* Order đã `COMPLETED` hoặc đã có `stockDeductedAt`: không tự hoàn kho trong flow này; cần flow riêng `refund/restock`.
+
+### 42.3 File đã scan
+
+* Backend:
+  * `apps/api/src/modules/order/order.repository.ts`
+  * `apps/api/src/modules/order/order.service.ts`
+  * `apps/api/src/modules/order/order.controller.ts`
+  * `apps/api/src/modules/order/order.route.ts`
+  * `apps/api/src/modules/order/order.validator.ts`
+  * `apps/api/src/modules/inventory/inventory.service.ts`
+  * `apps/api/src/modules/inventory/inventory.repository.ts`
+  * `packages/database/prisma/schema/order.prisma`
+  * `packages/database/prisma/schema/inventory.prisma`
+* Frontend:
+  * `apps/web/src/pages/admin/AdminOrdersPage.tsx`
+  * `apps/web/src/pages/admin/AdminOrderDetailPage.tsx`
+  * `apps/web/src/api/orders.api.ts`
+  * `apps/web/src/types/order.types.ts`
+  * `apps/web/src/pages/admin/AdminInventoryPage.tsx`
+  * `apps/web/src/api/inventory.api.ts`
+
+### 42.4 Nguyên nhân nghi ngờ
+
+* HIGH: `updateStatus` đang finalize kho khi status là `PROCESSING`. Cụ thể `shouldFinalizeStock` đang true cho cả `PROCESSING` và `COMPLETED`, nên `PENDING -> PROCESSING` decrement `inventory.quantity`, decrement `inventory.reservedStock`, và set `stockDeductedAt`.
+* HIGH: Nút frontend đang gửi sai ý nghĩa nghiệp vụ. Nút `Xác nhận & Trừ kho` gọi `ordersApi.confirmOrder`, gửi `CONFIRMED`; backend normalize thành `PROCESSING`. Label/message hiện nói rõ sẽ trừ kho, trong khi mong muốn mới là chỉ xác nhận xử lý.
+* HIGH: Cancel không release `reservedStock` khi order ở `PROCESSING`. Điều kiện hiện tại chỉ release khi order hiện tại là `PENDING`; transition `PROCESSING -> CANCELLED` được service cho phép nhưng repository không nhả reserved cho trạng thái này.
+* MEDIUM: Frontend vẫn có type/status `CONFIRMED` dù Prisma enum chỉ có `PENDING`, `PROCESSING`, `COMPLETED`, `CANCELLED`; backend đang dùng `CONFIRMED` như alias cho `PROCESSING`, dễ làm UI và nghiệp vụ lệch nghĩa.
+* MEDIUM: `COMPLETED` cũng đi qua finalize, nhưng do `PENDING -> PROCESSING` đã set `stockDeductedAt`, bước `PROCESSING -> COMPLETED` thường không trừ lần hai. Không thấy nguy cơ trừ 2 lần trong flow chuẩn nhờ cờ `stockDeductedAt`, nhưng thời điểm trừ đang sai.
+* LOW: Inventory API/DTO đã trả `stock`, `reservedStock`, `availableStock`, nhưng Admin Inventory UI hiện chỉ render cột `Số lượng` theo `quantity`, nên admin chưa thấy rõ tồn kho thật, đang giữ, khả dụng.
+
+### 42.5 Đối chiếu hiện tại và mong muốn
+
+| Trạng thái chuyển               | Hiện tại đang làm | Mong muốn |
+| ------------------------------- | ----------------- | --------- |
+| PENDING -> PROCESSING           | Finalize kho: giảm `inventory.quantity`, giảm `inventory.reservedStock`, set `stockDeductedAt`; frontend nút `Xác nhận & Trừ kho` gửi `CONFIRMED` rồi backend normalize thành `PROCESSING`. | Chỉ đổi trạng thái sang `PROCESSING`; không trừ `stock`, không giảm `reservedStock`, không set `stockDeductedAt`; hàng vẫn đang được giữ. |
+| PROCESSING -> COMPLETED         | Được phép transition; `shouldFinalizeStock` chỉ chạy nếu `stockDeductedAt` null. Trong flow hiện tại thường không trừ thêm vì đã trừ ở `PROCESSING`. | Đây mới là lúc finalize kho: giảm `stock`, giảm `reservedStock`, set `stockDeductedAt = now`, chuyển `COMPLETED`. |
+| PENDING/PROCESSING -> CANCELLED | `PENDING -> CANCELLED` release `reservedStock`; `PROCESSING -> CANCELLED` được service cho phép nhưng repository không release vì điều kiện chỉ nhận `order.status === PENDING`. Nếu đã có `stockDeductedAt`, không hoàn kho. | Nếu chưa `stockDeductedAt`, cả `PENDING` và `PROCESSING` khi hủy đều chỉ giảm `reservedStock`, không cộng/trừ `stock`; order chuyển `CANCELLED`. |
+
+### 42.6 Kết luận scan
+
+* Lỗi chính nằm ở backend status transition: `PROCESSING` đang bị xử lý như bước finalize/trừ kho thật.
+* Frontend cũng góp phần gây sai nghiệp vụ vì nút `Xác nhận & Trừ kho` gửi alias `CONFIRMED` để backend chuyển thành `PROCESSING`, và label/message nói trừ kho ngay tại bước xác nhận.
+* Không thấy cần sửa schema cho bug này vì `Inventory.reservedStock` và `Order.stockDeductedAt` đã có trong Prisma schema.
+* Không cần db push/migration cho phần fix logic nếu DB thực tế đã có hai cột trên; lần scan này không chạy migration/db push.
+* Cần sửa UI inventory sau scan nếu muốn admin nhìn đúng ba số: tồn kho thật, đang giữ, khả dụng. Backend DTO hiện đã có `stock`, `reservedStock`, `availableStock`; UI table hiện chỉ hiển thị `Số lượng`.
+
+### 42.7 Đề xuất fix sau khi được duyệt
+
+1. Backend chỉ finalize/trừ kho khi status chuyển sang `COMPLETED`.
+2. Backend cancel `PENDING` hoặc `PROCESSING` khi chưa `stockDeductedAt` thì release `reservedStock`, không cộng/trừ `stock`.
+3. Frontend đổi nút/label nếu đang gây hiểu nhầm: `Xác nhận xử lý` chỉ chuyển `PROCESSING`; `Hoàn thành đơn` mới trừ kho thật.
+4. Admin Inventory thêm cột:
+   * `Tồn kho thật`
+   * `Đang giữ`
+   * `Khả dụng`
+
+## 43. Fix Order Reserved Stock Status Transition
+
+### 43.1 Mục tiêu
+
+Sửa flow reservedStock để `PROCESSING` chỉ là bước xử lý, chưa trừ kho thật; `COMPLETED` mới trừ kho thật.
+
+### 43.2 Nguyên nhân từ scan mục 42
+
+* `PROCESSING` đang finalize kho.
+* Frontend label/nút gây hiểu nhầm.
+* Cancel ở `PROCESSING` chưa release reservedStock.
+
+### 43.3 File đã sửa
+
+* Backend:
+  * `apps/api/src/modules/order/order.repository.ts`
+  * `apps/api/src/modules/order/order.service.ts`
+* Frontend:
+  * `apps/web/src/api/orders.api.ts`
+  * `apps/web/src/api/inventory.api.ts`
+  * `apps/web/src/types/inventory.types.ts`
+  * `apps/web/src/pages/admin/AdminOrderDetailPage.tsx`
+  * `apps/web/src/pages/admin/AdminInventoryPage.tsx`
+
+### 43.4 Logic sau khi sửa
+
+* `PENDING`: tạo order vẫn chỉ giữ hàng bằng `reservedStock`, không trừ `stock` thật.
+* `PROCESSING`: chỉ đổi trạng thái xử lý; không trừ `stock`, không giảm `reservedStock`, không set `stockDeductedAt`.
+* `COMPLETED`: mới finalize kho; giảm `stock`, giảm `reservedStock`, set `stockDeductedAt = now`, sau đó trigger agent scan tồn kho.
+* `CANCELLED`: nếu order chưa có `stockDeductedAt` và đang ở `PENDING` hoặc `PROCESSING`, chỉ giảm `reservedStock`; không cộng/trừ `stock`. Nếu đã finalized thì không tự hoàn kho.
+
+### 43.5 Backend transition rules
+
+| Transition              | Stock                        | ReservedStock           | stockDeductedAt |
+| ----------------------- | ---------------------------- | ----------------------- | --------------- |
+| PENDING -> PROCESSING   | không đổi                    | không đổi               | null            |
+| PROCESSING -> COMPLETED | giảm                         | giảm                    | set now         |
+| PENDING -> CANCELLED    | không đổi                    | giảm                    | null            |
+| PROCESSING -> CANCELLED | không đổi nếu chưa finalized | giảm nếu chưa finalized | null            |
+
+### 43.6 Frontend UI đã đổi
+
+* `ordersApi.confirmOrder` đổi payload từ `CONFIRMED` sang `PROCESSING`.
+* Nút `Xác nhận & Trừ kho` đổi thành `Xác nhận xử lý`.
+* Message xác nhận xử lý đổi thành `Đơn hàng đã chuyển sang đang xử lý. Hàng vẫn đang được giữ.`
+* Nút hoàn thành đổi label thành `Hoàn thành & Trừ kho`.
+* Message hoàn thành đổi thành `Đơn hàng đã hoàn thành. Tồn kho thật đã được trừ.`
+* Message hủy đổi thành `Đơn hàng đã hủy. Hàng đang giữ đã được hoàn lại vào khả dụng.`
+* Inventory table thêm/đổi các cột:
+  * `Tồn kho thật`
+  * `Đang giữ`
+  * `Khả dụng`
+  * `Ngưỡng tối thiểu`
+  * `Trạng thái kho`
+* `Trạng thái kho`, cảnh báo cần nhập hàng và cảnh báo ngưỡng hiện dựa trên `availableStock`, vì đây là số lượng thực sự còn bán/khả dụng sau reserved.
+
+### 43.7 Kết quả test/build
+
+* Backend build: PASS.
+  * Lệnh: `npm run build -w @cafe-project/api`
+* Frontend build: PASS.
+  * Lệnh: `npm run build -w @cafe-project/web`
+  * Ghi chú: Vite còn warning chunk lớn hơn 500 kB và plugin timing, không liên quan flow order/reservedStock.
+* `git diff --check` cho các file đã sửa: PASS, chỉ có warning CRLF của Git trên Windows.
+* Test manual DB theo chuỗi stock = 12, reservedStock = 0: CHƯA CHẠY trong phiên này vì cần tạo/cập nhật order và inventory thật. Không tự ý mutate dữ liệu DB ngoài build/code check.
+* Đối chiếu code sau sửa:
+  * `PENDING -> PROCESSING`: `shouldFinalizeStock` false, `stockDeductedAt` không set.
+  * `PROCESSING -> COMPLETED`: `shouldFinalizeStock` true nếu `stockDeductedAt` null, giảm `quantity` và `reservedStock`.
+  * `PROCESSING -> CANCELLED`: `shouldReleaseReserved` true nếu `stockDeductedAt` null, chỉ giảm `reservedStock`.
+  * Hoàn thành lại không trừ lần hai vì `stockDeductedAt` đã có giá trị và transition `COMPLETED` không cho đổi tiếp.
+
+### 43.8 Việc không sửa
+
+* Không sửa schema.
+* Không chạy migration/db push.
+* Không chạy `npm install`.
+* Không sửa Product/Category/Purchase/Agent module.
+* Không tạo file log mới.

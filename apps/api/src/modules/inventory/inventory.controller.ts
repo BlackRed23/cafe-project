@@ -59,7 +59,9 @@ export const suggestThreshold = async (req: AuthenticatedRequest, res: Response)
     const suggestion = await getInventoryThresholdSuggestion(req.params.id, {
         salesWindowDays: req.query.salesWindowDays ? Number(req.query.salesWindowDays) : undefined,
         bufferDays: req.query.bufferDays ? Number(req.query.bufferDays) : undefined,
-        delayBufferDays: req.query.delayBufferDays ? Number(req.query.delayBufferDays) : undefined
+        delayBufferDays: req.query.delayBufferDays ? Number(req.query.delayBufferDays) : undefined,
+        planningPeriod: req.query.planningPeriod as any,
+        planningDays: req.query.planningDays ? Number(req.query.planningDays) : undefined
     });
 
     sendSuccess(res, 200, 'Get threshold suggestion successfully.', { suggestion });

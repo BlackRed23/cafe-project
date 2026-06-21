@@ -12,7 +12,20 @@ import { Input } from "../../components/common/Input";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { DataTable } from "../../components/admin/DataTable";
 import { useToast } from "../../contexts/ToastContext";
-import { Plus, Edit2, Trash2, Link2, Truck, Coffee } from "lucide-react";
+import { Plus, Edit2, Trash2, Link2, Truck, Coffee, AlertTriangle } from "lucide-react";
+import { ALLOWED_PRODUCT_UNITS } from "../../constants/units";
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Returns true nếu admin đã nhập ít nhất 1 trong 3 field quy cách */
+const hasAnyConversionField = (pu: string, cq: string, ctu: string) =>
+  pu !== "" || cq !== "" || ctu !== "";
+
+/** Returns true nếu admin đã nhập đủ 3 field quy cách hợp lệ */
+const hasAllConversionFields = (pu: string, cq: string, ctu: string) =>
+  pu !== "" && cq !== "" && Number(cq) > 0 && ctu !== "";
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 export const AdminSuppliersPage: React.FC = () => {
   const toast = useToast();
@@ -40,7 +53,10 @@ export const AdminSuppliersPage: React.FC = () => {
   const [importPrice, setImportPrice] = useState(0);
   const [minOrderQty, setMinOrderQty] = useState(1);
   const [leadTime, setLeadTime] = useState(3);
-  const [priorityScore, setPriorityScore] = useState(1);
+  // Conversion fields — all optional; must be all-or-nothing
+  const [purchaseUnit, setPurchaseUnit] = useState("");
+  const [conversionQtyStr, setConversionQtyStr] = useState("");
+  const [conversionTargetUnit, setConversionTargetUnit] = useState("");
   const [linkLoading, setLinkLoading] = useState(false);
 
   // Confirm delete states
@@ -120,32 +136,54 @@ export const AdminSuppliersPage: React.FC = () => {
     setImportPrice(50000);
     setMinOrderQty(10);
     setLeadTime(3);
-    setPriorityScore(1);
+    // Reset conversion fields — default empty (not configured)
+    setPurchaseUnit("");
+    setConversionQtyStr("");
+    setConversionTargetUnit("");
     setIsLinkModalOpen(true);
   };
 
   const handleLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!linkProductId) return;
+
+    const hasAny = hasAnyConversionField(purchaseUnit, conversionQtyStr, conversionTargetUnit);
+    const hasAll = hasAllConversionFields(purchaseUnit, conversionQtyStr, conversionTargetUnit);
+
+    if (hasAny && !hasAll) {
+      toast.error(
+        "Thiếu thông tin quy cách",
+        "Nếu nhập quy cách, vui lòng nhập đủ đơn vị nhập hàng, số lượng quy đổi và đơn vị tồn kho nhận được."
+      );
+      return;
+    }
+
     setLinkLoading(true);
+
+    const conversionPayload = hasAll
+      ? {
+          purchaseUnit,
+          conversionQuantity: Number(conversionQtyStr),
+          conversionTargetUnit,
+        }
+      : {
+          purchaseUnit: null,
+          conversionQuantity: null,
+          conversionTargetUnit: null,
+        };
 
     const payload = {
       supplierId: linkSupplierId,
-      supplier_id: linkSupplierId,
       productId: linkProductId,
-      product_id: linkProductId,
-      importPrice,
-      import_price: importPrice,
+      price: importPrice,
       minOrderQuantity: minOrderQty,
-      min_order_quantity: minOrderQty,
-      leadTime,
-      lead_time: leadTime,
-      priorityScore,
-      priority_score: priorityScore,
+      leadTimeDays: leadTime,
+      isPreferred: false,
+      ...conversionPayload,
     };
 
     try {
-      await suppliersApi.createSupplierProduct(payload);
+      await suppliersApi.createSupplierProduct(payload as any);
       toast.success("Gán thành công", "Sản phẩm đã được gán cho nhà cung cấp.");
       await fetchData();
       setIsLinkModalOpen(false);
@@ -190,6 +228,16 @@ export const AdminSuppliersPage: React.FC = () => {
     const pName = products.find((p) => p.id === (sp.productId || sp.product_id))?.name || "";
     return sName.toLowerCase().includes(searchProd.toLowerCase()) || pName.toLowerCase().includes(searchProd.toLowerCase());
   });
+
+  // ── Conversion preview helpers ──────────────────────────────────────────
+  const conversionQtyNum = Number(conversionQtyStr);
+  const linkConversionPreview =
+    hasAllConversionFields(purchaseUnit, conversionQtyStr, conversionTargetUnit)
+      ? `1 ${purchaseUnit} = ${conversionQtyNum} ${conversionTargetUnit}`
+      : null;
+  const linkConversionWarning =
+    hasAnyConversionField(purchaseUnit, conversionQtyStr, conversionTargetUnit) &&
+    !hasAllConversionFields(purchaseUnit, conversionQtyStr, conversionTargetUnit);
 
   const supplierColumns = [
     {
@@ -269,18 +317,26 @@ export const AdminSuppliersPage: React.FC = () => {
       },
     },
     {
-      header: "Đơn đặt tối thiểu (MOQ)",
+      header: "MOQ",
       render: (sp: SupplierProduct) => <span>{sp.minOrderQuantity ?? sp.min_order_quantity ?? 0}</span>,
     },
     {
-      header: "Lead Time",
+      header: "Thời gian giao hàng",
       render: (sp: SupplierProduct) => <span>{sp.leadTime ?? sp.lead_time ?? 0} ngày</span>,
     },
     {
-      header: "Điểm ưu tiên",
+      header: "Quy cách nhập",
       render: (sp: SupplierProduct) => {
-        const score = sp.priorityScore ?? sp.priority_score ?? 1;
-        return <span className="font-bold text-emerald-600">{score}/10</span>;
+        const unit = sp.purchaseUnit ?? sp.purchase_unit;
+        const qty = sp.conversionQuantity ?? sp.conversion_quantity;
+        const target = sp.conversionTargetUnit ?? sp.conversion_target_unit;
+        return unit && qty && target ? (
+          <span className="font-semibold text-slate-700">
+            Quy cách: 1 {unit} = {qty} {target}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-500">Chưa có quy cách từ nhà cung cấp</span>
+        );
       },
     },
     {
@@ -333,7 +389,7 @@ export const AdminSuppliersPage: React.FC = () => {
       {/* Linked products import price mapping list */}
       <div className="space-y-4">
         <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
-          <Coffee size={18} className="text-amber-800" /> Bảng gán sản phẩm & Giá nhập
+          <Coffee size={18} className="text-amber-800" /> Bảng gán sản phẩm &amp; Giá nhập
         </h3>
 
         {supplierProducts.length === 0 ? (
@@ -381,8 +437,11 @@ export const AdminSuppliersPage: React.FC = () => {
       {isLinkModalOpen && (
         <Modal isOpen={true} onClose={() => setIsLinkModalOpen(false)} title="Gán sản phẩm cho nhà cung cấp" size="sm">
           <form onSubmit={handleLinkSubmit} className="space-y-4">
+            {/* Product selector */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Sản phẩm gán</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Sản phẩm gán <span className="text-rose-500">*</span>
+              </label>
               <select
                 value={linkProductId}
                 onChange={(e) => setLinkProductId(e.target.value)}
@@ -398,6 +457,7 @@ export const AdminSuppliersPage: React.FC = () => {
               </select>
             </div>
 
+            {/* Price & logistics */}
             <Input
               label="Giá nhập đề xuất (VND)"
               type="number"
@@ -414,24 +474,105 @@ export const AdminSuppliersPage: React.FC = () => {
                 onChange={(e) => setMinOrderQty(parseInt(e.target.value) || 0)}
                 required
               />
-              <Input
-                label="Lead Time (ngày)"
-                type="number"
-                value={leadTime || ""}
-                onChange={(e) => setLeadTime(parseInt(e.target.value) || 0)}
-                required
-              />
+              <div>
+                <Input
+                  label="Thời gian giao hàng dự kiến (ngày)"
+                  type="number"
+                  value={leadTime || ""}
+                  onChange={(e) => setLeadTime(parseInt(e.target.value) || 0)}
+                  required
+                />
+                <p className="text-[11px] text-slate-500 mt-1">Số ngày dự kiến từ lúc đặt hàng đến khi hàng về kho.</p>
+              </div>
             </div>
 
-            <Input
-              label="Điểm ưu tiên (Priority Score)"
-              type="number"
-              min={1}
-              max={10}
-              value={priorityScore || ""}
-              onChange={(e) => setPriorityScore(parseInt(e.target.value) || 1)}
-              required
-            />
+            {/* Conversion spec — optional, all-or-nothing */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold text-slate-700">Quy cách do nhà cung cấp cung cấp</p>
+                <span className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-600 text-[11px] font-semibold">Tùy chọn</span>
+              </div>
+              
+              <div className="text-xs text-slate-600 space-y-1.5">
+                <p>Chỉ nhập phần này khi nhà cung cấp đã báo rõ quy cách đóng gói hoặc quy cách giao hàng. Nếu chưa có thông tin, hãy để trống. Hệ thống vẫn gắn được sản phẩm và sẽ dùng đơn vị tồn kho để hiển thị số lượng.</p>
+                <div className="bg-white p-2 rounded border border-slate-200 font-mono text-[11px] mt-2">
+                  <p className="font-semibold mb-1 text-slate-700">Ví dụ: Nhà cung cấp báo 1 thùng = 12 hộp thì nhập:</p>
+                  <ul className="list-disc pl-4 space-y-0.5 text-slate-600">
+                    <li>Đơn vị nhập hàng: thùng</li>
+                    <li>Số lượng tồn kho nhận được: 12</li>
+                    <li>Đơn vị tồn kho nhận được: hộp</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                {/* purchaseUnit */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Đơn vị nhập hàng từ nhà cung cấp</label>
+                  <select
+                    value={purchaseUnit}
+                    onChange={(e) => setPurchaseUnit(e.target.value)}
+                    className="block w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
+                  >
+                    <option value="">Ví dụ: thùng, bao, kiện</option>
+                    {ALLOWED_PRODUCT_UNITS.map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* conversionQuantity */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Số lượng tồn kho nhận được từ 1 đơn vị nhập</label>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={conversionQtyStr}
+                    onChange={(e) => setConversionQtyStr(e.target.value)}
+                    placeholder="Ví dụ: 12"
+                    className="block w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
+                  />
+                </div>
+
+                {/* conversionTargetUnit */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Đơn vị tồn kho nhận được</label>
+                  <select
+                    value={conversionTargetUnit}
+                    onChange={(e) => setConversionTargetUnit(e.target.value)}
+                    className="block w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
+                  >
+                    <option value="">Ví dụ: hộp, kg, gram</option>
+                    {ALLOWED_PRODUCT_UNITS.map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Preview */}
+              {linkConversionPreview && (
+                <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800">
+                  Quy cách sẽ lưu: {linkConversionPreview}
+                </div>
+              )}
+
+              {/* Warning: partial fill */}
+              {linkConversionWarning && (
+                <div className="flex items-start gap-2 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700">
+                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                  Nếu nhập quy cách, vui lòng nhập đủ đơn vị nhập hàng, số lượng quy đổi và đơn vị tồn kho nhận được.
+                </div>
+              )}
+
+              {/* No conversion configured */}
+              {!hasAnyConversionField(purchaseUnit, conversionQtyStr, conversionTargetUnit) && (
+                <div className="rounded-lg bg-slate-100 border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600">
+                  Chưa có quy cách từ nhà cung cấp. Hệ thống sẽ dùng đơn vị tồn kho trực tiếp.
+                </div>
+              )}
+            </div>
 
             <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setIsLinkModalOpen(false)}>

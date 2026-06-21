@@ -50,6 +50,7 @@ export interface Order {
   shippingPhone?: string | null;
   shippingAddress?: string | null;
   note?: string;
+  stockDeductedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   items?: OrderItem[];

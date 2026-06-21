@@ -24,6 +24,9 @@ model SupplierProduct {
   minOrderQuantity Int      @default(1)
   leadTimeDays     Int      @default(3)
   isPreferred      Boolean  @default(false)
+  purchaseUnit     String?
+  conversionQuantity Float?
+  conversionTargetUnit String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

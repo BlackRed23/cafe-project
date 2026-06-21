@@ -24,13 +24,19 @@ const getInventoryQuantity = (product: Product): number | undefined => {
   return typeof quantity === "number" ? quantity : undefined;
 };
 
+const isValidCartItem = (item: unknown): item is CartItem => {
+  const cartItem = item as CartItem;
+  const productId = String(cartItem?.product?.id ?? (cartItem?.product as any)?.product_id ?? "").trim();
+  return Boolean(productId) && Number.isInteger(Number(cartItem?.quantity)) && Number(cartItem.quantity) > 0;
+};
+
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem(CART_STORAGE_KEY);
       if (!saved) return [];
       const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? parsed.filter(isValidCartItem) : [];
     } catch {
       localStorage.removeItem(CART_STORAGE_KEY);
       return [];

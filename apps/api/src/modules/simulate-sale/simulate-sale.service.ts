@@ -1,9 +1,28 @@
 import { HttpError } from '../../common/http-error';
-import { agentService } from '../agent/agent.service';
 import { simulateSaleRepository } from './simulate-sale.repository';
 import type { SimulateSaleInput } from './simulate-sale.validator';
+import { scanInventoryViaAgentService } from '../agent/agent.client';
 
 const randomInt = (min: number, max: number): number => Math.floor(Math.random() * (max - min + 1)) + min;
+
+const runAgentScan = async (input: { productIds: string[]; userId: string; sourceId?: string }) => {
+    try {
+        const scan = await scanInventoryViaAgentService({
+            productIds: input.productIds,
+            triggerType: 'SIMULATE_SALE',
+            sourceType: 'SIMULATE_SALE',
+            sourceId: input.sourceId
+        }, input.userId);
+        return { ...scan, agentWarning: null };
+    } catch (error) {
+        console.error('[AI_AGENT] Failed to scan inventory after simulate sale', error);
+        return {
+            results: [],
+            createdPurchaseRequests: [],
+            agentWarning: 'Simulate sale completed, but AI Agent scan could not run.'
+        };
+    }
+};
 
 export const simulateSaleService = {
     async run(input: SimulateSaleInput, userId: string) {
@@ -52,11 +71,17 @@ export const simulateSaleService = {
                 throw new HttpError(404, 'Inventory not found for selected product.');
             }
 
-            const scan = await agentService.scanInventory({ productIds: [affectedProduct.productId], triggerType: 'SIMULATE_SALE' }, userId);
+            const scan = await runAgentScan({
+                productIds: [affectedProduct.productId],
+                sourceId: affectedProduct.transactionId,
+                userId
+            });
 
             return {
                 affectedProduct,
                 affectedProducts: [affectedProduct],
+                inventoryId: affectedProduct.inventoryId,
+                transactionId: affectedProduct.transactionId,
                 productId: affectedProduct.productId,
                 productName: affectedProduct.productName,
                 stockBefore: affectedProduct.stockBefore,
@@ -64,7 +89,8 @@ export const simulateSaleService = {
                 decreasedQuantity: affectedProduct.decreasedQuantity,
                 createdPurchaseRequests: scan.createdPurchaseRequests,
                 agentLogs: scan.results,
-                agentResults: scan.results
+                agentResults: scan.results,
+                agentWarning: scan.agentWarning
             };
         }
 
@@ -78,7 +104,23 @@ export const simulateSaleService = {
         const plans = selected.map((inventory) => ({ inventory, decrease: randomInt(minDecrease, maxDecrease) }));
         const affectedProducts = await simulateSaleRepository.applySale(plans, input.note ?? null, userId);
         const productIds = affectedProducts.map((item) => item.productId);
-        const scan = await agentService.scanInventory({ productIds, triggerType: 'SIMULATE_SALE' }, userId);
-        return { affectedProducts, createdPurchaseRequests: scan.createdPurchaseRequests, agentLogs: scan.results, agentResults: scan.results };
+        const scan = await runAgentScan({
+            productIds,
+            userId
+        });
+        return { affectedProducts, createdPurchaseRequests: scan.createdPurchaseRequests, agentLogs: scan.results, agentResults: scan.results, agentWarning: scan.agentWarning };
+    },
+
+    async restore(transactionId: string, userId: string) {
+        if (!transactionId?.trim()) {
+            throw new HttpError(400, 'Simulation transaction id is required.');
+        }
+
+        return simulateSaleRepository.restoreSale(transactionId.trim(), userId);
+    },
+
+    async pendingRestore(userId: string) {
+        const pendingRestore = await simulateSaleRepository.findPendingRestore(userId);
+        return { pendingRestore };
     }
 };

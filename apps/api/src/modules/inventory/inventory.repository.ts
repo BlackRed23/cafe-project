@@ -57,7 +57,7 @@ export const inventoryRepository = {
                 productId: product.id,
                 quantity: 0,
                 minThreshold: 10,
-                unit: product.unit || 'Ly'
+                unit: product.unit || 'hộp'
             })),
             skipDuplicates: true
         });

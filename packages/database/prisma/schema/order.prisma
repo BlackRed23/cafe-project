@@ -30,6 +30,7 @@ model Order {
   shippingPhone   String?
   shippingAddress String?
   note            String?
+  stockDeductedAt DateTime?
 
   items   OrderItem[]
   payment Payment?

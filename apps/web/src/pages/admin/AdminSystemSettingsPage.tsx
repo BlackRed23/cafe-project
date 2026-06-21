@@ -9,6 +9,8 @@ type SettingField = {
   label: string;
   helper?: string;
   multiline?: boolean;
+  type?: "text" | "select" | "number";
+  options?: Array<{ value: string; label: string }>;
 };
 
 type SettingSection = {
@@ -52,6 +54,30 @@ const SECTIONS: SettingSection[] = [
       { key: "store.phone", label: "Số điện thoại cửa hàng" },
     ],
   },
+  {
+    title: "Cau hinh de xuat nhap hang",
+    description: "Chon chu ky lap ke hoach nhap hang cho AI Agent.",
+    icon: Settings,
+    fields: [
+      {
+        key: "inventory.reorderPlanningPeriod",
+        label: "Chu ky de xuat nhap hang",
+        helper: "He thong se dua vao toc do ban trung binh moi ngay de de xuat so luong du cho chu ky da chon.",
+        type: "select",
+        options: [
+          { value: "WEEKLY", label: "Theo tuan" },
+          { value: "MONTHLY", label: "Theo thang" },
+          { value: "CUSTOM", label: "Tuy chinh" },
+        ],
+      },
+      {
+        key: "inventory.reorderPlanningCustomDays",
+        label: "So ngay muon du tru",
+        helper: "Chi dung khi chon Tuy chinh.",
+        type: "number",
+      },
+    ],
+  },
 ];
 
 const ALL_KEYS = SECTIONS.flatMap((section) => section.fields.map((field) => field.key));
@@ -67,6 +93,14 @@ export const AdminSystemSettingsPage: React.FC = () => {
     () => ALL_KEYS.filter((key) => values[key] !== initialValues[key]),
     [values, initialValues]
   );
+
+  const reorderPlanningPreview = useMemo(() => {
+    const period = values["inventory.reorderPlanningPeriod"] || "WEEKLY";
+    const customDays = Number.parseInt(values["inventory.reorderPlanningCustomDays"] || "14", 10);
+    const days = period === "MONTHLY" ? 30 : period === "CUSTOM" && customDays > 0 ? customDays : 7;
+    const label = period === "MONTHLY" ? "Theo thang" : period === "CUSTOM" ? "Tuy chinh" : "Theo tuan";
+    return `Dang chon: ${label}. He thong se de xuat so luong du ban trong khoang ${days} ngay, cong them thoi gian nhap hang va ton kho du phong.`;
+  }, [values]);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -176,6 +210,10 @@ export const AdminSystemSettingsPage: React.FC = () => {
         </div>
       )}
 
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+        {reorderPlanningPreview}
+      </div>
+
       {SECTIONS.map((section) => {
         const Icon = section.icon;
         return (
@@ -213,11 +251,27 @@ export const AdminSystemSettingsPage: React.FC = () => {
                         rows={5}
                         className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 shadow-sm outline-none transition focus:border-amber-700 focus:ring-4 focus:ring-amber-700/10 disabled:bg-slate-50"
                         placeholder="Nhập giá trị cài đặt..."
-                        disabled={!!savingKey}
+                        disabled={!!savingKey || (field.key === "inventory.reorderPlanningCustomDays" && values["inventory.reorderPlanningPeriod"] !== "CUSTOM")}
                       />
+                    ) : field.type === "select" ? (
+                      <select
+                        id={field.key}
+                        value={values[field.key] || field.options?.[0]?.value || ""}
+                        onChange={(event) => handleChange(field.key, event.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 shadow-sm outline-none transition focus:border-amber-700 focus:ring-4 focus:ring-amber-700/10 disabled:bg-slate-50"
+                        disabled={!!savingKey}
+                      >
+                        {field.options?.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
                       <input
                         id={field.key}
+                        type={field.type === "number" ? "number" : "text"}
+                        min={field.type === "number" ? 1 : undefined}
                         value={values[field.key] ?? ""}
                         onChange={(event) => handleChange(field.key, event.target.value)}
                         maxLength={5000}

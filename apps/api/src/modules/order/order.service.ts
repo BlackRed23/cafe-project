@@ -3,7 +3,7 @@ import { HttpError } from '../../common/http-error';
 import type { JwtUserPayload } from '../auth/auth.service';
 import { orderRepository, type OrderRecord } from './order.repository';
 import type { CreateOrderInput, OrderFiltersInput, OrderStatusInput } from './order.validator';
-import { agentService } from '../agent/agent.service';
+import { scanInventoryViaAgentService } from '../agent/agent.client';
 
 export type OrderDto = ReturnType<typeof toOrderDto>;
 
@@ -23,6 +23,7 @@ const toOrderDto = (order: OrderRecord) => ({
     shippingPhone: order.shippingPhone ?? null,
     shippingAddress: order.shippingAddress ?? null,
     note: order.note ?? null,
+    stockDeductedAt: order.stockDeductedAt ?? null,
     items: order.items.map((item) => ({
         id: item.id,
         orderId: item.orderId,
@@ -38,7 +39,7 @@ const toOrderDto = (order: OrderRecord) => ({
             name: item.product.name,
             sku: item.product.sku,
             unit: item.product.unit ?? 'hộp',
-            imageUrl: item.product.imageUrl ?? null,
+            imageUrl: item.product.imageUrl ?? null
         }
     })),
     createdAt: order.createdAt,
@@ -109,13 +110,29 @@ const assertTransition = (order: OrderRecord, next: OrderStatus): void => {
 
 const normalizeOrderError = (error: unknown, fallback: string): HttpError => {
     const message = error instanceof Error ? error.message : fallback;
+    const lower = message.toLowerCase();
 
     if (
-        message.includes('Not enough inventory') ||
-        message.includes('không đủ hàng') ||
-        message.includes('vừa hết hàng')
+        lower.includes('not enough inventory') ||
+        lower.includes('inventory') ||
+        lower.includes('stock') ||
+        lower.includes('không đủ') ||
+        lower.includes('tồn kho') ||
+        lower.includes('vừa hết hàng') ||
+        lower.includes('khÃ´ng Ä‘á»§') ||
+        lower.includes('vá»«a háº¿t hÃ ng')
     ) {
-        return new HttpError(400, 'Không đủ tồn kho để tạo đơn hàng.');
+        return new HttpError(400, 'Không đủ tồn kho để tạo/cập nhật đơn hàng, vui lòng giảm số lượng hoặc kiểm tra lại tồn kho khả dụng.');
+    }
+
+    if (
+        lower.includes('product not found') ||
+        lower.includes('không tìm thấy sản phẩm') ||
+        lower.includes('khÃ´ng tÃ¬m tháº¥y sáº£n pháº©m') ||
+        lower.includes('inactive') ||
+        lower.includes('not available')
+    ) {
+        return new HttpError(400, 'Sản phẩm không còn khả dụng, vui lòng cập nhật giỏ hàng.');
     }
 
     return new HttpError(400, fallback);
@@ -151,10 +168,16 @@ export const updateOrderStatus = async (id: string, input: OrderStatusInput, use
     try {
         const updatedOrder = await orderRepository.updateStatus(order, nextStatus, userId);
 
-        if (nextStatus === OrderStatus.PROCESSING && order.status === OrderStatus.PENDING) {
+        if (nextStatus === OrderStatus.COMPLETED && !order.stockDeductedAt) {
             const productIds = updatedOrder.items.map((item) => item.productId);
-            // Async trigger agent to scan inventory
-            agentService.scanInventory({ productIds, triggerType: 'ORDER' }, userId).catch(console.error);
+            scanInventoryViaAgentService({
+                productIds,
+                triggerType: 'ORDER_COMPLETED',
+                sourceType: 'ORDER',
+                sourceId: id
+            }, userId).catch((error) => {
+                console.error('[AI_AGENT] Failed to scan inventory after order completed', error);
+            });
         }
 
         return toOrderDto(updatedOrder);
