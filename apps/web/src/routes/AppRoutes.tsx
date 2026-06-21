@@ -120,6 +120,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="purchase-requests/:id" element={<AdminPurchaseRequestDetailPage />} />
           <Route path="agent-logs" element={<AdminAgentLogsPage />} />
           <Route path="users" element={<AdminUsersPage />} />
+          <Route path="change-password" element={<ChangePasswordPage />} />
           <Route path="system-settings" element={<AdminSystemSettingsPage />} />
           <Route path="notifications" element={<AdminNotificationsPage />} />
         </Route>

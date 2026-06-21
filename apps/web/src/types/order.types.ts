@@ -1,6 +1,6 @@
 import type { Product } from "./product.types";
 
-export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "VIET_QR";
+export type PaymentMethod = "CASH";
 export type PaymentStatus = "PENDING" | "SUCCESS" | "PAID" | "FAILED" | "REFUNDED";
 export type OrderStatus =
   | "PENDING"

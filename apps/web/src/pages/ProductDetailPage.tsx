@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { productsApi } from "../api/products.api";
 import type { Product } from "../types/product.types";
 import { useCart } from "../contexts/CartContext";
@@ -8,10 +8,13 @@ import { Button } from "../components/common/Button";
 import { Loading } from "../components/common/Loading";
 import { ArrowLeft, ShoppingCart, ShieldCheck, AlertCircle } from "lucide-react";
 import { useToast } from "../contexts/ToastContext";
+import { useAuth } from "../contexts/AuthContext";
 
 export const ProductDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated } = useAuth();
   const [product, setProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
@@ -190,6 +193,11 @@ export const ProductDetailPage: React.FC = () => {
 
             <Button
               onClick={() => {
+                if (!isAuthenticated) {
+                  toast.warning("Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng!");
+                  navigate("/login", { state: { returnUrl: location.pathname } });
+                  return;
+                }
                 const didAdd = addToCart(product, quantity);
                 if (!didAdd) {
                   toast.warning("Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");

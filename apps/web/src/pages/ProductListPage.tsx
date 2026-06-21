@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { productsApi } from "../api/products.api";
 import type { Product } from "../types/product.types";
 import { useCart } from "../contexts/CartContext";
 import { ProductCard } from "../components/product/ProductCard";
 import { Loading } from "../components/common/Loading";
+import { useAuth } from "../contexts/AuthContext";
 import { EmptyState } from "../components/common/EmptyState";
 import { Search, Sparkles, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 
@@ -32,6 +34,9 @@ export const ProductListPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const { addToCart } = useCart();
   const toast = useToast();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const fetchData = async () => {
     try {
@@ -65,6 +70,12 @@ export const ProductListPage: React.FC = () => {
   }, [search, selectedCategory, selectedPriceRange, sortBy]);
 
   const handleAddToCart = (product: Product) => {
+    if (!isAuthenticated) {
+      toast.warning("Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng!");
+      navigate("/login", { state: { returnUrl: location.pathname } });
+      return;
+    }
+
     const stockQuantity = product.inventory?.quantity;
 
     if (typeof stockQuantity === "number" && stockQuantity <= 0) {

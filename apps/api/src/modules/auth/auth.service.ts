@@ -10,6 +10,7 @@ export type AuthUser = {
     id: string;
     email: string;
     name: string;
+    phone?: string | null;
     role: UserRole;
 };
 
@@ -31,10 +32,11 @@ type JwtDecodedPayload = JwtUserPayload & {
 
 const PASSWORD_SALT_ROUNDS = 10;
 
-const toAuthUser = (user: Pick<User, 'id' | 'email' | 'name' | 'role'>): AuthUser => ({
+const toAuthUser = (user: Pick<User, 'id' | 'email' | 'name' | 'phone' | 'role'>): AuthUser => ({
     id: user.id,
     email: user.email,
     name: user.name,
+    phone: user.phone,
     role: user.role
 });
 
@@ -65,10 +67,39 @@ export const registerUser = async (input: RegisterInput): Promise<AuthUser> => {
         name: input.name,
         email: input.email,
         password: hashedPassword,
+        phone: input.phone,
         role: input.role
     });
 
     return toAuthUser(user);
+};
+
+export const updateUserProfile = async (userId: string, input: { name?: string; phone?: string }): Promise<AuthUser> => {
+    const user = await authRepository.updateProfile(userId, input);
+    return toAuthUser(user);
+};
+
+export const changeUserPassword = async (userId: string, input: { currentPassword: string; newPassword: string }): Promise<void> => {
+    const user = await authRepository.findById(userId);
+    if (!user) {
+        throw new HttpError(404, 'User not found.');
+    }
+
+    const isPasswordValid = await bcrypt.compare(input.currentPassword, user.password);
+    if (!isPasswordValid) {
+        throw new HttpError(400, 'Mật khẩu hiện tại không đúng.');
+    }
+
+    if (input.newPassword.length < 6) {
+        throw new HttpError(400, 'Mật khẩu mới phải có ít nhất 6 ký tự.');
+    }
+
+    if (input.currentPassword === input.newPassword) {
+        throw new HttpError(400, 'Mật khẩu mới phải khác mật khẩu hiện tại.');
+    }
+
+    const hashedPassword = await bcrypt.hash(input.newPassword, PASSWORD_SALT_ROUNDS);
+    await authRepository.updatePassword(userId, hashedPassword);
 };
 
 export const loginUser = async (input: LoginInput): Promise<AuthResponse> => {

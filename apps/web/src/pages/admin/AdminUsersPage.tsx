@@ -27,6 +27,7 @@ export const AdminUsersPage: React.FC = () => {
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<"ADMIN" | "CUSTOMER" | "USER">("CUSTOMER");
   const [isActiveUser, setIsActiveUser] = useState(true);
+  const [password, setPassword] = useState("");
   const [modalLoading, setModalLoading] = useState(false);
 
   // Delete confirm dialog states
@@ -57,12 +58,14 @@ export const AdminUsersPage: React.FC = () => {
       setRole(user.role as any);
       setPhone(user.phone || "");
       setIsActiveUser(user.is_active !== false && user.isActive !== false);
+      setPassword("");
     } else {
       setSelectedUser(null);
       setName("");
       setEmail("");
       setRole("CUSTOMER");
       setPhone("");
+      setPassword("");
       setIsActiveUser(true);
     }
     setIsModalOpen(true);
@@ -93,16 +96,21 @@ export const AdminUsersPage: React.FC = () => {
     try {
       if (selectedUser) {
         // Edit User
-        const updated = await usersApi.updateUser(selectedUser.id, payload);
-        setUsers((prev) => prev.map((u) => (u.id === selectedUser.id ? updated : u)));
-        toast.success("Cập nhật thành công", `Nhân viên "${payload.name}" đã được cập nhật.`);
+        await usersApi.updateUser(selectedUser.id, payload);
+        toast.success("Cập nhật thành công", `Thông tin "${payload.name}" đã được cập nhật.`);
       } else {
-        // Create User
-        const created = await usersApi.createUser(payload);
-        setUsers((prev) => [...prev, created]);
-        toast.success("Tạo thành công", `Nhân viên "${payload.name}" đã được thêm mới.`);
+        // Create User - need password
+        if (!password) {
+          toast.warning("Thiếu thông tin", "Vui lòng nhập mật khẩu cho tài khoản mới.");
+          setModalLoading(false);
+          return;
+        }
+        await usersApi.createUser({ ...payload, password });
+        toast.success("Tạo thành công", `Tài khoản "${payload.name}" đã được thêm mới.`);
       }
       handleCloseModal();
+      // Reload từ DB để đồng bộ chính xác
+      await fetchUsers();
     } catch (err) {
       toast.error("Thao tác thất bại", "Đã xảy ra lỗi khi lưu thông tin.");
     } finally {
@@ -314,6 +322,19 @@ export const AdminUsersPage: React.FC = () => {
             onChange={(e: any) => setIsActiveUser(e.target.value === "true")}
             disabled={modalLoading}
           />
+
+          {/* Password field - only show when creating new user */}
+          {!selectedUser && (
+            <Input
+              label="Mật khẩu *"
+              type="password"
+              placeholder="Tối thiểu 6 ký tự"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={modalLoading}
+            />
+          )}
 
           <div className="flex items-center gap-3 pt-3 border-t border-slate-100 mt-2">
             <Button

@@ -29,5 +29,22 @@ export const authRepository = {
                 lastLoginAt: new Date()
             }
         });
+    },
+
+    async updateProfile(id: string, data: { name?: string; phone?: string }): Promise<UserRecord> {
+        return prisma.user.update({
+            where: { id },
+            data: {
+                ...(data.name && { name: data.name }),
+                ...(data.phone !== undefined && { phone: data.phone }),
+            }
+        });
+    },
+
+    async updatePassword(id: string, hashedPassword: string): Promise<void> {
+        await prisma.user.update({
+            where: { id },
+            data: { password: hashedPassword }
+        });
     }
 };
