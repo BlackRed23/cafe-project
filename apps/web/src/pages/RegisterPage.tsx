@@ -38,13 +38,16 @@ export const RegisterPage: React.FC = () => {
       newErrors.phone = "Số điện thoại không hợp lệ";
     }
 
-    if (!password) {
+    const trimmedPassword = password.trim();
+    if (!trimmedPassword) {
       newErrors.password = "Mật khẩu không được để trống";
-    } else if (password.length < 6) {
-      newErrors.password = "Mật khẩu phải chứa ít nhất 6 ký tự";
+    } else if (trimmedPassword.length < 8 || trimmedPassword.length > 64) {
+      newErrors.password = "Mật khẩu phải từ 8 đến 64 ký tự";
+    } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]+$/.test(trimmedPassword)) {
+      newErrors.password = "Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường, 1 số và 1 ký tự đặc biệt";
     }
 
-    if (password !== confirmPassword) {
+    if (trimmedPassword !== confirmPassword.trim()) {
       newErrors.confirmPassword = "Mật khẩu nhập lại không khớp";
     }
 
@@ -57,7 +60,7 @@ export const RegisterPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      await register({ name, email, password, phone });
+      await register({ name: name.trim(), email: email.trim(), password: trimmedPassword, phone: phone.trim() });
     } catch (err: any) {
       setApiError(getErrorMessage(err));
     } finally {

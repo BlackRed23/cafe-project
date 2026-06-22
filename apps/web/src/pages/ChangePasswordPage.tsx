@@ -26,25 +26,33 @@ export const ChangePasswordPage: React.FC = () => {
     e.preventDefault();
     setError(null);
 
-    if (!currentPassword || !newPassword || !confirmPassword) {
+    const trimmedNew = newPassword.trim();
+    const trimmedConfirm = confirmPassword.trim();
+
+    if (!currentPassword.trim() || !trimmedNew || !trimmedConfirm) {
       setError("Vui lòng điền đầy đủ các trường.");
       return;
     }
 
-    if (newPassword !== confirmPassword) {
+    if (trimmedNew !== trimmedConfirm) {
       setError("Mật khẩu mới không khớp.");
       return;
     }
 
-    if (newPassword.length < 6) {
-      setError("Mật khẩu mới phải có ít nhất 6 ký tự.");
+    if (trimmedNew.length < 8 || trimmedNew.length > 64) {
+      setError("Mật khẩu mới phải từ 8 đến 64 ký tự.");
+      return;
+    }
+
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]+$/.test(trimmedNew)) {
+      setError("Mật khẩu mới phải chứa ít nhất 1 chữ hoa, 1 chữ thường, 1 số và 1 ký tự đặc biệt.");
       return;
     }
 
     setIsLoading(true);
 
     try {
-      await authApi.changePassword({ currentPassword, newPassword });
+      await authApi.changePassword({ currentPassword, newPassword: trimmedNew });
       setIsLoading(false);
       setSuccess(true);
       
