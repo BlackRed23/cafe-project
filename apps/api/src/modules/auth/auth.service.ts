@@ -90,15 +90,20 @@ export const changeUserPassword = async (userId: string, input: { currentPasswor
         throw new HttpError(400, 'Mật khẩu hiện tại không đúng.');
     }
 
-    if (input.newPassword.length < 6) {
-        throw new HttpError(400, 'Mật khẩu mới phải có ít nhất 6 ký tự.');
+    const trimmedNew = input.newPassword.trim();
+    if (trimmedNew.length < 8 || trimmedNew.length > 64) {
+        throw new HttpError(400, 'Mật khẩu mới phải từ 8 đến 64 ký tự.');
+    }
+
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]+$/.test(trimmedNew)) {
+        throw new HttpError(400, 'Mật khẩu mới phải chứa ít nhất 1 chữ hoa, 1 chữ thường, 1 số và 1 ký tự đặc biệt.');
     }
 
     if (input.currentPassword === input.newPassword) {
         throw new HttpError(400, 'Mật khẩu mới phải khác mật khẩu hiện tại.');
     }
 
-    const hashedPassword = await bcrypt.hash(input.newPassword, PASSWORD_SALT_ROUNDS);
+    const hashedPassword = await bcrypt.hash(trimmedNew, PASSWORD_SALT_ROUNDS);
     await authRepository.updatePassword(userId, hashedPassword);
 };
 
