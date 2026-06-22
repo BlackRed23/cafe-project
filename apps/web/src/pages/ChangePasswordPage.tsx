@@ -8,7 +8,7 @@ import { authApi } from "../api/auth.api";
 import { getErrorMessage } from "../api/client";
 
 export const ChangePasswordPage: React.FC = () => {
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
   const { logout } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");

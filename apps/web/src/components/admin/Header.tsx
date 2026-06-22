@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Menu, Bell, Search, RefreshCw, X, AlertCircle, Info, CheckCircle, AlertTriangle, LogOut, User, Key, ChevronDown } from "lucide-react";
+import { Menu, Bell, RefreshCw, X, AlertCircle, Info, CheckCircle, AlertTriangle, LogOut, User, Key, ChevronDown } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { agentLogsApi } from "../../api/agentLogs.api";
@@ -34,7 +34,7 @@ const BREADCRUMB_MAP: Record<string, string[]> = {
 export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, title }) => {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);

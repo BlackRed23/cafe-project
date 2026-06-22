@@ -120,7 +120,7 @@ export const simulateSaleService = {
     },
 
     async pendingRestore(userId: string) {
-        const pendingRestore = await simulateSaleRepository.findPendingRestore(userId);
-        return { pendingRestore };
+        const pendingRestores = await simulateSaleRepository.findPendingRestore(userId);
+        return { pendingRestores };
     }
 };

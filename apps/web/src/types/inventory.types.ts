@@ -1,9 +1,22 @@
-﻿export type InventoryStatus = "OK" | "WARNING" | "NEED_RESTOCK";
+export type InventoryStatus = "OK" | "WARNING" | "NEED_RESTOCK";
+
+export type InventoryScanSeverity =
+  | "STABLE"
+  | "WATCH"
+  | "LOW"
+  | "URGENT"
+  | "FAST_CONSUMPTION"
+  | "DATA_ISSUE"
+  | "ERROR";
 
 export interface Inventory {
   id: string;
   productId: string;
   product_id?: string;
+  productName?: string;
+  product_name?: string;
+  categoryName?: string;
+  category_name?: string;
   product?: {
     id: string;
     name: string;
@@ -19,6 +32,8 @@ export interface Inventory {
   available_stock?: number;
   minThreshold?: number;
   min_threshold?: number;
+  minStock?: number;
+  min_stock?: number;
   unit?: string;
 }
 

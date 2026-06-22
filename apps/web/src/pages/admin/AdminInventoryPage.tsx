@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { inventoryApi } from "../../api/inventory.api";
+import { suppliersApi } from "../../api/suppliers.api";
+import { agentLogsApi } from "../../api/agentLogs.api";
 import type { Inventory } from "../../types/inventory.types";
+import type { SupplierProduct } from "../../types/supplier.types";
+import type { AgentLog } from "../../types/agentLog.types";
 import { Badge } from "../../components/common/Badge";
 import { Button } from "../../components/common/Button";
 import { Loading } from "../../components/common/Loading";
@@ -8,8 +13,10 @@ import { EmptyState } from "../../components/common/EmptyState";
 import { Modal } from "../../components/common/Modal";
 import { Input } from "../../components/common/Input";
 import { DataTable } from "../../components/admin/DataTable";
-import { AlertCircle, PlusCircle, Sliders, Settings, Package, CheckCircle, Info, X } from "lucide-react";
+import { AlertCircle, PlusCircle, Sliders, Settings, Package, CheckCircle, Info, X, Sparkles } from "lucide-react";
 import { getErrorMessage } from "../../api/client";
+
+type InventoryTab = "ALL" | "LOW_STOCK" | "WARNING";
 
 export const AdminInventoryPage: React.FC = () => {
   const [inventories, setInventories] = useState<Inventory[]>([]);
@@ -17,20 +24,104 @@ export const AdminInventoryPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
+  const [activeInventoryTab, setActiveInventoryTab] = useState<InventoryTab>("ALL");
+
   const [selectedInventory, setSelectedInventory] = useState<Inventory | null>(null);
   const [modalType, setModalType] = useState<"import" | "adjust" | "threshold" | null>(null);
   const [inputValue, setInputValue] = useState<number>(0);
   const [inputNote, setInputNote] = useState("");
+  const [importMode, setImportMode] = useState<"internal" | "supplier">("internal");
+  const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
   const [modalLoading, setModalLoading] = useState(false);
   const [thresholdSuggestion, setThresholdSuggestion] = useState<any>(null);
   const [isSuggesting, setIsSuggesting] = useState(false);
+  const [isScanningInventory, setIsScanningInventory] = useState(false);
   const [planningPeriod, setPlanningPeriod] = useState<"WEEKLY" | "MONTHLY" | "CUSTOM">("WEEKLY");
   const [planningDays, setPlanningDays] = useState<number>(14);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" | "warning" } | null>(null);
 
+  const [scanResultModalOpen, setScanResultModalOpen] = useState(false);
+  const [scanResults, setScanResults] = useState<AgentLog[]>([]);
+  const [scanSummary, setScanSummary] = useState<any>({});
+
+  const getLogStatusText = (log: AgentLog) => {
+    const result = log.result || "";
+    const reason = log.reason || "";
+    if (result === "CREATED_PURCHASE_REQUEST") return "Đã tạo yêu cầu nhập hàng";
+    if (result === "SKIPPED_DUPLICATE" || reason === "ACTIVE_PR_EXISTS") return "Đã có yêu cầu nhập hàng";
+    if (result === "NO_SUPPLIER" || reason === "NO_SUPPLIERS_MAPPED" || reason === "SUPPLIERS_INACTIVE") return "Thiếu nhà cung cấp";
+    if (reason === "STOCK_OK" || reason === "ABOVE_THRESHOLD") return "Tồn kho ổn định";
+    if (log.status === "FAILED" || result === "ERROR") return "Lỗi Agent";
+    return log.result || log.status;
+  };
+
   const showToast = (message: string, type: "success" | "error" | "info" | "warning" = "info") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleScanInventory = async () => {
+    setIsScanningInventory(true);
+    setScanResultModalOpen(false);
+    try {
+      const res = await agentLogsApi.scanInventory({ triggerType: "MANUAL_ADMIN_SCAN" });
+
+      if (res.cooldownRemainingSeconds) {
+        showToast(`Vui lòng chờ ${res.cooldownRemainingSeconds}s trước khi quét lại.`, "warning");
+        return;
+      }
+
+      if (res.activeScanSessionId) {
+        showToast(`AI Agent đang quét tồn kho, vui lòng chờ hoàn tất.`, "warning");
+        return;
+      }
+
+      const results = res.results || [];
+      setScanResults(results);
+
+      const createdCount = res.createdPurchaseRequests?.length || results.filter(r => r.result === "CREATED_PURCHASE_REQUEST").length;
+      const duplicateCount = results.filter(r => r.result === "SKIPPED_DUPLICATE" || r.reason === "ACTIVE_PR_EXISTS").length;
+      const noSupplierCount = results.filter(r => r.result === "NO_SUPPLIER" || r.reason === "NO_SUPPLIERS_MAPPED" || r.reason === "SUPPLIERS_INACTIVE").length;
+      const failedCount = results.filter(r => r.status === "FAILED" || r.result === "ERROR").length;
+      const lowStockCount = createdCount + duplicateCount + noSupplierCount;
+      const stockOkCount = results.filter(r => r.reason === "STOCK_OK" || r.reason === "ABOVE_THRESHOLD").length;
+
+      setScanSummary({
+        createdCount,
+        duplicateCount,
+        noSupplierCount,
+        failedCount,
+        lowStockCount,
+      });
+
+      const shouldOpenModal = createdCount > 0 || duplicateCount > 0 || noSupplierCount > 0 || failedCount > 0 || (!!res.agentWarning && results.length > 0);
+
+      if (res.agentWarning) {
+        showToast("Không kết nối được AI Agent service. Vui lòng kiểm tra Nhật ký Agent.", "warning");
+        if (shouldOpenModal) setScanResultModalOpen(true);
+      } else if (createdCount > 0) {
+        showToast(`AI Agent đã tạo ${createdCount} yêu cầu nhập hàng.`, "success");
+        setScanResultModalOpen(true);
+      } else if (noSupplierCount > 0) {
+        showToast("AI Agent đã quét xong. Có sản phẩm thiếu nhà cung cấp hợp lệ.", "warning");
+        setScanResultModalOpen(true);
+      } else if (duplicateCount > 0) {
+        showToast("AI Agent đã quét xong. Một số sản phẩm đã có yêu cầu nhập hàng đang xử lý.", "info");
+        setScanResultModalOpen(true);
+      } else if (stockOkCount > 0 && results.length > 0 && !shouldOpenModal) {
+        showToast("AI Agent đã quét xong, tồn kho đang ổn định.", "success");
+      } else if (!shouldOpenModal) {
+        showToast("AI Agent đã quét xong, chưa có yêu cầu nhập hàng mới.", "success");
+      } else {
+        setScanResultModalOpen(true);
+      }
+
+      await fetchInventories();
+    } catch (err: any) {
+      showToast("Không kết nối được AI Agent service. Vui lòng kiểm tra Nhật ký Agent.", "error");
+    } finally {
+      setIsScanningInventory(false);
+    }
   };
 
   const fetchInventories = async () => {
@@ -45,8 +136,16 @@ export const AdminInventoryPage: React.FC = () => {
     }
   };
 
+  const fetchSupplierProducts = async () => {
+    try {
+      const data = await suppliersApi.getSupplierProducts();
+      setSupplierProducts(data);
+    } catch { }
+  };
+
   useEffect(() => {
     fetchInventories();
+    fetchSupplierProducts();
   }, []);
 
   const getInventoryStatus = (qty: number, threshold?: number): "OK" | "WARNING" | "NEED_RESTOCK" => {
@@ -125,6 +224,7 @@ export const AdminInventoryPage: React.FC = () => {
     setModalType(null);
     setInputValue(0);
     setInputNote("");
+    setImportMode("internal");
     setThresholdSuggestion(null);
   };
 
@@ -167,17 +267,41 @@ export const AdminInventoryPage: React.FC = () => {
 
     try {
       if (modalType === "import") {
+        const supplierProduct = supplierProducts.find(sp => sp.productId === selectedInventory.productId);
+        const hasSupplierConversion = Boolean(
+          supplierProduct?.purchaseUnit &&
+          supplierProduct?.conversionQuantity &&
+          supplierProduct?.conversionTargetUnit
+        );
+        const conversionWarning = hasSupplierConversion && supplierProduct?.conversionTargetUnit !== selectedInventory.product?.unit;
+        const isSupplierMode = importMode === "supplier" && hasSupplierConversion && !conversionWarning;
+        const finalQuantity = isSupplierMode ? inputValue * (supplierProduct!.conversionQuantity || 1) : inputValue;
+
+        if (inputValue <= 0) {
+          showToast(isSupplierMode ? "Số lượng nhập theo NCC phải lớn hơn 0" : "Số lượng nhập thêm phải lớn hơn 0", "error");
+          setModalLoading(false);
+          return;
+        }
+
         const res = await inventoryApi.importInventory({
           productId: selectedInventory.productId,
-          quantity: inputValue,
+          quantity: finalQuantity,
           note: inputNote.trim() || undefined,
         });
         const minThreshold = res.minThreshold ?? res.min_threshold ?? 0;
         const warning = res.warnings?.[0]?.message;
+        
+        let successMessage = "Nhập kho thành công.";
+        if (isSupplierMode) {
+          successMessage = `Đã nhập ${inputValue} ${supplierProduct!.purchaseUnit}, quy đổi thành ${finalQuantity} ${selectedInventory.product?.unit || "đơn vị"}.`;
+        } else if (res.message) {
+          successMessage = res.message;
+        }
+
         if (res.quantity <= minThreshold) {
           showToast(warning || "Nhập kho thành công nhưng số lượng sau nhập vẫn thấp hơn ngưỡng tối thiểu.", "warning");
         } else {
-          showToast(res.message || "Nhập kho thành công. Đủ hàng.", "success");
+          showToast(successMessage, "success");
         }
       } else if (modalType === "adjust") {
         const diff = inputValue - selectedInventory.quantity;
@@ -233,9 +357,18 @@ export const AdminInventoryPage: React.FC = () => {
     );
   }
 
-  const filteredInventories = inventories.filter((inv) =>
-    (inv.product?.name || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredInventories = inventories.filter((inv) => {
+    const matchesSearch = (inv.product?.name || "").toLowerCase().includes(search.toLowerCase());
+    const threshold = inv.minThreshold ?? inv.min_threshold ?? 0;
+    
+    if (activeInventoryTab === "LOW_STOCK") {
+      return matchesSearch && inv.quantity < threshold;
+    }
+    if (activeInventoryTab === "WARNING") {
+      return matchesSearch && inv.quantity === threshold;
+    }
+    return matchesSearch;
+  });
 
   // Count stats
   const lowCount = inventories.filter((inv) => {
@@ -331,24 +464,67 @@ export const AdminInventoryPage: React.FC = () => {
   return (
     <>
       <div className="flex flex-col gap-6">
-      {/* Summary pills */}
-      <div className="flex flex-wrap gap-3">
-        <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-slate-200 text-sm shadow-sm">
-          <Package size={14} className="text-amber-700" />
-          <span className="font-semibold text-slate-700">{inventories.length} sản phẩm</span>
+      {/* Summary Filter Tabs */}
+      <div className="flex flex-wrap gap-2 border-b border-slate-200">
+        <button
+          onClick={() => setActiveInventoryTab("ALL")}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+            activeInventoryTab === "ALL" 
+              ? "border-amber-600 text-amber-700 bg-amber-50/50" 
+              : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+          }`}
+        >
+          <Package size={16} />
+          <span>Tất cả sản phẩm ({inventories.length})</span>
+        </button>
+        
+        <button
+          onClick={() => setActiveInventoryTab("LOW_STOCK")}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+            activeInventoryTab === "LOW_STOCK" 
+              ? "border-rose-600 text-rose-700 bg-rose-50/50" 
+              : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+          }`}
+        >
+          <AlertCircle size={16} className={activeInventoryTab === "LOW_STOCK" ? "text-rose-600" : "text-rose-500"} />
+          <span>Cần nhập hàng {lowCount > 0 && `(${lowCount})`}</span>
+        </button>
+        
+        <button
+          onClick={() => setActiveInventoryTab("WARNING")}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+            activeInventoryTab === "WARNING" 
+              ? "border-orange-600 text-orange-700 bg-orange-50/50" 
+              : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+          }`}
+        >
+          <AlertCircle size={16} className={activeInventoryTab === "WARNING" ? "text-orange-600" : "text-orange-500"} />
+          <span>Cảnh báo ngưỡng {warnCount > 0 && `(${warnCount})`}</span>
+        </button>
+
+        <div className="flex flex-wrap items-center gap-3 ml-auto py-2 sm:py-0 pr-2">
+          <Button
+            onClick={handleScanInventory}
+            disabled={isScanningInventory}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white border-transparent transition-colors shadow-sm"
+            size="sm"
+          >
+            {isScanningInventory ? (
+              <span>Đang quét...</span>
+            ) : (
+              <>
+                <Sparkles size={16} />
+                <span>Quét tồn kho bằng AI Agent</span>
+              </>
+            )}
+          </Button>
+          <Link 
+            to="/admin/agent-logs" 
+            className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 hover:underline whitespace-nowrap"
+          >
+            Xem Nhật ký Agent
+          </Link>
         </div>
-        {lowCount > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-rose-50 rounded-xl border border-rose-200 text-sm shadow-sm">
-            <AlertCircle size={14} className="text-rose-600" />
-            <span className="font-semibold text-rose-700">{lowCount} cần nhập hàng</span>
-          </div>
-        )}
-        {warnCount > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 rounded-xl border border-orange-200 text-sm shadow-sm">
-            <AlertCircle size={14} className="text-orange-600" />
-            <span className="font-semibold text-orange-700">{warnCount} cảnh báo ngưỡng</span>
-          </div>
-        )}
       </div>
 
       {error && (
@@ -481,40 +657,107 @@ export const AdminInventoryPage: React.FC = () => {
             
 
 
-            <div>
-              <Input
-                label={
-                  modalType === "threshold"
-                    ? "Ngưỡng tối thiểu mới"
-                    : modalType === "import"
-                    ? "Số lượng nhập thêm"
-                    : "Số lượng thực tế sau kiểm kê"
-                }
-                type="number"
-                value={inputValue || ""}
-                onChange={(e) => setInputValue(parseInt(e.target.value) || 0)}
-                required
-              />
-              {modalType === "threshold" && thresholdSuggestion && (
-                <div className="mt-1">
-                  {getThresholdWarning() && (
-                    <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
-                      <AlertCircle size={12} /> {getThresholdWarning()?.message}
-                    </p>
+            {modalType === "import" ? (() => {
+              const supplierProduct = supplierProducts.find(sp => sp.productId === selectedInventory.productId);
+              const hasSupplierConversion = Boolean(
+                supplierProduct?.purchaseUnit &&
+                supplierProduct?.conversionQuantity &&
+                supplierProduct?.conversionTargetUnit
+              );
+              // Lấy unit theo mức ưu tiên: selectedInventory.unit -> selectedInventory.product.unit -> inv.unit -> "đơn vị"
+              const inventoryUnit = (selectedInventory as any).unit || selectedInventory.product?.unit || "đơn vị";
+              const conversionWarning = hasSupplierConversion && supplierProduct?.conversionTargetUnit !== inventoryUnit;
+              const isSupplierMode = importMode === "supplier" && hasSupplierConversion && !conversionWarning;
+
+              return (
+                <div className="space-y-4">
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-sm flex items-center justify-between">
+                    <span className="text-slate-600 font-medium">Đơn vị tồn kho nội bộ:</span>
+                    <span className="font-bold text-slate-800">{inventoryUnit}</span>
+                  </div>
+
+                  {hasSupplierConversion && (
+                    <div className="space-y-2 border-b border-slate-100 pb-4">
+                      <label className="block text-sm font-semibold text-slate-800 mb-1">Nhập theo</label>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setImportMode("internal")}
+                          className={`flex-1 py-2 px-3 border rounded-lg text-sm font-medium transition-colors ${importMode === "internal" ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+                        >
+                          Đơn vị tồn kho nội bộ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setImportMode("supplier")}
+                          disabled={conversionWarning}
+                          className={`flex-1 py-2 px-3 border rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${importMode === "supplier" ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+                        >
+                          Quy cách nhà cung cấp
+                        </button>
+                      </div>
+
+                      {conversionWarning && (
+                        <div className="flex items-start gap-1.5 mt-2 text-xs text-rose-600 bg-rose-50 p-2 rounded border border-rose-100">
+                          <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                          <span>Quy cách nhà cung cấp chưa khớp đơn vị tồn kho nội bộ, vui lòng kiểm tra lại.</span>
+                        </div>
+                      )}
+                      
+                      {!conversionWarning && isSupplierMode && (
+                        <div className="text-xs font-medium text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100 flex items-center gap-2">
+                          <Info size={14} />
+                          Quy đổi: 1 {supplierProduct!.purchaseUnit} = {supplierProduct!.conversionQuantity} {supplierProduct!.conversionTargetUnit}
+                        </div>
+                      )}
+                    </div>
                   )}
-                  {false && (
-                    <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
-                      <AlertCircle size={12} /> Cảnh báo: Ngưỡng này quá thấp (nhỏ hơn lượng dự phòng {thresholdSuggestion.safetyStock}).
-                    </p>
-                  )}
-                  {false && (
-                    <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
-                      <AlertCircle size={12} /> Cảnh báo: Ngưỡng này khá cao so với mức đề xuất.
-                    </p>
-                  )}
+
+                  <div>
+                    <Input
+                      label={isSupplierMode ? `Số lượng nhập theo NCC (${supplierProduct!.purchaseUnit})` : `Số lượng nhập thêm (${inventoryUnit})`}
+                      type="number"
+                      value={inputValue || ""}
+                      onChange={(e) => setInputValue(parseInt(e.target.value) || 0)}
+                      required
+                    />
+                    
+                    {isSupplierMode && inputValue > 0 ? (
+                      <p className="text-sm font-bold text-emerald-700 mt-2 bg-emerald-50 px-3 py-2 rounded border border-emerald-100">
+                        Số lượng sẽ cộng vào kho: {inputValue * supplierProduct!.conversionQuantity!} {inventoryUnit}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-slate-500 mt-1.5 italic">
+                        Số lượng này sẽ được cộng trực tiếp vào tồn kho nội bộ.
+                      </p>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
+              );
+            })() : (
+              <div>
+                <Input
+                  label={
+                    modalType === "threshold"
+                      ? "Ngưỡng tối thiểu mới"
+                      : "Số lượng thực tế sau kiểm kê"
+                  }
+                  type="number"
+                  value={inputValue || ""}
+                  onChange={(e) => setInputValue(parseInt(e.target.value) || 0)}
+                  required
+                />
+                {modalType === "threshold" && thresholdSuggestion && (
+                  <div className="mt-1">
+                    {getThresholdWarning() && (
+                      <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
+                        <AlertCircle size={12} /> {getThresholdWarning()?.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {modalType !== "threshold" && (
               <div>
@@ -542,10 +785,131 @@ export const AdminInventoryPage: React.FC = () => {
           </form>
         </Modal>
       )}
+
+      {scanResultModalOpen && (
+        <Modal
+          isOpen={true}
+          onClose={() => setScanResultModalOpen(false)}
+          title="Kết quả quét tồn kho bằng AI Agent"
+          size="xl"
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+              <div className="bg-emerald-50 text-emerald-800 p-3 rounded-xl border border-emerald-100 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold">{scanSummary.createdCount || 0}</span>
+                <span className="text-xs font-medium text-center">Tạo mới</span>
+              </div>
+              <div className="bg-blue-50 text-blue-800 p-3 rounded-xl border border-blue-100 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold">{scanSummary.duplicateCount || 0}</span>
+                <span className="text-xs font-medium text-center">Đang xử lý</span>
+              </div>
+              <div className="bg-amber-50 text-amber-800 p-3 rounded-xl border border-amber-100 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold">{scanSummary.noSupplierCount || 0}</span>
+                <span className="text-xs font-medium text-center">Thiếu NCC</span>
+              </div>
+              <div className="bg-rose-50 text-rose-800 p-3 rounded-xl border border-rose-100 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold">{scanSummary.lowStockCount || 0}</span>
+                <span className="text-xs font-medium text-center">Cần nhập</span>
+              </div>
+              {scanSummary.failedCount > 0 && (
+                <div className="bg-red-50 text-red-800 p-3 rounded-xl border border-red-100 flex flex-col items-center justify-center">
+                  <span className="text-2xl font-bold">{scanSummary.failedCount || 0}</span>
+                  <span className="text-xs font-medium text-center">Lỗi</span>
+                </div>
+              )}
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 rounded-xl max-h-[50vh] overflow-y-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 text-slate-600 font-medium sticky top-0 shadow-sm z-10">
+                  <tr>
+                    <th className="px-4 py-3">Sản phẩm</th>
+                    <th className="px-4 py-3 text-center">Tồn kho</th>
+                    <th className="px-4 py-3 text-center">Ngưỡng</th>
+                    <th className="px-4 py-3">Trạng thái</th>
+                    <th className="px-4 py-3">Lý do / Ghi chú</th>
+                    <th className="px-4 py-3 text-right">Hành động</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {scanResults.map((log, idx) => {
+                    const statusText = getLogStatusText(log);
+                    const isError = log.status === "FAILED" || log.result === "ERROR";
+                    const isWarning = log.result === "NO_SUPPLIER" || log.reason === "NO_SUPPLIERS_MAPPED" || log.reason === "SUPPLIERS_INACTIVE";
+                    const isSuccess = log.result === "CREATED_PURCHASE_REQUEST";
+                    const isInfo = log.result === "SKIPPED_DUPLICATE" || log.reason === "ACTIVE_PR_EXISTS";
+                    
+                    const inv = inventories.find(i => i.productId === log.productId) || (log.input as any)?.inventory;
+                    const stock = inv?.quantity ?? "-";
+                    const threshold = inv?.minThreshold ?? inv?.min_threshold ?? "-";
+                    
+                    const productName = log.productName || log.product?.name || inv?.product?.name || "Không rõ";
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/50">
+                        <td className="px-4 py-3 font-medium text-slate-800">{productName}</td>
+                        <td className="px-4 py-3 text-center font-bold text-slate-700">{stock}</td>
+                        <td className="px-4 py-3 text-center text-slate-500">{threshold}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${
+                            isSuccess ? "bg-emerald-100 text-emerald-800" :
+                            isWarning ? "bg-amber-100 text-amber-800" :
+                            isError ? "bg-rose-100 text-rose-800" :
+                            isInfo ? "bg-blue-100 text-blue-800" :
+                            "bg-slate-100 text-slate-800"
+                          }`}>
+                            {statusText}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-600 max-w-[200px] truncate" title={log.message || log.errorMessage || log.reasoning}>
+                          {log.message || log.errorMessage || log.reasoning || log.reason || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex flex-col gap-1 items-end">
+                            {log.purchaseRequestId && (
+                              <Link to={`/admin/purchase-requests/${log.purchaseRequestId}`} className="text-xs text-indigo-600 hover:underline whitespace-nowrap">
+                                Xem yêu cầu nhập hàng
+                              </Link>
+                            )}
+                            {isWarning && (
+                              <Link to={`/admin/suppliers`} className="text-xs text-amber-600 hover:underline whitespace-nowrap">
+                                Gán nhà cung cấp
+                              </Link>
+                            )}
+                            <Link to="/admin/agent-logs" className="text-xs text-indigo-600 hover:underline whitespace-nowrap">
+                              Xem Nhật ký Agent
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {scanResults.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-slate-500 italic">
+                        Không có chi tiết kết quả quét.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="pt-3 flex justify-between items-center border-t border-slate-100">
+              <Link to="/admin/agent-logs" className="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline">
+                Xem Nhật ký Agent chi tiết
+              </Link>
+              <Button type="button" onClick={() => setScanResultModalOpen(false)}>
+                Đóng
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
       </div>
       {/* Toast Notification Container */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 animate-fade-in-up">
+        <div className="fixed top-6 right-6 z-[60] animate-fade-in-down">
           <div
             className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border ${
               toast.type === "success"

@@ -24,6 +24,7 @@ export interface AgentLog {
   purchaseRequestId?: string;
   referenceType?: string;
   referenceId?: string;
+  scanSessionId?: string;
   input?: unknown;
   output?: unknown;
   reasoning?: string;
@@ -60,4 +61,27 @@ export interface AgentLogsQuery {
   action?: string;
   triggerType?: string;
   productId?: string;
+}
+
+export interface ScanInventoryRequest {
+  productIds?: string[];
+  triggerType: string;
+}
+
+export interface ScanInventoryResponse {
+  results?: AgentLog[];
+  createdPurchaseRequests?: Array<{
+    id: string;
+    requestNumber?: string;
+    supplierName?: string;
+    status?: string;
+  }>;
+  agentWarning?: string;
+  scanSessionId?: string;
+  sessionStatus?: string;
+  summary?: any;
+  cooldownRemainingSeconds?: number;
+  activeScanSessionId?: string;
+  activeTriggerType?: string;
+  startedAt?: number;
 }

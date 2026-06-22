@@ -22,9 +22,7 @@ export const AdminCategoriesPage: React.FC = () => {
     name: "",
     description: "",
   });
-  const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Delete modal states
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -53,16 +51,7 @@ export const AdminCategoriesPage: React.FC = () => {
     fetchCategories();
   }, []);
 
-  // Auto-dismiss success message
-  useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => setSuccessMessage(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [successMessage]);
-
   const handleOpenModal = (category?: Category) => {
-    setFormError(null);
     if (category) {
       setEditingCategory(category);
       setFormData({
@@ -82,15 +71,13 @@ export const AdminCategoriesPage: React.FC = () => {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingCategory(null);
-    setFormError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormError(null);
 
     if (!formData.name.trim()) {
-      setFormError("Tên danh mục không được để trống.");
+      showToast("Tên danh mục không được để trống.", "error");
       return;
     }
 
@@ -103,15 +90,15 @@ export const AdminCategoriesPage: React.FC = () => {
       setIsSubmitting(true);
       if (editingCategory) {
         await categoriesApi.updateCategory(editingCategory.id, payload);
-        setSuccessMessage("Đã cập nhật danh mục thành công.");
+        showToast("Cập nhật danh mục thành công.", "success");
       } else {
         await categoriesApi.createCategory(payload);
-        setSuccessMessage("Đã thêm danh mục mới thành công.");
+        showToast("Đã thêm danh mục mới thành công.", "success");
       }
       handleCloseModal();
       fetchCategories();
     } catch (err) {
-      setFormError(getErrorMessage(err));
+      showToast(getErrorMessage(err) || "Không thể lưu danh mục.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -163,14 +150,6 @@ export const AdminCategoriesPage: React.FC = () => {
           <Plus size={18} /> Thêm danh mục
         </Button>
       </div>
-
-      {/* Success message */}
-      {successMessage && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-sm flex items-center gap-2 font-medium animate-in fade-in duration-200">
-          <Info size={18} className="flex-shrink-0" />
-          {successMessage}
-        </div>
-      )}
 
       {error && (
         <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm flex items-center gap-2">
@@ -268,13 +247,6 @@ export const AdminCategoriesPage: React.FC = () => {
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {formError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-sm rounded-lg flex items-center gap-2">
-                  <Info size={16} className="flex-shrink-0" />
-                  {formError}
-                </div>
-              )}
-
               <Input
                 label="Tên danh mục"
                 placeholder="Ví dụ: Cà phê đóng chai"

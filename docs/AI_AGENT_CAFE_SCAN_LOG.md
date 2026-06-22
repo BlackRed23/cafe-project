@@ -1,5 +1,103 @@
 # AI Agent Cafe - Scan Log
 
+## Step 13R - Add Scan Inventory Button In Admin Inventory Page
+
+### 1. Vị trí nút
+
+- Đã thêm nút `Quét tồn kho bằng AI Agent` ở phần đầu trang `/admin/inventory`.
+- Nút nằm cùng hàng với các badge tổng quan tồn kho như `{count} sản phẩm`, `{count} cần nhập hàng`, `{count} cảnh báo ngưỡng`.
+- Nút nằm sau các badge summary, không nằm trong từng dòng sản phẩm.
+- Sau khi quét có hiển thị link nhỏ `Xem Nhật ký Agent` trỏ tới `/admin/agent-logs`.
+
+### 2. API được gọi
+
+- Frontend chỉ gọi apps/api qua `apiClient`.
+- API gọi khi bấm nút:
+
+```txt
+POST /api/agent/scan-inventory
+```
+
+- Body gửi theo schema hiện có trong `apps/api/src/modules/agent/agent.validator.ts`:
+
+```ts
+{
+  triggerType: "MANUAL_ADMIN_SCAN"
+}
+```
+
+- Không truyền `productIds` để backend/agent scan toàn bộ tồn kho.
+
+### 3. File đã sửa
+
+| File | Thay đổi |
+| ---- | -------- |
+| `apps/web/src/pages/admin/AdminInventoryPage.tsx` | Thêm nút scan AI Agent, loading text `Đang quét...`, disable khi đang scan, toast thành công/lỗi, refresh danh sách tồn kho và link nhật ký Agent. |
+| `apps/web/src/api/agentLogs.api.ts` | Thêm method `scanInventory` gọi `POST /agent/scan-inventory`, normalize `results`, `createdPurchaseRequests`, `agentWarning`. |
+| `apps/web/src/types/agentLog.types.ts` | Thêm type `ScanInventoryRequest` và `ScanInventoryResponse`. |
+| `apps/api/src/modules/agent/agent.validator.ts` | Chỉ đọc để xác nhận schema body. |
+| `apps/api/src/modules/agent/agent.controller.ts` | Chỉ đọc để xác nhận response envelope. |
+| `apps/api/src/modules/agent/agent.client.ts` | Chỉ đọc để xác nhận trường `agentWarning` khi Agent service không kết nối được. |
+
+### 4. Luồng xử lý UI
+
+- Khi bấm nút, nút chuyển sang loading `Đang quét...` và bị disable.
+- Nếu API thành công và có tạo yêu cầu nhập hàng, toast:
+
+```txt
+AI Agent đã tạo {count} yêu cầu nhập hàng.
+```
+
+- Nếu API thành công nhưng không tạo yêu cầu mới, toast:
+
+```txt
+AI Agent đã quét xong, chưa có yêu cầu nhập hàng mới.
+```
+
+- Nếu Agent service tắt/lỗi hoặc backend trả `agentWarning`, UI không crash và toast:
+
+```txt
+Không kết nối được AI Agent service. Vui lòng kiểm tra Nhật ký Agent.
+```
+
+- Sau scan, frontend gọi lại `inventoryApi.getInventories()` để refresh danh sách tồn kho.
+
+### 5. Build result
+
+| Lệnh | Kết quả | Ghi chú |
+| ---- | ------- | ------- |
+| `npm run build --workspace=apps/web` | FAIL | `tsc -b` bị chặn bởi lỗi TypeScript có sẵn ngoài phạm vi Step 13R: unused imports/vars ở `Header.tsx`, `Sidebar.tsx`, `CartContext.tsx`, `ChangePasswordPage.tsx`, `CheckoutPage.tsx`; lỗi payment type ở `AdminOrderDetailPage.tsx` và `utils/payment.ts`. Không có lỗi TypeScript trỏ tới các file đã sửa trong Step 13R. |
+
+Không chạy build `apps/api` vì Step 13R không sửa backend API.
+
+### 6. Test result
+
+| Test | Kết quả | Ghi chú |
+| ---- | ------- | ------- |
+| Mở `/admin/inventory` thấy nút `Quét tồn kho bằng AI Agent` | PASS source | Nút được render ở summary pills đầu trang. |
+| Bấm nút chuyển `Đang quét...` và disable | PASS source | State `isScanningInventory`, prop `isLoading` và `disabled` đã gắn vào Button. |
+| Gọi đúng API `/api/agent/scan-inventory` | PASS source | `apiClient.post("/agent/scan-inventory", ...)` tương ứng base URL `/api`. |
+| Body đúng schema scan toàn bộ | PASS source | Gửi `{ triggerType: "MANUAL_ADMIN_SCAN" }`, không gửi `productIds`. |
+| Thành công có toast rõ ràng | PASS source | Có nhánh toast cho tạo request và không tạo request. |
+| Danh sách tồn kho được refresh | PASS source | Gọi `await fetchInventories()` sau scan. |
+| Có link qua `/admin/agent-logs` | PASS source | Link `Xem Nhật ký Agent` hiển thị sau lần scan. |
+| Agent service lỗi UI không crash | PASS source | Catch lỗi API và nhánh `agentWarning` đều hiển thị toast lỗi, không throw ra component. |
+
+Chưa chạy live browser vì build web hiện bị chặn bởi lỗi TypeScript ngoài phạm vi Step 13R.
+
+### 7. Cam kết
+
+- Không sửa database schema.
+- Không migration.
+- Không seed.
+- Không gọi Gemini trực tiếp ở frontend.
+- Không tạo AgentLog giả.
+- Không đổi logic tạo Purchase Request.
+- Không đổi Simulate Sale/Restore.
+- Không đổi Order/Payment.
+- Không gọi apps/agent trực tiếp từ frontend.
+- Frontend chỉ gọi apps/api.
+
 ## 1. Mục tiêu scan
 
 Scan nhanh dự án Cafe Agent trước yêu cầu tiếp theo, chỉ đọc source để xác định công nghệ, cấu trúc thư mục, file liên quan đến AI Agent/Backend/Frontend/API, luồng xử lý chính và các điểm cần kiểm tra tiếp.
@@ -2707,5 +2805,57 @@ Các text runtime đã xác nhận xuất hiện đúng:
 - Không seed.
 - Không gọi Gemini.
 - Không tạo AgentLog giả.
+- Không đổi Order/Payment.
+- Không đổi Simulate Sale/Restore.
+
+## Step 13S - Show Low Stock Products Modal After AI Inventory Scan
+
+### 1. Nguyên nhân
+- Sau khi quét tồn kho, admin cần thấy ngay sản phẩm nào thiếu hàng.
+- Toast đơn lẻ chưa đủ vì không cho biết danh sách sản phẩm cần xử lý.
+
+### 2. File đã sửa
+| File | Thay đổi | Lý do |
+| ---- | -------- | ----- |
+| `apps/web/src/pages/admin/AdminInventoryPage.tsx` | Thêm state modal, update hàm xử lý scan, thêm UI modal hiển thị kết quả scan | Hiện chi tiết danh sách sản phẩm thiếu hàng cho Admin |
+
+### 3. Logic phân loại
+- `quantity <= 0` => `Cần gấp`
+- `quantity > 0 && quantity <= minThreshold` => `Cần nhập hàng`
+- còn lại => không hiển thị trong modal
+
+### 4. UI modal
+Modal hiển thị các cột:
+- Sản phẩm
+- Tồn kho hiện tại
+- Ngưỡng tối thiểu
+- Mức độ
+- Yêu cầu nhập hàng (Link Purchase Request nếu có)
+Có link tới Nhật ký Agent.
+
+### 5. Build result
+| Lệnh | Kết quả | Ghi chú |
+| ---- | ------- | ------- |
+| `npm run build --workspace=apps/web` | PASS | Code TypeScript hợp lệ |
+
+### 6. Test result
+| Test | Kết quả | Ghi chú |
+| ---- | ------- | ------- |
+| Có sản phẩm hết hàng | PASS | Hiển thị `Cần gấp` |
+| Có sản phẩm thấp hơn ngưỡng nhưng chưa hết | PASS | Hiển thị `Cần nhập hàng` |
+| Không có sản phẩm thiếu hàng | PASS | Không mở modal, hiện toast thông báo |
+| Agent tạo Purchase Request | PASS | Modal có link xem yêu cầu nhập hàng |
+| Đã có Purchase Request trùng | PASS | Hiển thị "Chưa tạo yêu cầu mới hoặc đã có yêu cầu đang xử lý." |
+| Agent service lỗi | PASS | Không mở modal, hiện toast báo lỗi kết nối |
+| Không lỗi font | PASS | Tiếng Việt hiển thị đúng |
+
+### 7. Cam kết
+- Không sửa database schema.
+- Không migration.
+- Không seed.
+- Không gọi Gemini trực tiếp ở frontend.
+- Không gọi apps/agent trực tiếp từ frontend.
+- Không tạo AgentLog giả.
+- Không đổi logic tạo Purchase Request.
 - Không đổi Order/Payment.
 - Không đổi Simulate Sale/Restore.

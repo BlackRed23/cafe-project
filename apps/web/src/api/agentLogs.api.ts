@@ -4,6 +4,8 @@ import type {
   AgentLogsQuery,
   AgentLogsResponse,
   AgentLogStatus,
+  ScanInventoryRequest,
+  ScanInventoryResponse,
 } from "../types/agentLog.types";
 import { fixVietnameseMojibakeText } from "../utils/textEncoding";
 
@@ -94,7 +96,7 @@ const normalizeAgentLog = (log: any): AgentLog => {
       : normalizeAgentLogStatus(result, errorMessage),
     result,
     reason: firstString(log?.reason, output.reason, input.reason, result),
-    message: firstString(log?.message) || "Agent đã ghi nhận một sự kiện xử lý.",
+    message: firstString(log?.message, output.message, log?.reasoning, output.reasoning) || "Agent đã ghi nhận một sự kiện xử lý.",
     triggerType: firstString(log?.triggerType, input.triggerType),
     sourceType: firstString(log?.sourceType, log?.source_type, input.sourceType, output.sourceType),
     sourceId: firstString(log?.sourceId, log?.source_id, input.sourceId, output.sourceId),
@@ -132,6 +134,18 @@ const cleanParams = (query?: AgentLogsQuery) => {
 };
 
 export const agentLogsApi = {
+  scanInventory: async (payload: ScanInventoryRequest): Promise<ScanInventoryResponse> => {
+    const response = await apiClient.post("/agent/scan-inventory", payload);
+    const data = unwrapApiData<any>(response.data);
+
+    return {
+      ...data,
+      results: Array.isArray(data?.results) ? data.results.map(normalizeAgentLog) : [],
+      createdPurchaseRequests: Array.isArray(data?.createdPurchaseRequests) ? data.createdPurchaseRequests : [],
+      agentWarning: firstString(data?.agentWarning),
+    };
+  },
+
   getAgentLogsResponse: async (query?: AgentLogsQuery): Promise<AgentLogsResponse> => {
     const response = await apiClient.get("/agent/logs", { params: cleanParams(query) });
     const data = unwrapApiData<any>(response.data);

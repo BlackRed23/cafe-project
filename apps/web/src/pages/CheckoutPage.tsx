@@ -6,7 +6,7 @@ import type { PaymentMethod } from "../types/order.types";
 import { formatCurrency } from "../utils/formatCurrency";
 import { detectShippingZone, calculateShippingFee, getZoneLabel, FREE_SHIPPING_THRESHOLD } from "../utils/shipping";
 import { Button } from "../components/common/Button";
-import { ArrowLeft, ShoppingBag, Sparkles, AlertCircle, User, Phone, MapPin, MessageSquare, CreditCard, Truck, Gift, Copy, CheckCheck } from "lucide-react";
+import { ArrowLeft, ShoppingBag, Sparkles, AlertCircle, User, Phone, MapPin, MessageSquare, CreditCard, Truck, Gift } from "lucide-react";
 import { useToast } from "../contexts/ToastContext";
 
 export const CheckoutPage: React.FC = () => {

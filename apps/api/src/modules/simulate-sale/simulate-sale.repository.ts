@@ -1,4 +1,4 @@
-﻿import { InventoryTransactionType, type Prisma } from '@cafe-project/database';
+import { InventoryTransactionType, type Prisma } from '@cafe-project/database';
 import { prisma } from '../../common/prisma';
 import { HttpError } from '../../common/http-error';
 
@@ -151,6 +151,8 @@ export const simulateSaleRepository = {
             take: 25
         });
 
+        const pendingRestores = [];
+
         for (const transaction of transactions) {
             const marker = restoreMarker(transaction.id);
             const existingRestore = await prisma.inventoryTransaction.findFirst({
@@ -168,7 +170,7 @@ export const simulateSaleRepository = {
                 const decreasedQuantity = Math.abs(transaction.quantity);
                 const stockAfter = inventory?.quantity;
 
-                return {
+                pendingRestores.push({
                     transactionId: transaction.id,
                     inventoryId: inventory?.id ?? '',
                     productId: transaction.productId,
@@ -176,12 +178,14 @@ export const simulateSaleRepository = {
                     stockBefore: typeof stockAfter === 'number' ? stockAfter + decreasedQuantity : undefined,
                     stockAfter,
                     decreasedQuantity,
+                    unit: transaction.product.unit || 'đơn vị',
                     createdAt: transaction.createdAt,
+                    type: transaction.type,
                     restored: false
-                };
+                });
             }
         }
 
-        return null;
+        return pendingRestores;
     }
 };

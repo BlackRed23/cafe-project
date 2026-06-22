@@ -276,6 +276,34 @@ const getSimulationDedupeKey = (log: AgentLog) => {
   ].join("|");
 };
 
+const isToday = (dateString?: string) => {
+  if (!dateString) return false;
+  const date = new Date(dateString);
+  const today = new Date();
+  return date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear();
+};
+
+const isInventoryScanLog = (log: AgentLog) => {
+  const triggerType = String(log.triggerType || "").toUpperCase();
+  const action = String(log.action || "").toUpperCase();
+  const reason = String(log.reason || "").toUpperCase();
+  const result = String(log.result || "").toUpperCase();
+  const message = String(log.message || "").toLowerCase();
+
+  const inventoryTriggers = ["MANUAL_ADMIN_SCAN", "ORDER_COMPLETED", "SIMULATE_SALE", "INVENTORY_IMPORTED", "INVENTORY_ADJUSTED", "PURCHASE_RECEIVED"];
+  if (inventoryTriggers.includes(triggerType)) return true;
+
+  if (action.startsWith("SCAN_INVENTORY")) return true;
+
+  if (["CREATED_PURCHASE_REQUEST", "ACTIVE_PR_EXISTS", "SKIPPED_DUPLICATE", "NO_SUPPLIER", "NO_SUPPLIERS_MAPPED", "SUPPLIERS_INACTIVE", "STOCK_OK", "ABOVE_THRESHOLD"].includes(result) || ["CREATED_PURCHASE_REQUEST", "ACTIVE_PR_EXISTS", "SKIPPED_DUPLICATE", "NO_SUPPLIER", "NO_SUPPLIERS_MAPPED", "SUPPLIERS_INACTIVE", "STOCK_OK", "ABOVE_THRESHOLD"].includes(reason)) return true;
+
+  if (message.includes("tồn kho") || message.includes("inventory") || message.includes("nhập hàng")) return true;
+
+  return false;
+};
+
 export const AdminAgentLogsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [logs, setLogs] = useState<AgentLog[]>([]);
@@ -288,6 +316,76 @@ export const AdminAgentLogsPage: React.FC = () => {
   );
   const [page, setPage] = useState(1);
   const [selectedLog, setSelectedLog] = useState<AgentLog | null>(null);
+
+  const [summaryLogs, setSummaryLogs] = useState<AgentLog[]>([]);
+  const [isSummaryLoading, setIsSummaryLoading] = useState(true);
+
+  // Fetch summary logs once
+  useEffect(() => {
+    const fetchSummary = async () => {
+      try {
+        setIsSummaryLoading(true);
+        const data = await agentLogsApi.getAgentLogsResponse({
+          page: 1,
+          limit: 100, // fetch up to 100 recent logs to build summary
+        });
+        setSummaryLogs(data.logs || []);
+      } catch (err) {
+        console.error("Lỗi tải log summary:", err);
+      } finally {
+        setIsSummaryLoading(false);
+      }
+    };
+    fetchSummary();
+  }, []);
+
+  const scanSummary = useMemo(() => {
+    const todayLogs = summaryLogs.filter(log => isToday(log.createdAt));
+    const todayScanLogs = todayLogs.filter(isInventoryScanLog);
+
+    const createdCount = todayScanLogs.filter(log =>
+      log.result === "CREATED_PURCHASE_REQUEST" || log.action === "SCAN_INVENTORY_CREATE_PURCHASE_REQUEST" || (log.status === "SUCCESS" && log.result === "CREATED_PURCHASE_REQUEST")
+    ).length;
+
+    const duplicateCount = todayScanLogs.filter(log =>
+      log.reason === "ACTIVE_PR_EXISTS" || log.result === "SKIPPED_DUPLICATE"
+    ).length;
+
+    const noSupplierCount = todayScanLogs.filter(log =>
+      log.reason === "NO_SUPPLIER" || log.reason === "NO_SUPPLIERS_MAPPED" || log.reason === "SUPPLIERS_INACTIVE" || log.result === "NO_SUPPLIER"
+    ).length;
+
+    const failedCount = todayScanLogs.filter(log =>
+      log.status === "FAILED" || log.result === "ERROR"
+    ).length;
+
+    // Group by scanSessionId if available, fallback to minute bucket
+    const scanSessions = new Set<string>();
+    todayScanLogs.forEach(log => {
+      if (log.scanSessionId) {
+        scanSessions.add(log.scanSessionId);
+      } else {
+        const sourceId = log.sourceId || (log.input as any)?.sourceId || (log.input as any)?.scanId || (log.input as any)?.requestId;
+        if (sourceId) {
+          scanSessions.add(`${log.triggerType || 'UNKNOWN'}-${sourceId}`);
+        } else {
+          const timestamp = log.createdAt ? new Date(log.createdAt).getTime() : 0;
+          const minuteBucket = Math.floor(timestamp / 60000); // 1 minute window
+          scanSessions.add(`${log.triggerType || 'UNKNOWN'}-${minuteBucket}`);
+        }
+      }
+    });
+
+    return {
+      scanCount: scanSessions.size,
+      totalLogs: todayScanLogs.length,
+      createdCount,
+      duplicateCount,
+      noSupplierCount,
+      failedCount,
+      lastScanTime: todayScanLogs.length > 0 && todayScanLogs[0].createdAt ? formatDate(todayScanLogs[0].createdAt) : "Chưa có",
+    };
+  }, [summaryLogs]);
 
   useEffect(() => {
     if (searchParams.get("tab") === "simulation" && statusFilter !== "SIMULATION") {
@@ -373,6 +471,60 @@ export const AdminAgentLogsPage: React.FC = () => {
           {error}
         </div>
       )}
+
+      {/* Daily Summary */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Tóm tắt quét tồn kho hôm nay</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Số lần quét được gom theo phiên quét trong log. Nếu log chưa có scanId, hệ thống gom theo trigger và thời điểm gần nhau. Tóm tắt dựa trên dữ liệu log đã tải.
+            </p>
+          </div>
+          <select className="text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-700 px-3 py-1.5 outline-none min-w-[120px]">
+            <option value="today">Hôm nay</option>
+          </select>
+        </div>
+
+        {isSummaryLoading ? (
+          <div className="py-8 text-center text-slate-400 text-sm">
+            <Loading message="Đang tải dữ liệu tóm tắt..." />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="p-3 rounded-xl border border-indigo-100 bg-indigo-50/50 flex flex-col">
+              <span className="text-xs font-semibold text-indigo-600 uppercase">Số lần quét hôm nay</span>
+              <div className="text-2xl font-bold text-indigo-700 mt-1">{scanSummary.scanCount}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-emerald-100 bg-emerald-50/50 flex flex-col">
+              <span className="text-xs font-semibold text-emerald-600 uppercase">Đã tạo yêu cầu</span>
+              <div className="text-2xl font-bold text-emerald-700 mt-1">{scanSummary.createdCount}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-amber-100 bg-amber-50/50 flex flex-col">
+              <span className="text-xs font-semibold text-amber-600 uppercase">Đã có yêu cầu</span>
+              <div className="text-2xl font-bold text-amber-700 mt-1">{scanSummary.duplicateCount}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-orange-100 bg-orange-50/50 flex flex-col">
+              <span className="text-xs font-semibold text-orange-600 uppercase">Thiếu nhà cung cấp</span>
+              <div className="text-2xl font-bold text-orange-700 mt-1">{scanSummary.noSupplierCount}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-rose-100 bg-rose-50/50 flex flex-col">
+              <span className="text-xs font-semibold text-rose-600 uppercase">Lỗi Agent</span>
+              <div className="text-2xl font-bold text-rose-700 mt-1">{scanSummary.failedCount}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-slate-100 bg-slate-50 flex flex-col">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Log phát sinh</span>
+              <div className="text-2xl font-bold text-slate-700 mt-1">{scanSummary.totalLogs}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-slate-100 bg-slate-50 flex flex-col lg:col-span-2">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Lần quét gần nhất</span>
+              <div className="text-xl font-bold text-slate-700 mt-1 flex h-full items-center">
+                {scanSummary.lastScanTime}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
