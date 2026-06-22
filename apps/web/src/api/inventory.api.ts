@@ -5,7 +5,7 @@ type ThresholdSuggestionParams = {
   salesWindowDays?: number;
   bufferDays?: number;
   delayBufferDays?: number;
-  planningPeriod?: 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
+  planningPeriod?: "WEEKLY" | "MONTHLY" | "CUSTOM";
   planningDays?: number;
 };
 
@@ -25,20 +25,41 @@ const normalizeInventoryMutation = (payload: any) => {
   };
 };
 
-const normalizeInventory = (inventory: any): Inventory => ({
-  ...inventory,
-  productId: inventory?.productId ?? inventory?.product_id,
-  product_id: inventory?.product_id ?? inventory?.productId,
-  minThreshold: inventory?.minThreshold ?? inventory?.min_threshold,
-  min_threshold: inventory?.min_threshold ?? inventory?.minThreshold,
-  product: inventory?.product ?? {
-    id: inventory?.productId ?? inventory?.product_id,
-    name: inventory?.productName ?? "Sản phẩm",
-    unit: inventory?.unit,
-    imageUrl: inventory?.productImageUrl,
-    image_url: inventory?.productImageUrl,
-  },
-});
+const normalizeInventory = (inventory: any): Inventory => {
+  const quantity = Number(inventory?.quantity ?? inventory?.stock ?? 0);
+  const reservedStock = Number(inventory?.reservedStock ?? inventory?.reserved_stock ?? 0);
+  const availableStock = Number(inventory?.availableStock ?? inventory?.available_stock ?? quantity - reservedStock);
+  const minThreshold = Number(inventory?.minThreshold ?? inventory?.min_threshold ?? inventory?.minStock ?? inventory?.min_stock ?? 0);
+  const productId = inventory?.productId ?? inventory?.product_id;
+  const productName = inventory?.productName ?? inventory?.product_name ?? inventory?.product?.name ?? "Sản phẩm";
+  const unit = inventory?.unit ?? inventory?.product?.unit;
+
+  return {
+    ...inventory,
+    productId,
+    product_id: inventory?.product_id ?? productId,
+    productName,
+    product_name: inventory?.product_name ?? productName,
+    quantity,
+    stock: quantity,
+    reservedStock,
+    reserved_stock: inventory?.reserved_stock ?? reservedStock,
+    availableStock,
+    available_stock: inventory?.available_stock ?? availableStock,
+    minThreshold,
+    min_threshold: inventory?.min_threshold ?? minThreshold,
+    minStock: inventory?.minStock ?? minThreshold,
+    min_stock: inventory?.min_stock ?? minThreshold,
+    unit,
+    product: inventory?.product ?? {
+      id: productId,
+      name: productName,
+      unit,
+      imageUrl: inventory?.productImageUrl,
+      image_url: inventory?.productImageUrl,
+    },
+  };
+};
 
 const normalizeTransaction = (transaction: any): InventoryTransaction => ({
   ...transaction,
@@ -75,7 +96,7 @@ export const inventoryApi = {
 
   getLowStockInventories: async (): Promise<Inventory[]> => {
     const inventories = await inventoryApi.getInventories();
-    return inventories.filter((i) => i.quantity < (i.minThreshold ?? i.min_threshold ?? 5));
+    return inventories.filter((i) => (i.availableStock ?? i.quantity) < (i.minThreshold ?? i.min_threshold ?? 5));
   },
 
   getLowStock: async (): Promise<Inventory[]> => inventoryApi.getLowStockInventories(),
@@ -128,4 +149,3 @@ export const inventoryApi = {
     return data?.suggestion || data || {};
   },
 };
-

@@ -1,21 +1,26 @@
 PROBLEM:
-notification  hiện quá nhiều thông tin ở phần mô phỏng
+notification  hiện quá nhiều thông tin ở phần mô phỏng  xxxx
 
-agent sẽ xử lý những gì và những gì agent sử lý mà gặp lỗi thì cần có những yếu tố nào 
+agent sẽ xử lý những gì và những gì agent sử lý mà gặp lỗi thì cần có những yếu tố nào  xxxx
 
 
-ở phần nhập tạo sản phẩm thì thiếu đơn vị nhập 
+ở phần nhập tạo sản phẩm thì thiếu đơn vị nhập xxx
 
 
 ở tồn kho thì khi nhập số lượng nhập hàng thì ở phần ngưỡng nó đã đề xuất sản như vậy sẽ liên 
 yêu cầu nhập ví dụ khi tôi nhập lần đầu với hàng đầu tiên mới bắt đầu bán thì chưa có số lượng bán
-để tính số lượng bán mọi ngày vậy ở phần ngưỡng nó mặc định 10 có hợp lý không 
+để tính số lượng bán mọi ngày vậy ở phần ngưỡng nó mặc định 10 có hợp lý không  xxxx
 
 
-vấn đề sẽ agent phải kiểm tra hạn sử dụng của sản phần caffe
+vấn đề sẽ agent phải kiểm tra hạn sử dụng của sản phần caffe xxxx
 
 
 tiếp theo là scan định kì theo ngày vào 12giowf tối cho toàn kho hiện thị ở phần riêng ai agent scan
-định kì và có nút để admin có bấm scan và hiện riêng cho nút đã scan và ghi vào log của agent
+định kì và có nút để admin có bấm scan và hiện riêng cho nút đã scan và ghi vào log của agent xxxx
 
-worker/cron là sẽ chạy như thế nào theo hướng như thế nào và nó sẽ quét theo hướng như thế nào 
+worker/cron là sẽ chạy như thế nào theo hướng như thế nào và nó sẽ quét theo hướng như thế nào xxx
+
+
+tiếp tục sẽ thực hiện phần vấn đề này ::::
+
+

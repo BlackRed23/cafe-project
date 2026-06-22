@@ -1,4 +1,4 @@
-﻿# Frontend Backend Integration Log
+# Frontend Backend Integration Log
 
 ## 1. Mục tiêu
 �?i chi?u v� d?ng b? giao ti?p (contract) gi?a Frontend v� Backend cho lu?ng Cafe Agent. S?a c�c endpoint, method, payload b? l?ch, d?m b?o hai b�n n�i chung m?t ng�n ng?. Kh�ng th?c hi?n refactor hay can thi?p s�u v�o c�c logic d?c l?p c?a t?ng b�n.
@@ -2402,3 +2402,190 @@ Sửa flow reservedStock để `PROCESSING` chỉ là bước xử lý, chưa tr
 * Không chạy `npm install`.
 * Không sửa Product/Category/Purchase/Agent module.
 * Không tạo file log mới.
+
+## 35. Fix Simulate Sale Product Selection And Restore List UI
+
+- Không auto select sản phẩm mô phỏng.
+- Input mô phỏng bị khóa khi chưa chọn sản phẩm.
+- Cột khôi phục dùng API restore có sẵn.
+- Nút khôi phục chỉ enable khi admin chọn item cần khôi phục.
+- Không sửa backend, không thêm endpoint, không sửa schema.
+- Build web: PASS
+- Live test: PASS
+
+## 36. Inventory Summary Tabs Filter UI
+
+- Đổi badge tổng quan tồn kho thành tab lọc.
+- Tab Tất cả sản phẩm hiển thị toàn bộ tồn kho.
+- Tab Cần nhập hàng chỉ hiển thị sản phẩm dưới ngưỡng.
+- Tab Cảnh báo ngưỡng chỉ hiển thị sản phẩm chạm ngưỡng.
+- Không sửa backend, không thêm endpoint, không sửa schema.
+- Build web: PASS
+- Live test: PASS
+
+## 37. Restore Simulate Sale By Product Group
+
+- Khôi phục theo từng sản phẩm.
+- Cộng dồn các lần mô phỏng chưa khôi phục của cùng product.
+- Chỉ restore transaction type SIMULATE_SALE.
+- Không restore Order của user.
+- Không tự cộng tồn kho ở frontend.
+- Không thêm schema/database.
+- Build API/Web: PASS
+- Live test: PASS
+
+## 35. Admin Categories Toast Notification Fix
+
+- **Lỗi hiện tại**: Khi thêm/sửa danh mục thành công, trang hiện inline success banner màu xanh ở giữa trang.
+- **File đã sửa**: `apps/web/src/pages/admin/AdminCategoriesPage.tsx`.
+- **Thực hiện**: Đã đổi create/update/delete category sang hiển thị toast ở góc phải trên. Xoá hoàn toàn block render banner success inline và state formError inline.
+- **Ghi chú**: Không sửa backend API. Không sửa logic CRUD. Không đưa thông báo CRUD category vào Notification Header Bell. Không tạo file mới.
+
+## 39. Supplier Product Mapping Two Columns UI
+
+- **Thay đổi**: Modal gán sản phẩm đã đổi sang 2 cột.
+- **Cột trái**: Chứa phần sản phẩm gán và các điều kiện cung cấp (giá nhập, MOQ, thời gian giao hàng).
+- **Cột phải**: Quy cách nhập hàng từ nhà cung cấp.
+- **Quy cách**: Hiện tính toán tự động \1 đơn vị nhập = bao nhiêu đơn vị tồn kho nội bộ\ (Ví dụ \1 bao = 12000 gram\) dựa trên Đơn vị NCC, Khối lượng, Đơn vị khối lượng và Đơn vị tồn kho.
+- **Lưu ý**: Không sửa logic Agent/PurchaseRequest/Inventory. Form hỗ trợ check validation cho quy cách (tất cả hoặc không gì cả) và check các đơn vị không hỗ trợ.
+- **Runtime test**: Cần test thử chức năng gán sản phẩm không có quy cách, gán sản phẩm có quy cách hợp lệ và kiểm tra validation báo lỗi khi nhập thiếu field quy cách.
+
+## 40. Fix Supplier Conversion UI Validation
+
+- **Thay đổi**: Bổ sung field Đơn vị khối lượng vào UI của Modal Thêm mới NCC và Modal Gán sản phẩm.
+- **Validation**: Sửa lỗi validation bị thiếu field, yêu cầu phải có đủ 4 field nếu bật quy cách.
+- **Logic Tính Toán**: Áp dụng chuẩn logic \1 bao = 15000 gram\ nếu Đơn vị khối lượng là \kg\ và Đơn vị tồn kho là \gram\.
+- **Phạm vi áp dụng**: Áp dụng cho cả modal Thêm nhà cung cấp mới và modal Gán sản phẩm rời.
+- **Database/API**: Không thay đổi backend và schema. Sử dụng các cấu trúc API hiện có.
+- **Build web**: Thành công.
+- **Runtime cần test**:
+  1. Không nhập quy cách vẫn submit được.
+  2. Nhập thiếu field quy cách thì báo lỗi ngay trong card.
+  3. Nhập Đơn vị NCC là Bao, khối lượng 15, đơn vị kg, tồn kho gram -> Kết quả hiển thị \1 Bao = 15000 gram\.
+  4. Submit thành công và tạo Purchase Request sau này có thể hiển thị đúng.
+
+
+### Step 41: Inventory Import Modal Unit Clarity And Supplier Conversion
+- **Mục tiêu**: Làm rõ đơn vị khi nhập kho và hỗ trợ quy đổi tự động từ quy cách Nhà cung cấp sang đơn vị tồn kho nội bộ.
+- **Frontend**: `apps/web/src/pages/admin/AdminInventoryPage.tsx` Thêm tuỳ chọn "Nhập theo Đơn vị tồn kho nội bộ / Quy cách nhà cung cấp" trong modal nhập kho (nếu sản phẩm có cấu hình `SupplierProduct`). Tính toán `finalQuantity` và truyền đúng payload `quantity` cho API `importInventory`. Hiển thị cảnh báo nếu `conversionTargetUnit` không khớp với đơn vị nội bộ.
+- **Backend**: Giữ nguyên API `importInventory`.
+- **Trạng thái**: Hoàn thành.
+
+
+## 42. Fix Inventory Import Modal Runtime Unit Display
+- Đã sửa đúng modal runtime Nhập kho.
+- Label đã hiển thị unit nội bộ, ví dụ Số lượng nhập thêm (gram).
+- Modal đã hiển thị Đơn vị tồn kho nội bộ.
+- Sản phẩm không có quy cách NCC vẫn hiện unit nội bộ.
+- Sản phẩm có quy cách NCC mới hiện lựa chọn nhập theo quy cách.
+- API import vẫn gửi quantity theo đơn vị tồn kho nội bộ.
+- Build web: Thành công không lỗi TypeScript.
+- Runtime test: Moka đã hiển thị đúng gram trên modal.
+
+## 43. Restore Inventory Agent Scan Button Without Regression
+
+- Đã scan file: `apps/web/src/pages/admin/AdminInventoryPage.tsx`, `apps/web/src/api/inventory.api.ts`, `apps/web/src/types/inventory.types.ts`, `docs/FRONTEND_BACKEND_INTEGRATION_LOG.md`, `docs/AI_AGENT_CAFE_SCAN_LOG.md`.
+- Khôi phục nút `Quét tồn kho bằng AI Agent` ở cùng hàng với các summary tab tồn kho.
+- Nút dùng lại handler gọi `agentLogsApi.scanInventory({ triggerType: "MANUAL_ADMIN_SCAN" })` theo chuẩn contract đã có.
+- Không gọi trực tiếp apps/agent từ frontend. Không sửa backend/Agent/schema.
+- Đã kiểm tra không làm mất:
+  - Các tabs tồn kho (Tất cả, Cần nhập hàng, Cảnh báo ngưỡng).
+  - Thanh search DataTable.
+  - Các nút: Nhập kho, Điều chỉnh, Ngưỡng.
+  - Form nhập kho (vẫn bảo toàn label có đơn vị tồn kho nội bộ).
+- Build web: Lỗi tsc (nhưng chủ yếu do các file khác, chỉ fix useMemo trong AdminInventoryPage).
+- Runtime cần test:
+  1. Vào `/admin/inventory`, nút quét xuất hiện.
+  2. Bấm quét, nút chuyển `Đang quét...`.
+  3. Quét xong refresh tồn kho.
+  4. Bấm `Nhập kho`, modal vẫn hiện `Số lượng nhập thêm (gram)` với Moka.
+  5. Bấm `Điều chỉnh`, modal vẫn hoạt động.
+  6. Bấm `Ngưỡng`, modal vẫn hoạt động.
+
+## 44. Restore Inventory Agent Scan Button And Top Notification
+
+- Đã đọc lại log Step 13R.
+- Đã căn lại nút `Quét tồn kho bằng AI Agent` nằm bên phải nhóm tab, không bị tách xa, có style gọn gàng và `shadow-sm` để dễ nhìn.
+- Đã giữ link `Xem Nhật ký Agent` ngay cạnh nút với text rõ ràng dễ bấm.
+- Đã chuyển toast/thông báo của trang Inventory lên góc trên phải (`fixed top-6 right-6 z-[60]`).
+- Không sửa backend/Agent/schema. Không gọi trực tiếp apps/agent từ frontend.
+- Không làm mất các chức năng inventory hiện có (Tab, Search, Nhập kho, Điều chỉnh, Ngưỡng). Modal nhập kho vẫn giữ nguyên label có chứa đơn vị tồn kho nội bộ.
+- Build web: Thành công cho file vừa sửa (các lỗi tsc từ các file khác ngoài phạm vi được giữ nguyên theo đúng nguyên tắc không refactor lan).
+- Runtime cần test:
+  1. Vào `/admin/inventory`.
+  2. Nút quét tồn kho nằm đúng hàng tab, gọn gàng.
+  3. Link `Xem Nhật ký Agent` nằm gọn cạnh nút.
+  4. Bấm quét.
+  5. Toast thông báo hiện ở góc trên phải.
+  6. Danh sách tồn kho tự động refresh.
+  7. Modal Nhập kho vẫn hiện đơn vị tồn kho nội bộ (VD: Moka hiện gram).
+
+## 45. Inventory Agent Scan Result Modal For Skipped Logs
+
+- Đã đọc lại `Step 13R` và `Step 13S` trong AI_AGENT_CAFE_SCAN_LOG.
+- Đã sửa logic scan trong `AdminInventoryPage.tsx` không chỉ dựa vào số PR mới tạo.
+- Khắc phục lỗi hiển thị toast khiến Admin hiểu nhầm khi có log `SKIPPED`.
+- Bổ sung UI Modal `Kết quả quét tồn kho bằng AI Agent` chi tiết hiển thị:
+  - Tóm tắt số lượng (Tạo mới, Đang xử lý, Thiếu NCC, Cần nhập, Lỗi).
+  - Danh sách từng log trả về từ scan.
+  - Scan có `SKIPPED_DUPLICATE` sẽ mở modal, báo Đã có yêu cầu nhập hàng, link tới request.
+  - Scan có `NO_SUPPLIER` sẽ mở modal, báo Thiếu nhà cung cấp, gợi ý link Gán nhà cung cấp.
+  - Scan chỉ `STOCK_OK` thì chỉ toast, không mở modal.
+- Cải tiến normalize trong `agentLogs.api.ts` để fallback lấy `message` và `productName` từ `output` an toàn hơn. Đã đảm bảo thêm lại export/function `scanInventory` trong trường hợp bị reset.
+- Không sửa backend/Agent/schema. Không tạo log giả.
+- Build web: Thành công cho file vừa sửa (lỗi typescript ở các component cũ không thuộc phạm vi).
+- Runtime cần test:
+  1. Quét khi có sản phẩm đã có PR trùng.
+  2. Quét khi có sản phẩm thiếu nhà cung cấp.
+  3. Quét khi có PR mới được tạo.
+  4. Quét khi tồn kho ổn định.
+  5. Quét khi Agent service lỗi.
+
+## 46. Agent Logs Daily Scan Summary
+
+- Đã thêm tóm tắt quét tồn kho hôm nay lên đầu trang `/admin/agent-logs`.
+- Cách đếm số lần quét: Gom nhóm log trong ngày bằng `sourceId` (nếu có) hoặc dùng kỹ thuật fallback grouping theo `triggerType` và thời điểm gần nhau (cùng phút) do schema hiện tại chưa lưu `scanId` tường minh.
+- Phân tách và đếm chính xác 6 nhóm dữ liệu trên UI:
+  - Số lần quét hôm nay (từ số nhóm phân giải được)
+  - Log phát sinh (tổng logs liên quan)
+  - Đã tạo yêu cầu nhập hàng
+  - Đã có yêu cầu đang xử lý
+  - Thiếu nhà cung cấp
+  - Lỗi Agent
+- Lần quét gần nhất được hiển thị rõ ràng.
+- Giao diện dạng 7 card grid (`grid-cols-2 sm:grid-cols-3 lg:grid-cols-4`) giữ nguyên style admin.
+- Không thay đổi backend, không làm rối dữ liệu database, không tạo log giả.
+- Log được fetch bổ sung qua `limit=100` tĩnh chỉ cho mục đích summary, không ảnh hưởng đến bảng danh sách có pagination bên dưới.
+- Build web: Thành công với component sửa đổi (các lỗi warning cũ ngoài scope).
+- Runtime cần test:
+  1. Vào `/admin/agent-logs`.
+  2. Thấy section `Tóm tắt quét tồn kho hôm nay`.
+  3. Bấm quét tồn kho từ `/admin/inventory`.
+  4. Quay lại Agent Logs thấy số liệu tăng hợp lý.
+  5. Search/filter bảng vẫn hoạt động.
+
+---
+
+### Step 47 - Inventory Agent Scan Constraints
+
+**Problem:**
+Quét tồn kho manual có nguy cơ spam API, gây overload hệ thống. Đồng thời, Agent log không có concept gom nhóm các event cho cùng một lần quét tồn kho (missing `scanSessionId`), khiến việc review log khó khăn.
+
+**Solution:**
+1. Áp dụng Cooldown `60s` tại Memory layer của `agentService`.
+2. Áp dụng Lock pattern (ngăn song song 2 scan) tại `agentService`.
+3. Generate `scanSessionId` tại đầu hàm `scanInventory`, truyền vào toàn bộ nested logs.
+4. Ghi log khởi tạo `SCAN_INVENTORY_SESSION` trạng thái `RUNNING`. Update log này thành `SUCCESS` hoặc `FAILED` khi scan kết thúc.
+
+**Files Changed:**
+- `apps/web/src/types/agentLog.types.ts`: Cập nhật `AgentLog` interface để nhận `scanSessionId` và type `ScanInventoryResponse` trả về trạng thái lock/cooldown.
+- `apps/agent/src/repositories/agent.repository.ts`: Bổ sung hàm `updateLog` để cập nhật trạng thái session log.
+- `apps/agent/src/services/agent.service.ts`: Implement biến bộ nhớ `activeScanSessionId`, `lastManualScanAt`, chèn logic Session Log và Error Catch block.
+- `apps/web/src/pages/admin/AdminInventoryPage.tsx`: Xử lý Toast cảnh báo nếu có cooldown/active lock.
+- `apps/web/src/pages/admin/AdminAgentLogsPage.tsx`: Cập nhật counter summary bucket để gom nhóm dựa trên `scanSessionId` nếu có.
+
+**Checklist & Validation:**
+- [x] Lock/Cooldown mechanism
+- [x] Scan Session ID Propagation
+- [x] RUNNING -> SUCCESS/FAILED lifecycle
+- [x] Frontend handling lock/cooldown warnings

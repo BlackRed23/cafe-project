@@ -363,6 +363,14 @@ Sản phẩm này chưa có quy cách nhập hàng theo nhà cung cấp, nên s�
         });
     },
 
+    async updateLog(id: string, data: Prisma.AgentLogUpdateInput) {
+        return prisma.agentLog.update({
+            where: { id },
+            data,
+            include: logInclude
+        });
+    },
+
     async findRecommendationLog(logId: string) {
         return prisma.agentLog.findUnique({
             where: { id: logId }

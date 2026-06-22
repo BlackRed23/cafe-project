@@ -154,6 +154,7 @@ const messageFromLog = (action?: string | null, result?: string | null, reason?:
     const normalizedResult = (result || '').toUpperCase();
     const normalizedReason = (reason || '').toUpperCase();
 
+    if (normalizedAction === 'SCAN_INVENTORY_SESSION') return 'AI Agent bắt đầu quét tồn kho.';
     if (normalizedResult === 'CREATED_PURCHASE_REQUEST') return 'AI Agent đã tạo yêu cầu nhập hàng cho sản phẩm này.';
     if (normalizedResult === 'NO_SUPPLIER' || normalizedReason === 'NO_SUPPLIER' || normalizedReason === 'NO_SUPPLIERS_MAPPED' || normalizedReason === 'SUPPLIERS_INACTIVE') {
         return 'Sản phẩm tồn kho thấp nhưng chưa có nhà cung cấp hợp lệ.';
@@ -229,6 +230,7 @@ const toLogDto = (log: any) => {
     const status = statusFromResult(result, log.error_message);
     const purchaseRequestId = derivePurchaseRequestId(log, output);
     const productId = asString(output?.productId) || asString(input?.productId);
+    const scanSessionId = asString(output?.scanSessionId) || asString(input?.scanSessionId);
 
     return {
         id: log.id,
@@ -238,6 +240,7 @@ const toLogDto = (log: any) => {
         reason,
         message: fixVietnameseMojibakeText(messageFromLog(log.action, result, reason, log.error_message, output)),
         triggerType: asString(input?.triggerType),
+        scanSessionId,
         productId,
         productName: asString(output?.productName) || asString(input?.productName),
         inventoryId: asString(input?.inventoryId) || asString(output?.inventoryId),
@@ -387,6 +390,13 @@ const createDemoFailureLog = async (
     return toLogDto(log);
 };
 
+let activeScanSessionId: string | null = null;
+let activeTriggerType: string | null = null;
+let activeScanStartedAt: number | null = null;
+
+let lastManualScanAt: number = 0;
+const MANUAL_SCAN_COOLDOWN_MS = 60 * 1000;
+
 export const agentService = {
     async scanInventory(input: ScanInventoryInput = { triggerType: 'MANUAL_SCAN' }, userId: string) {
         const triggerType = input.triggerType || 'MANUAL_SCAN';
@@ -397,20 +407,87 @@ export const agentService = {
         }
 
         const settings = await getAgentSettings();
-        if (!settings.enabled) {
-            const log = await agentRepository.createLog({
-                action: 'SCAN_INVENTORY_DISABLED',
-                input: JSON.stringify({ triggerType, productIds: input.productIds, sourceType: input.sourceType, sourceId: input.sourceId, note: input.note }),
-                output: JSON.stringify({ skipped: true, reason: 'AI_DISABLED', notification: notificationForAiDisabled() }),
-                reasoning: 'AI Agent is disabled by system setting.',
-                result: 'SKIPPED_DISABLED',
+
+        if (triggerType === 'MANUAL_ADMIN_SCAN') {
+            const now = Date.now();
+            if (lastManualScanAt > 0 && now - lastManualScanAt < MANUAL_SCAN_COOLDOWN_MS) {
+                const remaining = Math.ceil((MANUAL_SCAN_COOLDOWN_MS - (now - lastManualScanAt)) / 1000);
+                return {
+                    results: [],
+                    createdPurchaseRequests: [],
+                    cooldownRemainingSeconds: remaining,
+                    agentWarning: `AI Agent vừa quét gần đây, vui lòng chờ ${remaining}s trước khi quét lại.`
+                };
+            }
+        }
+
+        if (activeScanSessionId) {
+            return {
+                results: [],
+                createdPurchaseRequests: [],
+                activeScanSessionId,
+                activeTriggerType,
+                startedAt: activeScanStartedAt,
+                agentWarning: `AI Agent đang quét tồn kho, vui lòng chờ hoàn tất.`
+            };
+        }
+
+        const scanSessionId = `scan_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        activeScanSessionId = scanSessionId;
+        activeTriggerType = triggerType;
+        activeScanStartedAt = Date.now();
+        if (triggerType === 'MANUAL_ADMIN_SCAN') {
+            lastManualScanAt = Date.now();
+        }
+
+        let sessionLog;
+        try {
+            const scanStartedAt = new Date();
+            sessionLog = await agentRepository.createLog({
+                action: 'SCAN_INVENTORY_SESSION',
+                input: JSON.stringify({ scanSessionId, triggerType, sourceType: input.sourceType, sourceId: input.sourceId, productIds: input.productIds, startedAt: scanStartedAt.toISOString() }),
+                output: JSON.stringify({ scanSessionId }),
+                reasoning: 'AI Agent bắt đầu quét tồn kho.',
+                result: 'RUNNING',
                 fallback_used: false,
-                reference_type: 'SystemSetting',
-                reference_id: 'ai.enabled',
                 creator: userId ? { connect: { id: userId } } : undefined
             });
-            return { results: [toLogDto(log)], createdPurchaseRequests: [] };
-        }
+
+            if (!settings.enabled) {
+                const log = await agentRepository.createLog({
+                    action: 'SCAN_INVENTORY_DISABLED',
+                    input: JSON.stringify({ scanSessionId, triggerType, productIds: input.productIds, sourceType: input.sourceType, sourceId: input.sourceId, note: input.note }),
+                    output: JSON.stringify({ scanSessionId, skipped: true, reason: 'AI_DISABLED', notification: notificationForAiDisabled() }),
+                    reasoning: 'AI Agent is disabled by system setting.',
+                    result: 'SKIPPED_DISABLED',
+                    fallback_used: false,
+                    reference_type: 'SystemSetting',
+                    reference_id: 'ai.enabled',
+                    creator: userId ? { connect: { id: userId } } : undefined
+                });
+
+                await agentRepository.updateLog(sessionLog.id, {
+                    result: 'SUCCESS',
+                    reasoning: 'AI Agent đã quét xong tồn kho (nhưng đang bị tắt).',
+                    output: JSON.stringify({
+                        scanSessionId,
+                        finishedAt: new Date().toISOString(),
+                        durationMs: Date.now() - (activeScanStartedAt || Date.now()),
+                        totalChecked: 0,
+                        createdPurchaseRequestCount: 0,
+                        skippedDuplicateCount: 0,
+                        noSupplierCount: 0,
+                        failedCount: 0,
+                        stockOkCount: 0
+                    })
+                });
+
+                activeScanSessionId = null;
+                activeTriggerType = null;
+                activeScanStartedAt = null;
+
+                return { results: [toLogDto(log)], createdPurchaseRequests: [], scanSessionId, sessionStatus: 'SUCCESS', summary: { totalChecked: 0, createdPurchaseRequestCount: 0, skippedDuplicateCount: 0, noSupplierCount: 0, failedCount: 0, stockOkCount: 0 } };
+            }
 
         const inventories = await agentRepository.findInventories(input.productIds);
         const results = [];
@@ -464,6 +541,7 @@ export const agentService = {
                     purchasePrice: Number(sp.price)
                 }));
             const baseInput = {
+                scanSessionId,
                 triggerType,
                 sourceType: input.sourceType,
                 sourceId: input.sourceId,
@@ -628,6 +706,7 @@ export const agentService = {
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 const failureInput = {
+                    scanSessionId,
                     triggerType,
                     sourceType: input.sourceType,
                     sourceId: input.sourceId,
@@ -661,7 +740,52 @@ export const agentService = {
             }
         }
 
-        return { results, createdPurchaseRequests };
+            const scanFinishedAt = Date.now();
+            const durationMs = scanFinishedAt - (activeScanStartedAt || scanFinishedAt);
+            const summary = {
+                totalChecked: inventories.length,
+                createdPurchaseRequestCount: createdPurchaseRequests.length,
+                skippedDuplicateCount: results.filter(r => r.result === 'SKIPPED_DUPLICATE').length,
+                noSupplierCount: results.filter(r => r.result === 'NO_SUPPLIER').length,
+                failedCount: results.filter(r => r.result === 'FAILED').length,
+                stockOkCount: results.filter(r => r.result === 'STOCK_OK').length
+            };
+
+            await agentRepository.updateLog(sessionLog.id, {
+                result: 'SUCCESS',
+                reasoning: 'AI Agent đã quét xong tồn kho.',
+                output: JSON.stringify({
+                    scanSessionId,
+                    finishedAt: new Date(scanFinishedAt).toISOString(),
+                    durationMs,
+                    ...summary
+                })
+            });
+
+            activeScanSessionId = null;
+            activeTriggerType = null;
+            activeScanStartedAt = null;
+
+            return { results, createdPurchaseRequests, scanSessionId, sessionStatus: 'SUCCESS', summary };
+        } catch (error) {
+            activeScanSessionId = null;
+            activeTriggerType = null;
+            activeScanStartedAt = null;
+
+            if (sessionLog) {
+                await agentRepository.updateLog(sessionLog.id, {
+                    result: 'FAILED',
+                    reasoning: 'SERVER_ERROR',
+                    error_message: error instanceof Error ? error.message : String(error),
+                    output: JSON.stringify({
+                        scanSessionId,
+                        failed: true,
+                        errorMessage: error instanceof Error ? error.message : String(error)
+                    })
+                });
+            }
+            throw error;
+        }
     },
 
     async logs(query: AgentLogQuery = {}) {
