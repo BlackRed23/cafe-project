@@ -3693,6 +3693,59 @@ Sửa lỗi TS6133 do import icon không sử dụng ở Customer UI.
 * Không chạy npm install.
 * Không tạo file log mới.
 
+## 53. Fix Render API Base URL Missing Api Prefix And CORS
+
+### 53.1 Lỗi production
+
+* Frontend đang gọi API thiếu `/api`.
+* Request `/products` trả 404.
+* Browser báo CORS vì response không có `Access-Control-Allow-Origin`.
+
+### 53.2 Nguyên nhân
+
+* Env frontend đang thiếu `/api` khi cấu hình `VITE_API_BASE_URL` trên Render, source code đúng biến nhưng bị cấu hình server sai.
+* Backend CORS cấu hình cũ không áp dụng đúng việc cho phép nhiều domain (nó xem danh sách chuỗi cách nhau bởi dấu phẩy là 1 domain duy nhất). Đã cập nhật thành tách chuỗi split(",").
+
+### 53.3 File đã scan
+
+* `apps/web/src/api/client.ts`
+* `apps/web/src/api/*.ts`
+* `apps/web/vite.config.ts`
+* `apps/api/src/index.ts`
+
+### 53.4 File đã sửa
+
+* `apps/api/src/index.ts`
+
+### 53.5 Env Render cần cấu hình
+
+Frontend:
+
+* `VITE_API_BASE_URL=https://cafe-api-9tbe.onrender.com/api`
+
+Backend:
+
+* `CORS_ORIGIN=http://localhost:5173,https://cafe-frontend-nmgm.onrender.com`
+
+### 53.6 Kết quả build
+
+* API build pass.
+* Web build pass.
+
+### 53.7 Checklist sau redeploy
+
+* Network gọi `/api/products`.
+* Network gọi `/api/auth/register`.
+* Không còn gọi root `/products`.
+* Không còn CORS error.
+
+### 53.8 Việc không sửa
+
+* Không sửa Order/Inventory/reservedStock.
+* Không sửa Agent logic.
+* Không sửa database/schema.
+* Không chạy migration/db push.
+* Không tạo log mới.
 ## 52. Fix Render Production CORS API Base URL And Logo Asset
 
 ### 52.1 Lỗi production
