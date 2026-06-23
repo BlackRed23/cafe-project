@@ -6,8 +6,12 @@ import { agentService } from './services/agent.service';
 dotenv.config();
 
 
-const AGENT_HOST = process.env.AGENT_HOST || process.env.HOST || "0.0.0.0";
-const AGENT_PORT = Number.parseInt(process.env.PORT || process.env.AGENT_PORT || "5055", 10);
+const AGENT_HOST = process.env.AGENT_HOST || process.env.HOST || '0.0.0.0';
+
+const AGENT_PORT = Number.parseInt(
+    process.env.PORT || process.env.AGENT_PORT || '5055',
+    10
+);
 
 const INTERNAL_TOKEN = process.env.AGENT_INTERNAL_TOKEN || 'dev-agent-secret';
 
