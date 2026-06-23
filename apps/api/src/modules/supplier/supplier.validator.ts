@@ -36,7 +36,8 @@ const supplierBaseSchema = z.object({
         .trim()
         .max(1000, 'Address must be at most 1000 characters.')
         .optional()
-        .nullable()
+        .nullable(),
+    status: z.enum(['ACTIVE', 'INACTIVE']).optional()
 });
 
 // create: no extra refinements needed beyond field-level validation

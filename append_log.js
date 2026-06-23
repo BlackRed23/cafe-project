@@ -1,9 +1,1 @@
-const fs = require('fs');
-fs.appendFileSync('docs/FRONTEND_BACKEND_INTEGRATION_LOG.md', `
-
-### Step 41: Inventory Import Modal Unit Clarity And Supplier Conversion
-- **Mục tiêu**: Làm rõ đơn vị khi nhập kho và hỗ trợ quy đổi tự động từ quy cách Nhà cung cấp sang đơn vị tồn kho nội bộ.
-- **Frontend**: \`apps/web/src/pages/admin/AdminInventoryPage.tsx\` Thêm tuỳ chọn "Nhập theo Đơn vị tồn kho nội bộ / Quy cách nhà cung cấp" trong modal nhập kho (nếu sản phẩm có cấu hình \`SupplierProduct\`). Tính toán \`finalQuantity\` và truyền đúng payload \`quantity\` cho API \`importInventory\`. Hiển thị cảnh báo nếu \`conversionTargetUnit\` không khớp với đơn vị nội bộ.
-- **Backend**: Giữ nguyên API \`importInventory\`.
-- **Trạng thái**: Hoàn thành.
-`);
+const fs = require('fs'); const logEntry = '\n### 2023-10-XX - Implement Agent Logic for Open PR with Inactive Supplier\n- **Agent**: Updated generateForProduct logic. If an open PR exists but its supplier is INACTIVE, the Agent now logs EXISTING_PR_SUPPLIER_INACTIVE instead of silently skipping duplicate or general NO_SUPPLIER. This explicitly flags the edge case where an existing PR is orphaned from active purchasing channels.\n- **AdminInventoryPage**: Added custom handling for EXISTING_PR_SUPPLIER_INACTIVE to render specific warnings (�� c� y�u c?u nh?p h�ng nhung nh� cung c?p d� b? t?t) and explicit links to PR Detail and Supplier management.\n- **AdminPurchaseRequestDetailPage**: Added warning banner if pr.supplier.status === \'INACTIVE\'.\n- **AdminPurchaseRequestsPage**: Displayed inactive badge in PR list.\n- **AdminSuppliersPage**: Added dynamic check in ConfirmDialog to warn Admin if a supplier has pending PRs before they deactivate it.\n'; fs.appendFileSync('docs/FRONTEND_BACKEND_INTEGRATION_LOG.md', logEntry, 'utf8'); console.log('Done FRONTEND_BACKEND_INTEGRATION_LOG');

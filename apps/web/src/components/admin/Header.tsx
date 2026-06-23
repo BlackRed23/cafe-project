@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Menu, Bell, RefreshCw, X, AlertCircle, Info, CheckCircle, AlertTriangle, LogOut, User, Key, ChevronDown } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-import { useLocation, Link, useNavigate } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
 import { agentLogsApi } from "../../api/agentLogs.api";
 import type { AgentLog } from "../../types/agentLog.types";
 
@@ -34,7 +34,6 @@ const BREADCRUMB_MAP: Record<string, string[]> = {
 export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, title }) => {
   const { user, logout } = useAuth();
   const location = useLocation();
-  // const navigate = useNavigate();
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -176,11 +175,11 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
                         const isWarning = log.status === "SKIPPED";
                         const isSuccess = log.status === "SUCCESS";
                         
-                        let message = log.message || log.reasoning || log.errorMessage || log.error_message || log.error;
+                        let message = log.description || log.message || log.reasoning || log.errorMessage || log.error_message || log.error;
                         if (!message && log.output) {
                           try {
                             const parsed = typeof log.output === "string" ? JSON.parse(log.output) : log.output;
-                            message = parsed?.reason || parsed?.message || JSON.stringify(parsed);
+                            message = parsed?.description || parsed?.reason || parsed?.message || JSON.stringify(parsed);
                           } catch {
                             message = typeof log.output === "string" ? log.output : "Hệ thống đã ghi nhận.";
                           }

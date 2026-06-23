@@ -35,29 +35,10 @@ const STATUS_META: Record<AgentLogStatus, { label: string; className: string; ic
 const PAGE_SIZE = 20;
 const LOW_PRIORITY_STOCK_REASONS = new Set(["STOCK_OK", "ABOVE_THRESHOLD"]);
 type AgentLogFilter = "" | AgentLogStatus | "SIMULATION";
-const DEFAULT_AGENT_LOG_MESSAGE = "Agent đã ghi nhận một sự kiện xử lý.";
-
 const jsonBlock = (value: unknown) => JSON.stringify(value ?? null, null, 2);
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-
-const firstText = (...values: unknown[]) => {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return undefined;
-};
-
-const toTableMessage = (message: string) => {
-  const firstReadableLine = message
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line && !line.startsWith("at "));
-
-  const text = firstReadableLine || message.trim();
-  return text.length > 220 ? `${text.slice(0, 217)}...` : text;
-};
 
 const getAgentActionLabel = (log: AgentLog) => {
   const action = log.action;
@@ -68,7 +49,7 @@ const getAgentActionLabel = (log: AgentLog) => {
     return "Tạo yêu cầu nhập hàng";
   }
 
-  if (action === "SCAN_INVENTORY_SKIP_DUPLICATE" || reason === "ACTIVE_PR_EXISTS" || result === "SKIPPED_DUPLICATE") {
+  if (action === "SCAN_INVENTORY_SKIP_DUPLICATE" || reason === "ACTIVE_PR_EXISTS" || result === "SKIPPED_DUPLICATE" || reason === "EXISTING_PR_SUPPLIER_INACTIVE" || reason === "ACTIVE_PR_SUPPLIER_INACTIVE") {
     return "Kiểm tra yêu cầu nhập hàng";
   }
 
@@ -116,6 +97,10 @@ const getAgentStatusLabel = (log: AgentLog) => {
     return "Bỏ qua tạo yêu cầu mới";
   }
 
+  if (log.status === "SKIPPED" && (log.reason === "EXISTING_PR_SUPPLIER_INACTIVE" || log.reason === "ACTIVE_PR_SUPPLIER_INACTIVE")) {
+    return "Bỏ qua cần xử lý";
+  }
+
   if (log.status === "SKIPPED" && (log.reason === "NO_SUPPLIER" || log.reason === "SUPPLIERS_INACTIVE" || log.result === "NO_SUPPLIER")) {
     return "Bỏ qua vì thiếu nhà cung cấp";
   }
@@ -143,84 +128,56 @@ const getAgentStatusLabel = (log: AgentLog) => {
   return "Đã xử lý";
 };
 
-const getAgentFailureMessage = (log: AgentLog) => {
-  const output = asRecord(log.output);
-  const message = log.message?.trim() === DEFAULT_AGENT_LOG_MESSAGE ? undefined : log.message;
-  const rawMessage = firstText(
-    message,
-    log.errorMessage,
-    output.errorMessage,
-    output.error,
-    output.reason
-  );
-
-  if (rawMessage) {
-    return toTableMessage(rawMessage);
+const getReasonText = (code: string | undefined | null) => {
+  if (!code) return "";
+  switch (code) {
+    case "DATABASE_ERROR": return "AI Agent không thể xử lý do lỗi cơ sở dữ liệu.";
+    case "SERVER_ERROR": return "AI Agent xử lý thất bại do lỗi hệ thống.";
+    case "INVALID_DATA": return "AI Agent xử lý thất bại do dữ liệu đầu vào không hợp lệ.";
+    case "SMTP_ERROR": return "Gửi email nhà cung cấp thất bại. Vui lòng kiểm tra cấu hình email.";
+    case "ACTIVE_PR_EXISTS": 
+    case "SKIPPED_DUPLICATE": return "Sản phẩm đã có yêu cầu nhập hàng chờ bạn xác nhận, nên AI Agent không tạo thêm yêu cầu mới.";
+    case "EXISTING_PR_SUPPLIER_INACTIVE":
+    case "ACTIVE_PR_SUPPLIER_INACTIVE": return "Yêu cầu nhập hàng đang chờ xử lý nhưng nhà cung cấp đã bị tắt.";
+    case "NO_SUPPLIER":
+    case "SUPPLIERS_INACTIVE": return "Sản phẩm tồn kho thấp nhưng chưa có nhà cung cấp hợp lệ.";
+    case "AI_DISABLED": return "Hệ thống đã phát hiện biến động tồn kho nhưng AI Agent đang bị tắt trong cấu hình.";
+    case "STOCK_OK":
+    case "ABOVE_THRESHOLD": return "Tồn kho hiện tại vẫn cao hơn ngưỡng cảnh báo.";
+    case "CREATED_PURCHASE_REQUEST": return "AI Agent đã tạo yêu cầu nhập hàng cho sản phẩm này.";
+    case "RECOMMENDED": return "AI Agent đã tạo đề xuất nhập hàng cho sản phẩm này.";
+    case "CONVERTED_TO_PR": return "Đề xuất nhập hàng đã được chuyển thành yêu cầu nhập hàng.";
+    default: return "";
   }
-
-  if (log.reason === "DATABASE_ERROR") {
-    return "AI Agent không thể xử lý do lỗi cơ sở dữ liệu.";
-  }
-
-  if (log.reason === "SERVER_ERROR") {
-    return "AI Agent xử lý thất bại do lỗi hệ thống.";
-  }
-
-  if (log.reason === "INVALID_DATA") {
-    return "AI Agent xử lý thất bại do dữ liệu đầu vào không hợp lệ.";
-  }
-
-  if (log.reason === "SMTP_ERROR") {
-    return "Gửi email nhà cung cấp thất bại. Vui lòng kiểm tra cấu hình email.";
-  }
-
-  if (log.action === "SCAN_INVENTORY_FAILED") {
-    return "AI Agent không thể kiểm tra tồn kho cho sản phẩm này.";
-  }
-
-  return "AI Agent xử lý thất bại. Vui lòng mở chi tiết để kiểm tra dữ liệu đầu vào và lỗi kỹ thuật.";
 };
 
-const getAgentDisplayMessage = (log: AgentLog) => {
+export const getAgentLogDescription = (log: AgentLog): string => {
+  const input = asRecord(log.input);
+  const output = asRecord(log.output);
+
+  const realMessage =
+    log.description ||
+    log.message ||
+    output?.description ||
+    output?.message ||
+    output?.resultMessage ||
+    input?.description ||
+    input?.message ||
+    getReasonText(log.reason || log.result || (output?.reason as string) || (output?.result as string));
+
+  if (realMessage) {
+    return String(realMessage);
+  }
+
   if (log.status === "FAILED") {
-    return getAgentFailureMessage(log);
+    return "AI Agent xử lý thất bại. Vui lòng mở chi tiết để kiểm tra dữ liệu đầu vào và lỗi kỹ thuật.";
   }
-
-  if (log.message?.trim()) return log.message.trim();
-
-  if (log.status === "SUCCESS" && log.result === "CREATED_PURCHASE_REQUEST") {
-    return "AI Agent đã tạo yêu cầu nhập hàng cho sản phẩm này.";
-  }
-
-  if (log.status === "SKIPPED" && (log.reason === "ACTIVE_PR_EXISTS" || log.result === "SKIPPED_DUPLICATE")) {
-    return "Sản phẩm đã có yêu cầu nhập hàng chờ bạn xác nhận, nên AI Agent không tạo thêm yêu cầu mới.";
-  }
-
-  if (log.status === "SKIPPED" && (log.reason === "NO_SUPPLIER" || log.reason === "SUPPLIERS_INACTIVE" || log.result === "NO_SUPPLIER")) {
-    return "Sản phẩm tồn kho thấp nhưng chưa có nhà cung cấp hợp lệ.";
-  }
-
-  if (log.status === "SKIPPED" && log.reason === "AI_DISABLED") {
-    return "Hệ thống đã phát hiện biến động tồn kho nhưng AI Agent đang bị tắt trong cấu hình.";
-  }
-
-  if (log.status === "SKIPPED" && (log.reason === "STOCK_OK" || log.reason === "ABOVE_THRESHOLD")) {
-    return "Tồn kho hiện tại vẫn cao hơn ngưỡng cảnh báo.";
-  }
-
+  
   if (log.status === "RUNNING") {
     return "AI Agent đang xử lý tác vụ tồn kho.";
   }
 
-  if (log.result === "RECOMMENDED") {
-    return "AI Agent đã tạo đề xuất nhập hàng cho sản phẩm này.";
-  }
-
-  if (log.result === "CONVERTED_TO_PR") {
-    return "Đề xuất nhập hàng đã được chuyển thành yêu cầu nhập hàng.";
-  }
-
-  return "AI Agent đã ghi nhận một sự kiện xử lý tồn kho.";
+  return "Agent đã ghi nhận một sự kiện xử lý.";
 };
 
 const STATUS_FILTER_LABEL: Record<AgentLogStatus, string> = {
@@ -314,8 +271,14 @@ export const AdminAgentLogsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<AgentLogFilter>(
     searchParams.get("tab") === "simulation" ? "SIMULATION" : ""
   );
+  const [showSessionLogs, setShowSessionLogs] = useState(false);
   const [page, setPage] = useState(1);
   const [selectedLog, setSelectedLog] = useState<AgentLog | null>(null);
+
+  const scanSessionIdParam = searchParams.get("scanSessionId") || "";
+  const productIdParam = searchParams.get("productId") || "";
+  const sourceIdParam = searchParams.get("sourceId") || "";
+  const productNameParam = searchParams.get("productName") || "";
 
   const [summaryLogs, setSummaryLogs] = useState<AgentLog[]>([]);
   const [isSummaryLoading, setIsSummaryLoading] = useState(true);
@@ -404,6 +367,7 @@ export const AdminAgentLogsPage: React.FC = () => {
           limit: PAGE_SIZE,
           status: statusFilter !== "SIMULATION" ? statusFilter || undefined : undefined,
           triggerType: statusFilter === "SIMULATION" ? "SIMULATE_SALE" : undefined,
+          productId: productIdParam || undefined,
         });
         setLogs(data.logs);
         setPagination(data.pagination);
@@ -443,21 +407,95 @@ export const AdminAgentLogsPage: React.FC = () => {
         .some((value) => String(value).toLowerCase().includes(query));
     });
 
-    if (statusFilter !== "SIMULATION") return matchedLogs;
+    let paramFilteredLogs = matchedLogs;
+
+    if (!showSessionLogs && !productIdParam) {
+      paramFilteredLogs = paramFilteredLogs.filter(log => log.action !== "SCAN_INVENTORY_SESSION");
+    }
+
+    if (scanSessionIdParam || productIdParam || sourceIdParam) {
+      const getLogProductId = (log: any) =>
+        log.productId || log.input?.productId || log.output?.productId || log.product?.id || log.referenceProductId || "";
+      const getLogProductName = (log: any) =>
+        log.productName || log.input?.productName || log.output?.productName || log.product?.name || "";
+      const getLogSourceId = (log: any) =>
+        log.sourceId || log.input?.sourceId || log.output?.sourceId || "";
+      const getLogScanSessionId = (log: any) =>
+        log.scanSessionId || log.input?.scanSessionId || log.output?.scanSessionId || "";
+      const isSessionSummary = (log: any) => log.action === "SCAN_INVENTORY_SESSION";
+
+      let scopedLogs = paramFilteredLogs;
+
+      if (productIdParam) {
+        scopedLogs = scopedLogs.filter((log) => {
+          if (isSessionSummary(log)) return false;
+          return getLogProductId(log) === productIdParam || (productNameParam && getLogProductName(log) === productNameParam);
+        });
+      } else if (!showSessionLogs) {
+        scopedLogs = scopedLogs.filter(log => !isSessionSummary(log));
+      }
+
+      if (scanSessionIdParam) {
+        const bySession = scopedLogs.filter((log) => getLogScanSessionId(log) === scanSessionIdParam);
+        if (bySession.length > 0 || !productIdParam) {
+          scopedLogs = bySession;
+        }
+      }
+
+      if (sourceIdParam) {
+        const bySource = scopedLogs.filter((log) => getLogSourceId(log) === sourceIdParam);
+        if (bySource.length > 0 || !productIdParam) {
+          scopedLogs = bySource;
+        }
+      }
+
+      paramFilteredLogs = scopedLogs;
+    }
+
+    if (statusFilter !== "SIMULATION") return paramFilteredLogs;
 
     const seen = new Set<string>();
-    return matchedLogs.filter((log) => {
+    return paramFilteredLogs.filter((log) => {
       const key = getSimulationDedupeKey(log);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-  }, [logs, search, statusFilter]);
+  }, [logs, search, statusFilter, showSessionLogs, scanSessionIdParam, productIdParam, sourceIdParam, productNameParam]);
+
+  const filterNote = useMemo(() => {
+    if (!productIdParam || filteredLogs.length === 0) return null;
+    const getLogSourceId = (log: any) => log.sourceId || log.input?.sourceId || log.output?.sourceId || "";
+    const getLogScanSessionId = (log: any) => log.scanSessionId || log.input?.scanSessionId || log.output?.scanSessionId || "";
+
+    if (sourceIdParam && !filteredLogs.some(log => getLogSourceId(log) === sourceIdParam)) {
+      return "Không tìm thấy log theo sourceId, đang hiển thị nhật ký theo sản phẩm.";
+    }
+    if (scanSessionIdParam && !filteredLogs.some(log => getLogScanSessionId(log) === scanSessionIdParam)) {
+      return "Không tìm thấy log theo phiên quét, đang hiển thị nhật ký theo sản phẩm.";
+    }
+    return null;
+  }, [filteredLogs, productIdParam, sourceIdParam, scanSessionIdParam]);
 
   const handleStatusChange = (value: AgentLogFilter) => {
     setStatusFilter(value);
     setPage(1);
-    setSearchParams(value === "SIMULATION" ? { tab: "simulation" } : {});
+    
+    // Giữ lại các param lọc
+    const newParams = new URLSearchParams();
+    if (value === "SIMULATION") newParams.set("tab", "simulation");
+    if (scanSessionIdParam) newParams.set("scanSessionId", scanSessionIdParam);
+    if (productIdParam) newParams.set("productId", productIdParam);
+    if (sourceIdParam) newParams.set("sourceId", sourceIdParam);
+    if (productNameParam) newParams.set("productName", productNameParam);
+    setSearchParams(newParams);
+  };
+
+  const clearFilters = () => {
+    setStatusFilter("");
+    setSearch("");
+    setPage(1);
+    setSearchParams(new URLSearchParams());
   };
 
   if (isLoading && logs.length === 0) {
@@ -526,6 +564,34 @@ export const AdminAgentLogsPage: React.FC = () => {
         )}
       </div>
 
+      {(scanSessionIdParam || productIdParam || sourceIdParam) && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex flex-col gap-1 text-sm text-blue-800">
+            <div className="flex items-center gap-2">
+              <Info size={18} className="text-blue-600 shrink-0" />
+              {productNameParam ? (
+                <span className="font-semibold block sm:inline">Đang xem Nhật ký Agent của sản phẩm: {productNameParam}</span>
+              ) : productIdParam ? (
+                <span className="font-semibold block sm:inline">Đang lọc theo sản phẩm: {productIdParam}</span>
+              ) : null}
+            </div>
+            {scanSessionIdParam && (
+              <div className="flex items-center gap-2 pl-[26px]">
+                <span className="font-semibold block sm:inline">Phiên quét: <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-blue-100">{scanSessionIdParam}</span></span>
+              </div>
+            )}
+            {filterNote && (
+              <div className="flex items-center gap-2 pl-[26px] mt-1 text-xs text-amber-600 font-medium">
+                {filterNote}
+              </div>
+            )}
+          </div>
+          <Button size="sm" variant="outline" className="bg-white border-blue-200 text-blue-700 hover:bg-blue-100 shrink-0" onClick={clearFilters}>
+            Xóa bộ lọc
+          </Button>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <input
@@ -550,11 +616,28 @@ export const AdminAgentLogsPage: React.FC = () => {
                 {status === "SIMULATION" ? "Mô phỏng" : status ? STATUS_FILTER_LABEL[status] : "Tất cả"}
               </button>
             ))}
+            <div className="w-px h-6 bg-slate-200 mx-1"></div>
+            <button
+              onClick={() => setShowSessionLogs(!showSessionLogs)}
+              className={`px-3 py-2 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 ${
+                showSessionLogs
+                  ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                  : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              Phiên quét
+            </button>
           </div>
         </div>
 
         {filteredLogs.length === 0 ? (
-          <EmptyState title="Nhật ký trống" description="Chưa ghi nhận hoạt động nào từ AI Agent." />
+          productIdParam ? (
+            <EmptyState title="Không tìm thấy nhật ký" description="Không tìm thấy nhật ký Agent của sản phẩm này." />
+          ) : (scanSessionIdParam || sourceIdParam) ? (
+            <EmptyState title="Không tìm thấy nhật ký" description="Không tìm thấy nhật ký xử lý theo điều kiện lọc hiện tại." />
+          ) : (
+            <EmptyState title="Nhật ký trống" description="Chưa ghi nhận hoạt động nào từ AI Agent." />
+          )
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1100px] text-sm">
@@ -589,7 +672,7 @@ export const AdminAgentLogsPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-700 max-w-sm">
-                        <span className="line-clamp-2">{getAgentDisplayMessage(log)}</span>
+                        <span className="line-clamp-2">{getAgentLogDescription(log)}</span>
                       </td>
                       <td className="px-4 py-3 text-slate-700">
                         {log.productName || log.productId || "-"}
@@ -647,7 +730,7 @@ export const AdminAgentLogsPage: React.FC = () => {
         <Modal
           isOpen={true}
           onClose={() => setSelectedLog(null)}
-          title="Nhật ký kỹ thuật của AI Agent"
+          title={selectedLog.action === "SCAN_INVENTORY_SESSION" ? "Nhật ký phiên quét AI Agent" : "Nhật ký xử lý sản phẩm của AI Agent"}
           size="lg"
         >
           <div className="space-y-5 text-sm">
@@ -655,7 +738,7 @@ export const AdminAgentLogsPage: React.FC = () => {
               <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
                 <Info size={14} className="text-amber-800" /> Thông tin xử lý
               </h4>
-              <p className="text-slate-800 font-semibold">{getAgentDisplayMessage(selectedLog)}</p>
+              <p className="text-slate-800 font-semibold">{getAgentLogDescription(selectedLog)}</p>
               <div className="grid sm:grid-cols-2 gap-2 text-xs text-slate-600">
                 <span>Trạng thái kỹ thuật: <b>{selectedLog.status}</b></span>
                 <span>Action kỹ thuật: <b>{selectedLog.action}</b></span>

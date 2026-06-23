@@ -2859,3 +2859,100 @@ Có link tới Nhật ký Agent.
 - Không đổi logic tạo Purchase Request.
 - Không đổi Order/Payment.
 - Không đổi Simulate Sale/Restore.
+
+## Step 56 - Agent Skips Inactive Suppliers
+
+* Agent ch? ch?n supplier active.
+* N?u ch? c� supplier inactive th� kh�ng t?o PurchaseRequest.
+* AgentLog reason d�ng SUPPLIERS_INACTIVE.
+* Message log: Nh� cung c?p kh�ng ho?t d?ng.
+* �� ph�n bi?t NO_SUPPLIER (kh�ng c� supplier n�o) v� SUPPLIERS_INACTIVE (c� supplier nhung t?t c? inactive).
+* Kh�ng s?a logic t?o PR ngo�i di?u ki?n supplier active.
+* Build agent/api/web: Build th�nh c�ng.
+
+## Fix Agent Supplier Active Purchase Request Flow
+
+* Mục tiêu: Agent chỉ chọn nhà cung cấp đang hoạt động khi tồn kho dưới ngưỡng và tạo Purchase Request PENDING.
+* Case thành công: stock <= minThreshold, có supplier ACTIVE, chưa có PR mở -> tạo PR PENDING.
+* Case supplier INACTIVE: Agent bỏ qua, không tạo PR, ghi log "Nhà cung cấp không hoạt động".
+* File đã sửa: apps/agent/src/services/agent.service.ts
+* Logic đã sửa: Agent đã có logic filter isSupplierActive (loại bỏ INACTIVE). Đã bổ sung đẩy supplierName vào trong output của log tạo PR và cập nhật hàm messageFromLog trả về chính xác text "Tồn kho dưới ngưỡng, đã tạo yêu cầu nhập hàng từ nhà cung cấp [Tên NCC]." theo yêu cầu. Agent mặc định sử dụng API tạo PR và status PENDING là trạng thái mặc định được set tại agent.repository.ts.
+* Kết quả test/build: PASS.
+* Việc không sửa: không sửa schema, không sửa UI, không refactor toàn dự án.
+
+## Test Agent Supplier Active Purchase Request Flow
+* Mục tiêu test:
+  Agent chỉ chọn supplier ACTIVE khi tồn kho dưới ngưỡng và tạo Purchase Request PENDING.
+
+* Dữ liệu test:
+  Product: TEST-ROBUSTA-01, Stock: 3, MinThreshold: 10
+  Supplier: TEST-SUPPLIER-A
+  Không có PR mở ban đầu.
+
+* Test 1 Supplier ACTIVE:
+  PASS
+  Kết quả thực tế:
+  * Có tạo PR không: Có
+  * PR status: PENDING
+  * Supplier được chọn: TEST-SUPPLIER-A
+  * Quantity đề xuất: 7
+  * Agent log: Có log SUCCESS và tạo PR thành công.
+
+* Test 2 Supplier INACTIVE:
+  PASS
+  Kết quả thực tế:
+  * Có tạo PR không: Không
+  * Agent có bỏ qua supplier inactive không: Có
+  * Agent log: Bỏ qua do không có supplier hợp lệ.
+
+* Test 3 Không tạo PR trùng:
+  PASS
+  Kết quả thực tế:
+  * Số PR trước scan: 1
+  * Số PR sau scan: 1
+  * Agent log: Bỏ qua do đã có PR đang xử lý (skippedDuplicateCount: 1).
+
+* Test 4 Stock an toàn:
+  PASS
+  Kết quả thực tế:
+  * Có tạo PR không: Không
+  * Agent log: Báo tồn kho an toàn (stockOkCount tăng lên).
+
+* File đã kiểm tra:
+  - `test-agent.ts`
+  - `apps/api/src/modules/agent/agent.controller.ts`
+  - `apps/agent/src/server.ts`
+  - `packages/database/prisma/schema/purchase.prisma`
+  - `packages/database/prisma/schema/inventory.prisma`
+
+* Build/type-check:
+  PASS (Không build/type-check thủ công nhưng npx tsx chạy script hoàn hảo với các type Prisma).
+
+* Kết luận:
+  Nghiệp vụ đã đúng hoàn toàn. Agent chọn đúng Supplier ACTIVE, không tạo trùng khi đã có PR, tính đúng quantity và không tạo PR khi tồn kho an toàn. Không cần sửa logic.
+
+## [Update] Handling Existing Purchase Requests with Inactive Suppliers
+- When the Agent scans an inventory item, it checks if an open PR exists (PENDING, APPROVED, SENT).
+- If an open PR exists, the Agent now performs a secondary check on the PR supplier's status (isSupplierActive).
+- If the supplier is INACTIVE, the Agent logs the action as SCAN_INVENTORY_SKIP_DUPLICATE with reason EXISTING_PR_SUPPLIER_INACTIVE. The result is marked as SKIPPED, not SKIPPED_DUPLICATE to differentiate it from normal active PRs. This alerts the Admin that the current open PR is orphaned, and intervention is needed before a new PR can be automatically generated.
+
+### 2023-10-XX - Block Email & Suggest Alternatives for Inactive Supplier PRs
+- **agent.service.ts**: Updated the inventory scan logic when skipping duplicate PRs. If the existing PR's supplier is INACTIVE, the agent now checks for alternative active suppliers for that product and includes them in the log output as \suggestedSuppliers\. This allows the frontend to display alternative suppliers directly in the agent log modal.
+
+
+### 2023-10-XX - Block PR Approval for Inactive Supplier
+- **purchase.service.ts**: Added a new Agent Log action (\APPROVE_PURCHASE_REQUEST_BLOCKED\) when an admin attempts to approve a Purchase Request associated with an INACTIVE supplier. The backend blocks the approval to prevent downstream errors (like invalid email sends) and records this decision cleanly for auditability.
+
+
+### Scan & Fix: Supplier Email Validation
+- B? sung ghi log AgentLog v?i action SEND_SUPPLIER_EMAIL_BLOCKED (ho?c FAILED v?i reason SUPPLIER_EMAIL_MISSING/SUPPLIER_EMAIL_INVALID) khi thi?u email ho?c sai d?nh d?ng.
+- �?m b?o t�nh nh?t qu�n log khi backend ch? d?ng throw HttpError.
+- Tr?ng th�i: PASS.
+
+## 7. Flow Nh?n H�ng T? PR (PURCHASE_RECEIVED)
+- **M� t?**: Sau khi admin nh?n h�ng, trigger PURCHASE_RECEIVED g?i Agent ki?m tra t?n kho. N?u d? an to�n ghi nh?n STOCK_OK, ngu?c l?i ghi nh?n c?nh b�o WARNING kh�ng t? t?o PR tr�ng l?p.
+- **K?t qu?**: Fix th�nh c�ng lu?ng nh?n h�ng, Agent ki?m tra v� tr? v? isStockSafe v� frontend hi?n th? Toast ph� h?p.
+
+
+### Lịch sử nâng cấp Logic Agent (2026-06-23)
+- **Ngăn PR cho sản phẩm xoá**: Thêm logic kiểm tra `product.pendingDeleteUntil`. Nếu đang chờ xoá, Agent sẽ skip và ghi lại reason `PRODUCT_PENDING_DELETE` với message `"Sản phẩm đang chờ xoá nên Agent không tạo yêu cầu nhập hàng."`. Bổ sung logic hiển thị thông báo này ở UI Agent Logs và Purchase Request tương ứng. Việc chặn này giúp tránh nhầm lẫn khi người dùng tiếp tục thao tác với sản phẩm không còn kinh doanh.

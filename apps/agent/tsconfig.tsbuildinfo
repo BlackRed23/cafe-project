@@ -1,0 +1,1 @@
+{"root":["./src/public-api.ts","./src/server.ts","./src/worker.ts","./src/config/env.ts","./src/errors/http-error.ts","./src/jobs/inventory-scan.job.ts","./src/repositories/agent.repository.ts","./src/services/agent.service.ts","./src/services/gemini.service.ts","./src/services/recommendation.service.ts","./src/utils/logger.ts","./src/utils/textencoding.ts"],"version":"5.9.2"}

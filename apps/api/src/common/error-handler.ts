@@ -14,7 +14,16 @@ export const errorHandler = (error: Error & { status?: number }, _req: Request, 
     }
 
     if (error instanceof HttpError) {
-        sendError(res, error.statusCode, error.message);
+        if (error.code) {
+            res.type('application/json; charset=utf-8').status(error.statusCode).json({
+                success: false,
+                message: error.message,
+                code: error.code,
+                data: null
+            });
+        } else {
+            sendError(res, error.statusCode, error.message);
+        }
         return;
     }
 

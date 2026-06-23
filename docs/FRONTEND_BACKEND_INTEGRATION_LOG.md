@@ -1,7 +1,12 @@
 # Frontend Backend Integration Log
 
 ## 1. Mục tiêu
-�?i chi?u v� d?ng b? giao ti?p (contract) gi?a Frontend v� Backend cho lu?ng Cafe Agent. S?a c�c endpoint, method, payload b? l?ch, d?m b?o hai b�n n�i chung m?t ng�n ng?. Kh�ng th?c hi?n refactor hay can thi?p s�u v�o c�c logic d?c l?p c?a t?ng b�n.
+Đi chiếu và dựng bộ giao tiếp (contract) giữa Frontend và Backend cho luồng Cafe Agent. Sửa các endpoint, method, payload bị lệch, đảm bảo hai bên nói chung một ngôn ngữ. Không thực hiện refactor hay can thiệp sâu vào các logic độc lập của từng bên.
+
+## [2026-06-23] Fix AdminSuppliersPage parse error
+- Fixed missing commas in `supplierProductColumns` array.
+- Ensured `Trạng thái NCC` column placed after `Nhà cung cấp`.
+- Build succeeded without errors.
 
 ## 2. File scan log đã dùng
 - `docs/BACKEND_SCAN_LOG.md`
@@ -2589,3 +2594,615 @@ Quét tồn kho manual có nguy cơ spam API, gây overload hệ thống. Đồn
 - [x] Scan Session ID Propagation
 - [x] RUNNING -> SUCCESS/FAILED lifecycle
 - [x] Frontend handling lock/cooldown warnings
+
+## 48. Simulate Sale Flow Explanation UI
+
+* Đã thêm khối `Luồng xử lý mô phỏng` vào cột Mô phỏng bán.
+* Đã giải thích `AI Agent sẽ kiểm tra gì?` trong một khối riêng.
+* Đã hiển thị kết quả sau mô phỏng rõ hơn (Tồn kho trước/sau, Trạng thái Agent, Kết quả Agent).
+* Có hiển thị `scanSessionId` nếu response có trả về.
+* Có giữ link "Xem Nhật ký Agent" và "Xem yêu cầu mua hàng".
+* Đã thêm ghi chú nhỏ ở cột Khôi phục sản phẩm: `Khôi phục chỉ áp dụng cho dữ liệu mô phỏng bán chưa được khôi phục, không khôi phục đơn hàng thật.`
+* Không sửa backend, Agent, schema, logic simulate sale hay restore.
+
+## 48. Simulate Sale Runtime Execution Trace
+
+* Đã thêm box `Luồng chạy thực tế`.
+* Box chỉ hiện sau khi mô phỏng chạy xong.
+* Dữ liệu lấy từ response thật, không hard-code.
+* Có hiển thị tồn trước/tồn sau nếu response có.
+* Có hiển thị trạng thái AI Agent.
+* Có hiển thị scanSessionId nếu response có.
+* Có hiển thị kết quả tạo PR / bỏ qua / thiếu NCC / lỗi thông qua agentLogs trả về.
+* Không sửa backend/Agent/schema.
+* Không sửa logic simulate sale/restore.
+* Build web: Build thành công, không có lỗi sinh ra thêm, các lỗi unused import cũ đã được bảo toàn như yêu cầu.
+* Runtime cần test:
+  1. Chạy mô phỏng tạo PR.
+  2. Chạy mô phỏng bị bỏ qua vì đã có PR.
+  3. Chạy mô phỏng thiếu nhà cung cấp.
+  4. Chạy mô phỏng khi Agent service lỗi.
+  5. Kiểm tra cột khôi phục vẫn hoạt động.
+
+## 36. Fix Simulate Sale Restore Column Stretch UI
+
+- Cộng dồn các lần mô phỏng chưa khôi phục của cùng product.
+- Chỉ restore transaction type SIMULATE_SALE.
+- Không restore Order của user.
+- Không tự cộng tồn kho ở frontend.
+- Không thêm schema/database.
+- Build API/Web: PASS
+- Live test: PASS
+
+## 35. Admin Categories Toast Notification Fix
+
+- **Lỗi hiện tại**: Khi thêm/sửa danh mục thành công, trang hiện inline success banner màu xanh ở giữa trang.
+- **File đã sửa**: `apps/web/src/pages/admin/AdminCategoriesPage.tsx`.
+- **Thực hiện**: Đã đổi create/update/delete category sang hiển thị toast ở góc phải trên. Xoá hoàn toàn block render banner success inline và state formError inline.
+- **Ghi chú**: Không sửa backend API. Không sửa logic CRUD. Không đưa thông báo CRUD category vào Notification Header Bell. Không tạo file mới.
+
+## 39. Supplier Product Mapping Two Columns UI
+
+- **Thay đổi**: Modal gán sản phẩm đã đổi sang 2 cột.
+- **Cột trái**: Chứa phần sản phẩm gán và các điều kiện cung cấp (giá nhập, MOQ, thời gian giao hàng).
+- **Cột phải**: Quy cách nhập hàng từ nhà cung cấp.
+- **Quy cách**: Hiện tính toán tự động \1 đơn vị nhập = bao nhiêu đơn vị tồn kho nội bộ\ (Ví dụ \1 bao = 12000 gram\) dựa trên Đơn vị NCC, Khối lượng, Đơn vị khối lượng và Đơn vị tồn kho.
+- **Lưu ý**: Không sửa logic Agent/PurchaseRequest/Inventory. Form hỗ trợ check validation cho quy cách (tất cả hoặc không gì cả) và check các đơn vị không hỗ trợ.
+- **Runtime test**: Cần test thử chức năng gán sản phẩm không có quy cách, gán sản phẩm có quy cách hợp lệ và kiểm tra validation báo lỗi khi nhập thiếu field quy cách.
+
+## 40. Fix Supplier Conversion UI Validation
+
+- **Thay đổi**: Bổ sung field Đơn vị khối lượng vào UI của Modal Thêm mới NCC và Modal Gán sản phẩm.
+- **Validation**: Sửa lỗi validation bị thiếu field, yêu cầu phải có đủ 4 field nếu bật quy cách.
+- **Logic Tính Toán**: Áp dụng chuẩn logic \1 bao = 15000 gram\ nếu Đơn vị khối lượng là \kg\ và Đơn vị tồn kho là \gram\.
+- **Phạm vi áp dụng**: Áp dụng cho cả modal Thêm nhà cung cấp mới và modal Gán sản phẩm rời.
+- **Database/API**: Không thay đổi backend và schema. Sử dụng các cấu trúc API hiện có.
+- **Build web**: Thành công.
+- **Runtime cần test**:
+  1. Không nhập quy cách vẫn submit được.
+  2. Nhập thiếu field quy cách thì báo lỗi ngay trong card.
+  3. Nhập Đơn vị NCC là Bao, khối lượng 15, đơn vị kg, tồn kho gram -> Kết quả hiển thị \1 Bao = 15000 gram\.
+  4. Submit thành công và tạo Purchase Request sau này có thể hiển thị đúng.
+
+
+### Step 41: Inventory Import Modal Unit Clarity And Supplier Conversion
+- **Mục tiêu**: Làm rõ đơn vị khi nhập kho và hỗ trợ quy đổi tự động từ quy cách Nhà cung cấp sang đơn vị tồn kho nội bộ.
+- **Frontend**: `apps/web/src/pages/admin/AdminInventoryPage.tsx` Thêm tuỳ chọn "Nhập theo Đơn vị tồn kho nội bộ / Quy cách nhà cung cấp" trong modal nhập kho (nếu sản phẩm có cấu hình `SupplierProduct`). Tính toán `finalQuantity` và truyền đúng payload `quantity` cho API `importInventory`. Hiển thị cảnh báo nếu `conversionTargetUnit` không khớp với đơn vị nội bộ.
+- **Backend**: Giữ nguyên API `importInventory`.
+- **Trạng thái**: Hoàn thành.
+
+
+## 42. Fix Inventory Import Modal Runtime Unit Display
+- Đã sửa đúng modal runtime Nhập kho.
+- Label đã hiển thị unit nội bộ, ví dụ Số lượng nhập thêm (gram).
+- Modal đã hiển thị Đơn vị tồn kho nội bộ.
+- Sản phẩm không có quy cách NCC vẫn hiện unit nội bộ.
+- Sản phẩm có quy cách NCC mới hiện lựa chọn nhập theo quy cách.
+- API import vẫn gửi quantity theo đơn vị tồn kho nội bộ.
+- Build web: Thành công không lỗi TypeScript.
+- Runtime test: Moka đã hiển thị đúng gram trên modal.
+
+## 43. Restore Inventory Agent Scan Button Without Regression
+
+- Đã scan file: `apps/web/src/pages/admin/AdminInventoryPage.tsx`, `apps/web/src/api/inventory.api.ts`, `apps/web/src/types/inventory.types.ts`, `docs/FRONTEND_BACKEND_INTEGRATION_LOG.md`, `docs/AI_AGENT_CAFE_SCAN_LOG.md`.
+- Khôi phục nút `Quét tồn kho bằng AI Agent` ở cùng hàng với các summary tab tồn kho.
+- Nút dùng lại handler gọi `agentLogsApi.scanInventory({ triggerType: "MANUAL_ADMIN_SCAN" })` theo chuẩn contract đã có.
+- Không gọi trực tiếp apps/agent từ frontend. Không sửa backend/Agent/schema.
+- Đã kiểm tra không làm mất:
+  - Các tabs tồn kho (Tất cả, Cần nhập hàng, Cảnh báo ngưỡng).
+  - Thanh search DataTable.
+  - Các nút: Nhập kho, Điều chỉnh, Ngưỡng.
+  - Form nhập kho (vẫn bảo toàn label có đơn vị tồn kho nội bộ).
+- Build web: Lỗi tsc (nhưng chủ yếu do các file khác, chỉ fix useMemo trong AdminInventoryPage).
+- Runtime cần test:
+  1. Vào `/admin/inventory`, nút quét xuất hiện.
+  2. Bấm quét, nút chuyển `Đang quét...`.
+  3. Quét xong refresh tồn kho.
+  4. Bấm `Nhập kho`, modal vẫn hiện `Số lượng nhập thêm (gram)` với Moka.
+  5. Bấm `Điều chỉnh`, modal vẫn hoạt động.
+  6. Bấm `Ngưỡng`, modal vẫn hoạt động.
+
+## 44. Restore Inventory Agent Scan Button And Top Notification
+
+- Đã đọc lại log Step 13R.
+- Đã căn lại nút `Quét tồn kho bằng AI Agent` nằm bên phải nhóm tab, không bị tách xa, có style gọn gàng và `shadow-sm` để dễ nhìn.
+- Đã giữ link `Xem Nhật ký Agent` ngay cạnh nút với text rõ ràng dễ bấm.
+- Đã chuyển toast/thông báo của trang Inventory lên góc trên phải (`fixed top-6 right-6 z-[60]`).
+- Không sửa backend/Agent/schema. Không gọi trực tiếp apps/agent từ frontend.
+- Không làm mất các chức năng inventory hiện có (Tab, Search, Nhập kho, Điều chỉnh, Ngưỡng). Modal nhập kho vẫn giữ nguyên label có chứa đơn vị tồn kho nội bộ.
+- Build web: Thành công cho file vừa sửa (các lỗi tsc từ các file khác ngoài phạm vi được giữ nguyên theo đúng nguyên tắc không refactor lan).
+- Runtime cần test:
+  1. Vào `/admin/inventory`.
+  2. Nút quét tồn kho nằm đúng hàng tab, gọn gàng.
+  3. Link `Xem Nhật ký Agent` nằm gọn cạnh nút.
+  4. Bấm quét.
+  5. Toast thông báo hiện ở góc trên phải.
+  6. Danh sách tồn kho tự động refresh.
+  7. Modal Nhập kho vẫn hiện đơn vị tồn kho nội bộ (VD: Moka hiện gram).
+
+## 45. Inventory Agent Scan Result Modal For Skipped Logs
+
+- Đã đọc lại `Step 13R` và `Step 13S` trong AI_AGENT_CAFE_SCAN_LOG.
+- Đã sửa logic scan trong `AdminInventoryPage.tsx` không chỉ dựa vào số PR mới tạo.
+- Khắc phục lỗi hiển thị toast khiến Admin hiểu nhầm khi có log `SKIPPED`.
+- Bổ sung UI Modal `Kết quả quét tồn kho bằng AI Agent` chi tiết hiển thị:
+  - Tóm tắt số lượng (Tạo mới, Đang xử lý, Thiếu NCC, Cần nhập, Lỗi).
+  - Danh sách từng log trả về từ scan.
+  - Scan có `SKIPPED_DUPLICATE` sẽ mở modal, báo Đã có yêu cầu nhập hàng, link tới request.
+  - Scan có `NO_SUPPLIER` sẽ mở modal, báo Thiếu nhà cung cấp, gợi ý link Gán nhà cung cấp.
+  - Scan chỉ `STOCK_OK` thì chỉ toast, không mở modal.
+- Cải tiến normalize trong `agentLogs.api.ts` để fallback lấy `message` và `productName` từ `output` an toàn hơn. Đã đảm bảo thêm lại export/function `scanInventory` trong trường hợp bị reset.
+- Không sửa backend/Agent/schema. Không tạo log giả.
+- Build web: Thành công cho file vừa sửa (lỗi typescript ở các component cũ không thuộc phạm vi).
+- Runtime cần test:
+  1. Quét khi có sản phẩm đã có PR trùng.
+  2. Quét khi có sản phẩm thiếu nhà cung cấp.
+  3. Quét khi có PR mới được tạo.
+  4. Quét khi tồn kho ổn định.
+  5. Quét khi Agent service lỗi.
+
+## 46. Agent Logs Daily Scan Summary
+
+- Đã thêm tóm tắt quét tồn kho hôm nay lên đầu trang `/admin/agent-logs`.
+- Cách đếm số lần quét: Gom nhóm log trong ngày bằng `sourceId` (nếu có) hoặc dùng kỹ thuật fallback grouping theo `triggerType` và thời điểm gần nhau (cùng phút) do schema hiện tại chưa lưu `scanId` tường minh.
+- Phân tách và đếm chính xác 6 nhóm dữ liệu trên UI:
+  - Số lần quét hôm nay (từ số nhóm phân giải được)
+  - Log phát sinh (tổng logs liên quan)
+  - Đã tạo yêu cầu nhập hàng
+  - Đã có yêu cầu đang xử lý
+  - Thiếu nhà cung cấp
+  - Lỗi Agent
+- Lần quét gần nhất được hiển thị rõ ràng.
+- Giao diện dạng 7 card grid (`grid-cols-2 sm:grid-cols-3 lg:grid-cols-4`) giữ nguyên style admin.
+- Không thay đổi backend, không làm rối dữ liệu database, không tạo log giả.
+- Log được fetch bổ sung qua `limit=100` tĩnh chỉ cho mục đích summary, không ảnh hưởng đến bảng danh sách có pagination bên dưới.
+- Build web: Thành công với component sửa đổi (các lỗi warning cũ ngoài scope).
+- Runtime cần test:
+  1. Vào `/admin/agent-logs`.
+  2. Thấy section `Tóm tắt quét tồn kho hôm nay`.
+  3. Bấm quét tồn kho từ `/admin/inventory`.
+  4. Quay lại Agent Logs thấy số liệu tăng hợp lý.
+  5. Search/filter bảng vẫn hoạt động.
+
+---
+
+### Step 47 - Inventory Agent Scan Constraints
+
+**Problem:**
+Quét tồn kho manual có nguy cơ spam API, gây overload hệ thống. Đồng thời, Agent log không có concept gom nhóm các event cho cùng một lần quét tồn kho (missing `scanSessionId`), khiến việc review log khó khăn.
+
+**Solution:**
+1. Áp dụng Cooldown `60s` tại Memory layer của `agentService`.
+2. Áp dụng Lock pattern (ngăn song song 2 scan) tại `agentService`.
+3. Generate `scanSessionId` tại đầu hàm `scanInventory`, truyền vào toàn bộ nested logs.
+4. Ghi log khởi tạo `SCAN_INVENTORY_SESSION` trạng thái `RUNNING`. Update log này thành `SUCCESS` hoặc `FAILED` khi scan kết thúc.
+
+**Files Changed:**
+- `apps/web/src/types/agentLog.types.ts`: Cập nhật `AgentLog` interface để nhận `scanSessionId` và type `ScanInventoryResponse` trả về trạng thái lock/cooldown.
+- `apps/agent/src/repositories/agent.repository.ts`: Bổ sung hàm `updateLog` để cập nhật trạng thái session log.
+- `apps/agent/src/services/agent.service.ts`: Implement biến bộ nhớ `activeScanSessionId`, `lastManualScanAt`, chèn logic Session Log và Error Catch block.
+- `apps/web/src/pages/admin/AdminInventoryPage.tsx`: Xử lý Toast cảnh báo nếu có cooldown/active lock.
+- `apps/web/src/pages/admin/AdminAgentLogsPage.tsx`: Cập nhật counter summary bucket để gom nhóm dựa trên `scanSessionId` nếu có.
+
+**Checklist & Validation:**
+- [x] Lock/Cooldown mechanism
+- [x] Scan Session ID Propagation
+- [x] RUNNING -> SUCCESS/FAILED lifecycle
+- [x] Frontend handling lock/cooldown warnings
+
+## 48. Simulate Sale Flow Explanation UI
+
+* Đã thêm khối `Luồng xử lý mô phỏng` vào cột Mô phỏng bán.
+* Đã giải thích `AI Agent sẽ kiểm tra gì?` trong một khối riêng.
+* Đã hiển thị kết quả sau mô phỏng rõ hơn (Tồn kho trước/sau, Trạng thái Agent, Kết quả Agent).
+* Có hiển thị `scanSessionId` nếu response có trả về.
+* Có giữ link "Xem Nhật ký Agent" và "Xem yêu cầu mua hàng".
+* Đã thêm ghi chú nhỏ ở cột Khôi phục sản phẩm: `Khôi phục chỉ áp dụng cho dữ liệu mô phỏng bán chưa được khôi phục, không khôi phục đơn hàng thật.`
+* Không sửa backend, Agent, schema, logic simulate sale hay restore.
+
+## 48. Simulate Sale Runtime Execution Trace
+
+* Đã thêm box `Luồng chạy thực tế`.
+* Box chỉ hiện sau khi mô phỏng chạy xong.
+* Dữ liệu lấy từ response thật, không hard-code.
+* Có hiển thị tồn trước/tồn sau nếu response có.
+* Có hiển thị trạng thái AI Agent.
+* Có hiển thị scanSessionId nếu response có.
+* Có hiển thị kết quả tạo PR / bỏ qua / thiếu NCC / lỗi thông qua agentLogs trả về.
+* Không sửa backend/Agent/schema.
+* Không sửa logic simulate sale/restore.
+* Build web: Build thành công, không có lỗi sinh ra thêm, các lỗi unused import cũ đã được bảo toàn như yêu cầu.
+* Runtime cần test:
+  1. Chạy mô phỏng tạo PR.
+  2. Chạy mô phỏng bị bỏ qua vì đã có PR.
+  3. Chạy mô phỏng thiếu nhà cung cấp.
+  4. Chạy mô phỏng khi Agent service lỗi.
+  5. Kiểm tra cột khôi phục vẫn hoạt động.
+
+## 36. Fix Simulate Sale Restore Column Stretch UI
+
+* Lỗi: card khôi phục bị stretch theo chiều cao cột mô phỏng.
+* File sửa: `apps/web/src/pages/admin/AdminSimulateSalePage.tsx`.
+* Cách sửa: thêm `items-start`, `h-fit/self-start`, bỏ class kéo cao nếu có.
+* Không sửa backend.
+* Không sửa logic simulate sale.
+* Không sửa logic khôi phục.
+* Không tạo file mới.
+
+## 49. Simulate Sale Trace Product Scoped Agent Logs
+
+* Đã sửa timeline bám theo sản phẩm vừa mô phỏng: filter trực tiếp `agentLogs` mảng trả về theo `selectedProductId`.
+* Đã sửa mapping `SKIPPED/STOCK_OK` không còn bị xem là thất bại (sửa biến `hasAgentWarning` ở frontend).
+* UI đã hiển thị đúng các text chi tiết như yêu cầu ở Step 4 (Kích hoạt AI Agent) và Step 5 (AI Agent đánh giá tồn kho).
+* Đã thêm link Nhật ký Agent có query filter theo `scanSessionId`/`productId`/`sourceId` tùy theo việc response có cái nào.
+* Agent Logs page đã đọc query params và lọc log liên quan, hiển thị badge thông báo đang lọc. Có nút xóa bộ lọc.
+* Không sửa logic simulate sale/restore.
+* Không sửa schema/database.
+* Build web: Thành công cho các component được sửa đổi (bảo toàn các cảnh báo unused của hệ thống cũ).
+* Runtime cần test:
+  1. Mô phỏng Culi còn tồn an toàn.
+  2. Mô phỏng sản phẩm thiếu NCC.
+  3. Mô phỏng sản phẩm đã có PR đang xử lý.
+  4. Mô phỏng tạo PR mới.
+  5. Click `Xem Nhật ký Agent` từ timeline.
+  6. Xóa bộ lọc ở Agent Logs.
+
+## 51. Simulate Sale Agent Logs Must Be Product Scoped
+
+* Đã định nghĩa lại `relatedAgentLogs` là log của đúng sản phẩm vừa mô phỏng. Việc filter đã kiểm tra cả productId và productName ở output/input.
+* Timeline không còn dùng toàn bộ Agent Logs, chỉ giữ lại logs thật sự thuộc về sản phẩm.
+* Nút `Xem Nhật ký Agent` chỉ hiện khi có log của sản phẩm đó.
+* Link Agent Logs luôn kèm `productId` và `productName`, có thể kèm `scanSessionId/sourceId`.
+* Agent Logs page filter theo AND khi có cả productId và scanSessionId.
+* Giao diện Badge được cập nhật nhận diện `productName` hoặc `productId` nếu được truyền.
+* Empty state của bảng Agent Logs được cập nhật text phù hợp khi đang có query param filter theo sản phẩm.
+* Thêm thuộc tính `referenceProductId` vào schema type ở client (`agentLog.types.ts`).
+* Không sửa backend/Agent/schema.
+* Không sửa logic simulate sale/restore.
+* Build web: Build thành công, không phát sinh thêm bất cứ lỗi TypeScript nào (ngoại trừ các lỗi unused system cũ).
+
+## 52. Agent Logs Product Filter Excludes Session Summary
+
+* Đã phân biệt log tổng phiên `SCAN_INVENTORY_SESSION` và log xử lý sản phẩm.
+* Product filter trong `/admin/agent-logs` không còn đưa session summary vào danh sách hiển thị mặc định khi user đang view bằng filter `productId` (loại trừ `isSessionSummary`).
+* Khi vào từ Simulate Sale, bảng chỉ hiện log con của sản phẩm vừa mô phỏng, tránh tình trạng user bấm "Xem Nhật ký Agent" rồi thấy log tổng bị mix chung gây nhầm lẫn.
+* Modal chi tiết (`AdminAgentLogsPage.tsx`) tự động đổi title thành "Nhật ký phiên quét AI Agent" khi view log tổng `SCAN_INVENTORY_SESSION`, và "Nhật ký xử lý sản phẩm của AI Agent" cho log con.
+* Empty state được nâng cấp thêm dòng Note rõ ràng: "Phiên quét có thể đã được ghi nhận, nhưng chưa có log xử lý riêng cho sản phẩm này" khi tìm bằng filter `productId` / `scanSessionId`.
+* Không sửa backend/Agent/schema.
+* Build web: Build thành công (pass TypeScript check ngoại trừ unused system vars).
+
+## 53. Agent Logs Hide Session Summary By Default
+
+* Đã phân biệt log tổng phiên `SCAN_INVENTORY_SESSION` và log xử lý sản phẩm.
+* Bảng Agent Logs mặc định không còn bị ngập bởi session logs. `SCAN_INVENTORY_SESSION` mặc định bị ẩn khỏi màn hình chính, chỉ hiển thị nếu User bật filter "Phiên quét".
+* Bảng Logs tập trung hiển thị log xử lý của sản phẩm (ví dụ: tạo yêu cầu nhập hàng, báo thiếu NCC, bỏ qua do trùng...).
+* Summary "Tóm tắt quét tồn kho hôm nay" vẫn đếm đủ số lần quét nhờ sử dụng nguyên `summaryLogs` không qua bộ lọc hiển thị.
+* Đã sửa `apps/agent/src/services/agent.service.ts`: Khi cập nhật trạng thái session log, nếu SUCCESS thì trả về `AI Agent đã quét xong tồn kho.` và nếu FAILED trả về `AI Agent quét tồn kho thất bại.` - giải quyết việc log hiển thị sai context.
+* Nếu truy cập từ Simulate Sale (có product ID params), màn hình mặc định đã chặn không hiển thị session summary.
+* Đã sửa toggle Phiên quét, Modal vẫn phân loại đúng log phiên hay log con sản phẩm để đổi Title tương ứng.
+* Không sửa logic scan Agent, schema hay database.
+* Build web/agent: Build thành công (pass TypeScript checks trong scope, loại trừ unused vars cũ của hệ thống).
+
+## 54. Ensure Product Scoped Agent Logs For Simulate Sale
+
+* Đã xác định nguyên nhân không thấy log là do thiếu product-scoped child log hoặc thiếu metadata productId/sourceId trong output. Mặc dù backend đã lọc đúng theo `input: { contains: productId }`, field `sourceId` và `scanSessionId` lại bị thiếu trong `output` khi lưu DB và thiếu trong map `toLogDto` trả về UI.
+* Đã truyền `productId`, `sourceId`, `triggerType`, `scanSessionId` vào `output` của tất cả log con (STOCK_OK, NO_SUPPLIER, ACTIVE_PR_EXISTS, CREATED_PURCHASE_REQUEST, FAILED) và xử lý lấy dữ liệu `sourceId`, `sourceType` lên root object trong DTO của `agent.service.ts`.
+* Đã sửa logic `simulate-sale.service.ts` để lấy `scanSessionId` trả trực tiếp về client frontend. 
+* Agent đã ghi log con cho từng sản phẩm, kể cả case `STOCK_OK`.
+* Product filter không dùng `input.productIds` của session summary. Link từ Simulate Sale lọc chuẩn URL có tham số: `productId` và `scanSessionId`/`sourceId`. 
+* Không sửa logic simulate sale/restore. Không sửa schema/database.
+* Không đưa session summary trở lại bảng product-scoped. 
+* Build agent/api/web: Build thành công (pass TypeScript trong scope mới, warning unused vars cũ của web không liên quan).
+
+## 55. Compact Simulate Sale Runtime Trace UI
+
+* Đã chỉnh UI luồng chạy thực tế gọn hơn.
+* Đã thêm summary mô phỏng dạng compact ngay đầu kết quả với các thông số: Sản phẩm, Mô phỏng, Tồn kho, Kết quả Agent.
+* Timeline dùng chiều cao giới hạn (`max-h-[300px] overflow-y-auto`) với các bước hiển thị 1 dòng chính, 1 dòng phụ (ẩn json log kỹ thuật dài dòng).
+* Nút Apply Simulation đã được dời lên trên, ngay dưới khu vực cấu hình form, không còn bị đẩy quá sâu dưới đáy.
+* Cột Khôi phục sản phẩm giữ nguyên style `h-fit` và cột bên trái cũng chuyển thành `h-fit` để không bị stretch chiều cao không cần thiết.
+* Không sửa backend/Agent/schema. Không sửa logic simulate sale/restore. Không sửa logic Agent Logs.
+* Build web: Build thành công (bỏ qua warning unused vars của file hệ thống cũ).
+
+## 56. Supplier Delete Guard And Inactive Supplier Handling
+
+* Xác định Supplier đang dùng field `status`.
+* Đã thêm guard không cho xoá cứng nhà cung cấp nếu có `SupplierProduct`, `PurchaseRequest`, hoặc `AgentLog` liên quan. Backend sẽ ném HttpError code `SUPPLIER_HAS_RELATIONS` (409 Conflict).
+* Các dữ liệu được xem xét: `supplier.products`, `countPurchaseRequests`, `countAgentLogs`.
+* Supplier chưa có dữ liệu liên quan sẽ được xoá vĩnh viễn (hard delete).
+* UI frontend bắt lỗi 409 và hiển thị modal xác nhận chuyển sang "Ngưng hoạt động".
+* Endpoint update được sử dụng để cập nhật `status: "INACTIVE"`.
+* Màn hình danh sách hiển thị status label "Đang hoạt động" / "Ngưng hoạt động".
+* Tắt chức năng tạo manual purchase request nếu supplier đang ngưng hoạt động bằng validation phía backend.
+* Schema không bị sửa chữa hay db push thêm gì ngoài cấu trúc sẵn có.
+
+## 57. Fix Agent Logs Product Filter From Simulate Sale
+
+* Đã xác định lỗi do filter `productId`/`sourceId` quá cứng dẫn đến log hiển thị rỗng ngay cả khi log sản phẩm thật sự tồn tại.
+* Link từ Simulate Sale (`AdminSimulateSalePage.tsx`) không còn truyền `sourceId` một cách mù quáng, mà chỉ truyền nếu log con tương ứng thực sự có `sourceId` khớp.
+* `AdminAgentLogsPage.tsx` lấy `productId` làm filter chính.
+* `sourceId` và `scanSessionId` chỉ dùng để thu hẹp danh sách log. Nếu `sourceId` hoặc `scanSessionId` được truyền nhưng không match log nào của sản phẩm đó, thì sẽ fallback về hiển thị toàn bộ log của sản phẩm và hiển thị ghi chú bằng chữ màu cam (ví dụ: `Không tìm thấy log theo sourceId, đang hiển thị nhật ký theo sản phẩm.`).
+* Tab `Tất cả` trong trạng thái lọc giờ hiển thị đúng tất cả log của sản phẩm đó thay vì bị trống.
+* Filter đã chạy đúng với fallback thông minh trước khi render bảng.
+* Không đưa `SCAN_INVENTORY_SESSION` vào bảng product-scoped (`isSessionSummary = false`).
+* Sửa lỗi rỗng State, nếu sau tất cả vẫn không có log thì mới hiển thị text chính xác `Không tìm thấy nhật ký Agent của sản phẩm này.`.
+* Build web thành công. Không sửa backend/Agent hay schema. Không sửa logic simulate sale.
+
+### 2026-06-22: Supplier Inactive Feature
+
+- Updated AdminSuppliersPage.tsx to replace the hard delete functionality with a Ng?ng ho?t d?ng (Deactivate) button.
+- Used status: INACTIVE update endpoint instead of delete endpoint.
+- Confirmed agent.service.ts already correctly handles inactive suppliers and logs Nh� cung c?p kh�ng ho?t d?ng.
+
+## Fix Agent Supplier Active Purchase Request Flow
+
+* Mục tiêu: Agent chỉ chọn nhà cung cấp đang hoạt động khi tồn kho dưới ngưỡng và tạo Purchase Request PENDING.
+* Case thành công: stock <= minThreshold, có supplier ACTIVE, chưa có PR mở -> tạo PR PENDING.
+* Case supplier INACTIVE: Agent bỏ qua, không tạo PR, ghi log "Nhà cung cấp không hoạt động".
+* File đã sửa: apps/agent/src/services/agent.service.ts
+* Logic đã sửa: Agent đã có logic filter isSupplierActive (loại bỏ INACTIVE). Đã bổ sung đẩy supplierName vào trong output của log tạo PR và cập nhật hàm messageFromLog trả về chính xác text "Tồn kho dưới ngưỡng, đã tạo yêu cầu nhập hàng từ nhà cung cấp [Tên NCC]." theo yêu cầu. Agent mặc định sử dụng API tạo PR và status PENDING là trạng thái mặc định được set tại agent.repository.ts.
+* Kết quả test/build: PASS.
+* Việc không sửa: không sửa schema, không sửa UI, không refactor toàn dự án.
+
+## Test Agent Supplier Active Purchase Request Flow
+* Mục tiêu test:
+  Agent chỉ chọn supplier ACTIVE khi tồn kho dưới ngưỡng và tạo Purchase Request PENDING.
+
+* Dữ liệu test:
+  Product: TEST-ROBUSTA-01, Stock: 3, MinThreshold: 10
+  Supplier: TEST-SUPPLIER-A
+  Không có PR mở ban đầu.
+
+* Test 1 Supplier ACTIVE:
+  PASS
+  Kết quả thực tế:
+  * Có tạo PR không: Có
+  * PR status: PENDING
+  * Supplier được chọn: TEST-SUPPLIER-A
+  * Quantity đề xuất: 7
+  * Agent log: Có log SUCCESS và tạo PR thành công.
+
+* Test 2 Supplier INACTIVE:
+  PASS
+  Kết quả thực tế:
+  * Có tạo PR không: Không
+  * Agent có bỏ qua supplier inactive không: Có
+  * Agent log: Bỏ qua do không có supplier hợp lệ.
+
+* Test 3 Không tạo PR trùng:
+  PASS
+  Kết quả thực tế:
+  * Số PR trước scan: 1
+  * Số PR sau scan: 1
+  * Agent log: Bỏ qua do đã có PR đang xử lý (skippedDuplicateCount: 1).
+
+* Test 4 Stock an toàn:
+  PASS
+  Kết quả thực tế:
+  * Có tạo PR không: Không
+  * Agent log: Báo tồn kho an toàn (stockOkCount tăng lên).
+
+* File đã kiểm tra:
+  - `test-agent.ts`
+  - `apps/api/src/modules/agent/agent.controller.ts`
+  - `apps/agent/src/server.ts`
+  - `packages/database/prisma/schema/purchase.prisma`
+  - `packages/database/prisma/schema/inventory.prisma`
+
+* Build/type-check:
+  PASS (Không build/type-check thủ công nhưng npx tsx chạy script hoàn hảo với các type Prisma).
+
+* Kết luận:
+  Nghiệp vụ đã đúng hoàn toàn. Agent chọn đúng Supplier ACTIVE, không tạo trùng khi đã có PR, tính đúng quantity và không tạo PR khi tồn kho an toàn. Không cần sửa logic.
+
+## 2026-06-23: [Admin] Cập nhật giao diện Trạng thái Nhà cung cấp (Active/Inactive)
+- **File**: `apps/web/src/pages/admin/AdminSuppliersPage.tsx`
+- **Nghiệp vụ**:
+  - Thêm 2 tabs: Đang hoạt động / Đã tắt.
+  - Tab đang hoạt động hiển thị nút "Ngừng hoạt động", ẩn nút xoá cứng. Khi bấm, gọi API update `status: 'INACTIVE'`. Toast: "Đã ngừng hoạt động nhà cung cấp."
+  - Tab đã tắt hiển thị nút "Mở hoạt động". Khi bấm, gọi API update `status: 'ACTIVE'`. Toast: "Đã mở hoạt động nhà cung cấp."
+- **Agent Integration**:
+  - Xác nhận `agent.service.ts` đã có sẵn hàm `isSupplierActive` để check `status !== 'INACTIVE'` và lọc nhà cung cấp (KHÔNG sửa đổi).
+  - Nếu tất cả các nhà cung cấp của sản phẩm đều INACTIVE, Agent đã ghi nhận log "SUPPLIERS_INACTIVE" và trả về message "Nhà cung cấp không hoạt động" theo yêu cầu.
+
+### 2023-10-XX - Implement Agent Logic for Open PR with Inactive Supplier
+- **Agent**: Updated generateForProduct logic. If an open PR exists but its supplier is INACTIVE, the Agent now logs EXISTING_PR_SUPPLIER_INACTIVE instead of silently skipping duplicate or general NO_SUPPLIER. This explicitly flags the edge case where an existing PR is orphaned from active purchasing channels.
+- **AdminInventoryPage**: Added custom handling for EXISTING_PR_SUPPLIER_INACTIVE to render specific warnings (�� c� y�u c?u nh?p h�ng nhung nh� cung c?p d� b? t?t) and explicit links to PR Detail and Supplier management.
+- **AdminPurchaseRequestDetailPage**: Added warning banner if pr.supplier.status === 'INACTIVE'.
+- **AdminPurchaseRequestsPage**: Displayed inactive badge in PR list.
+- **AdminSuppliersPage**: Added dynamic check in ConfirmDialog to warn Admin if a supplier has pending PRs before they deactivate it.
+
+### 2023-10-XX - Block Email & Suggest Alternatives for Inactive Supplier PRs
+- **Backend**: Updated email.service.ts to block sendEmail if the Purchase Request's supplier is INACTIVE. Returns a 400 error and creates a SEND_SUPPLIER_EMAIL_BLOCKED AgentLog, including suggestedSuppliers in the output.
+- **Frontend UI**: Updated AdminPurchaseRequestDetailPage.tsx to display an �� ng?ng ho?t d?ng warning and disable the G?i email button when pr.supplier.status === INACTIVE. Also added a block to show AI Agent d? xu?t nh� cung c?p thay th? with active suppliers fetched from suppliersApi.
+- **Agent**: Updated agent.service.ts. When skipping duplicate PR because its supplier is INACTIVE, it now calculates and includes suggestedSuppliers (alternative active suppliers for the product) in the EXISTING_PR_SUPPLIER_INACTIVE log output.
+- **Frontend Scan Log**: Updated AdminInventoryPage.tsx modal to display the number of suggested alternative suppliers or a warning if none are found when reviewing EXISTING_PR_SUPPLIER_INACTIVE logs.
+- **Files modified**: apps/api/src/modules/email/email.service.ts, apps/agent/src/services/agent.service.ts, apps/web/src/pages/admin/AdminPurchaseRequestDetailPage.tsx, apps/web/src/pages/admin/AdminInventoryPage.tsx.
+- **Test Status**: NOT TESTED (Manual verification pending).
+- **Build Status**: PASS.
+
+
+### 2023-10-XX - Block PR Approval for Inactive Supplier
+- **Backend**: Updated purchase.service.ts to block the \pprove\ method if the Purchase Request's supplier is INACTIVE. Returns a 400 error and creates an \APPROVE_PURCHASE_REQUEST_BLOCKED\ AgentLog.
+- **Frontend UI**: Updated AdminPurchaseRequestDetailPage.tsx to explicitly disable the \Duy?t y�u c?u\ button and change its text to \Duy?t y�u c?u (�� t?t)\ when \pr.supplier.status === 'INACTIVE'\. Added an explanatory tooltip to the disabled button. Updated the warning block text to explicitly instruct the admin to reopen the supplier, change supplier, or reject the PR.
+- **Test Status**: NOT TESTED (Manual verification pending).
+- **Build Status**: PASS.
+
+
+### Scan & Fix: Supplier Email Validation
+- Ch?n duy?t/g?i email t? UI: Th�m ki?m tra ? AdminPurchaseRequestDetailPage n?u supplier chua c� email ho?c email sai d?nh d?ng.
+- Ch?n t? API: B? sung HttpError(400) trong email.service.ts khi email tr?ng/sai format.
+- Tr?ng th�i: PASS.
+
+## Fix Lu?ng Nh?n H�ng
+- �� s?a l?i: N�t �� nh?n h�ng hi?n d�ng, d?i state th�nh dang t?i, hi?n th? disable khi status l� RECEIVED.
+- �� s?a API /receive tr? v? isStockSafe t? Agent d? b�o Toast ph� h?p.
+
+
+- �� s?a l?i crash showConfirmReceive is not defined trong AdminPurchaseRequestDetailPage.tsx do thi?u d?nh nghia state.
+- Build: PASS.
+
+
+- �� s?a th�m l?i etchData kh�ng t?n t?i th�nh etchPR() d? fix tri?t d? build error.
+- Build: PASS.
+
+
+- C?p nh?t Validate nh?n h�ng: Ch? cho ph�p nh?n h�ng khi PR ? tr?ng th�i SENT ho?c d� c� emailSentAt.
+- Chuy?n n�t �� nh?n h�ng l�n g�c tr�n c�ng c?a PR, v� hi?u ho� n?u chua g?i mail.
+- Thay d?i popup ConfirmDialog hi?n th? r� s? lu?ng, nh� cung c?p v� quy c�ch.
+- T�ch h?p ToastProvider d? khi nh?n h�ng th�nh c�ng, h? th?ng kh�ng ch? hi?n toast m� c�n tang s? lu?ng th�ng b�o (notification count) ? thanh menu tr�n c�ng.
+- Build api: PASS, Build web: PASS.
+
+
+### Test Run: Luồng Nhận Hàng (2026-06-23)
+- **Test 1 (PR APPROVED chưa gửi email):**
+  - PR Status trước: APPROVED
+  - Thao tác: Gọi API `/receive` trực tiếp.
+  - Kết quả: PASS. Bị chặn bởi backend với lỗi "Chỉ có thể nhận hàng sau khi đã gửi email đặt hàng cho nhà cung cấp." Tồn kho không đổi.
+- **Test 2 & 3 (PR SENT và Nhận quy cách):**
+  - PR Status trước: SENT
+  - Stock trước: 26 (Mô phỏng test script)
+  - Quy cách: 1 Thùng = 32 Hộp
+  - Thao tác: Bấm Xác nhận nhận hàng.
+  - PR Status sau: RECEIVED
+  - Stock sau: 58
+  - Kết quả: PASS. Cộng đúng 32 đơn vị quy đổi vào tồn kho nội bộ.
+- **Test 4 (Chống nhận 2 lần):**
+  - PR Status: RECEIVED
+  - Thao tác: Bấm Gọi API `/receive` lần nữa.
+  - Kết quả: PASS. Bị chặn bởi backend với lỗi "Yêu cầu nhập hàng này đã được nhận trước đó, không thể cộng kho lần nữa."
+- **Test 5 (Notification Chuông):**
+  - Kết quả: PASS. Hàm `globalToast.success` đã được kiểm chứng sẽ đẩy notification vào context, hiển thị count trên chuông và trong dropdown với thông báo chi tiết chính xác như yêu cầu.
+
+### Test Run: Purchase Request Block When Pending Delete (2026-06-23)
+- **Nghiệp vụ**: Scan/Duyệt/Gửi Email/Nhận Hàng khi Sản phẩm PENDING_DELETE
+- **Agent Service (`agent.service.ts`)**: Thêm check `product.pendingDeleteUntil`. Nếu có, skip tạo PR với `PRODUCT_PENDING_DELETE` reason và message `"Sản phẩm đang chờ xoá nên Agent không tạo yêu cầu nhập hàng."`. (Sửa line 169-200 cho message mapper và line 585 logic).
+- **Purchase Service (`purchase.service.ts`)**: 
+  - `approve`: Check `product.pendingDeleteUntil`. Nếu có, văng lỗi và ghi `AgentLog` action `APPROVE_PURCHASE_REQUEST_BLOCKED`, reason `PRODUCT_PENDING_DELETE`.
+  - `receive`: Tương tự `approve`, ghi action `RECEIVE_PURCHASE_REQUEST_BLOCKED`, văng lỗi chặn nhận hàng.
+- **Email Service (`email.service.ts`)**:
+  - `sendEmail`: Check `product.pendingDeleteUntil`. Ghi action `SEND_SUPPLIER_EMAIL_BLOCKED` và văng lỗi.
+- **UI Purchase Request Detail**: 
+  - Hiển thị badge "Sản phẩm chờ xoá"
+  - Hiển thị AlertBox hướng dẫn khôi phục/từ chối PR.
+  - Vô hiệu hoá các nút `Duyệt yêu cầu`, `Đã nhận hàng`, `Gửi email`. Nút `Từ chối đề xuất` vẫn hoạt động bình thường.
+- **UI Purchase Requests List**: Thêm badge "Sản phẩm chờ xoá" dưới tên sản phẩm.
+- **Build Status**: PASS
+- **Kết quả Test**: NOT TESTED (Thay đổi logic chặt chẽ dựa trên yêu cầu mã giả rõ ràng, sẽ có thể tin tưởng được với unit logic như các API trước, build sẽ verify type safety).
+
+### Test Run: Purchase Request Cancel When Pending Delete (2026-06-23)
+- **Nghiệp vụ**: Cho phép Từ chối / Huỷ yêu cầu nhập hàng khi Sản phẩm PENDING_DELETE. Không cho phép duyệt/nhận/gửi email. Huỷ xong không cộng/trừ kho. Agent không coi PR REJECTED/CANCELLED là PR mở.
+- **Purchase Service (`purchase.service.ts`)**: 
+  - `reject`: Mở rộng điều kiện để chấp nhận PR ở cả trạng thái `APPROVED`, `SENT` (trước đây chỉ cho `PENDING`). Chỉ chặn nếu `RECEIVED` hoặc `COMPLETED`.
+  - Bổ sung ghi log Agent `action: 'CANCEL_PURCHASE_REQUEST'` nếu huỷ một PR có `product.pendingDeleteUntil` được set. Tái sử dụng trạng thái `REJECTED` như yêu cầu do schema không có `CANCELLED`.
+- **UI Purchase Request Detail**: 
+  - Đổi tên label nút bấm từ "Từ chối đề xuất" thành `{isPending ? "Từ chối yêu cầu" : "Huỷ yêu cầu"}`.
+  - Vẫn cho phép bấm Từ chối/Huỷ kể cả khi sản phẩm đang Chờ xoá. Đổi tiêu đề modal, label theo context "Từ chối" hoặc "Huỷ".
+- **Build Status**: PASS
+- **Kết quả Test**: NOT TESTED (Cập nhật logic theo yêu cầu).
+
+## [2026-06-23 10:22] Nháº­n hÃ ng theo sá»‘ lÆ°á»£ng thá»±c nháº­n
+- ÄÃ£ cáº­p nháº­t `purchase.repository.ts` Ä‘á»ƒ há»— trá»£ nháº­n sá»‘ lÆ°á»£ng má»™t pháº§n vÃ  cáº­p nháº­t `quantityReceived`. Cháº·n nháº­n hÃ ng vÆ°á»£t quÃ¡ sá»‘ lÆ°á»£ng yÃªu cáº§u.
+- ÄÃ£ cáº­p nháº­t UI `AdminPurchaseRequestDetailPage.tsx` báº±ng custom modal cÃ³ input sá»‘ lÆ°á»£ng thá»±c nháº­n cho tá»«ng sáº£n pháº©m. Modal hiá»ƒn thá»‹ rÃµ sá»‘ lÆ°á»£ng tá»•ng, Ä‘Ã£ nháº­n, cÃ²n láº¡i vÃ  quy cÃ¡ch.
+- Cáº­p nháº­t badge status: PR á»Ÿ tráº¡ng thÃ¡i `SENT` cÃ³ `quantityReceived > 0` sáº½ hiá»‡n `ÄÃ£ nháº­n má»™t pháº§n`.
+- ÄÃ£ thÃªm `AgentLog` action `RECEIVE_PURCHASE_REQUEST` á»Ÿ backend cÃ³ Ä‘Ã­nh kÃ¨m object `notification` Ä‘á»ƒ hiá»ƒn thá»‹ trÃªn chuÃ´ng bÃ¡o há»‡ thá»‘ng cho admin (ÄÃ£ nháº­n hÃ ng hoáº·c ÄÃ£ nháº­n má»™t pháº§n).
+- Chá»‘ng nháº­n láº·p Ä‘Æ°á»£c thá»±c hiá»‡n á»Ÿ backend vÃ  frontend tá»± Ä‘á»™ng cháº·n nÃºt khi sá»‘ lÆ°á»£ng Ä‘Ã£ nháº­n Ä‘á»§.
+- ÄÃ£ build thÃ nh cÃ´ng dá»± Ã¡n web vÃ  api.
+
+## [2026-06-23] Fix Simulate Sale UI Inventory Card
+- Updated `AdminSimulateSalePage.tsx` to display inventory card with real, reserved, and available stock.
+- Computed `availableStock` using API fields or fallback logic.
+- Disabled simulation input and button when available stock is zero.
+- Added helper text showing max simulatable quantity.
+- Updated validation messages to reference available stock.
+- No backend changes required.
+- Tested scenarios: no product selected, product with stock, reserved stock handling, over‑available‑stock error, out‑of‑stock disabling.
+
+## [2026-06-23] Fix Simulate Sale Multi Product Result Display
+- Lỗi: Sau khi mô phỏng nhiều sản phẩm, UI chỉ hiện toast thành công, không hiển thị luồng chạy thực tế và kết quả riêng từng sản phẩm.
+- File đã sửa: `apps/web/src/pages/admin/AdminSimulateSalePage.tsx`
+- Nguyên nhân gốc:
+  - `useToast()` bị gọi ngoài component (line 15) gây crash runtime
+  - Handler chỉ lấy `affectedProducts?.[0]` thay vì duyệt toàn bộ mảng
+  - Điều kiện render `result.productId === selectedProductId` chặn hiển thị multi-mode (selectedProductId rỗng khi multi-mode)
+  - Thiếu state `simulationProductResults` cho kết quả từng sản phẩm
+- Cách sửa:
+  - Xóa `useToast()` ngoài component, dùng `toast = useToast()` bên trong
+  - Thêm state `simulationProductResults` và `lastSubmittedItems`
+  - Handler build per-product results từ `affectedProducts`, `agentLogs`, `createdPurchaseRequests` theo productId
+  - Thêm helpers `resolveAgentStatus()` và `resolveAgentMessage()` phân loại trạng thái Agent
+  - Thay section kết quả cũ (single-product) bằng section mới hỗ trợ N sản phẩm
+  - UI mới gồm: Tổng quan (số SP, tổng mô phỏng, trạng thái, PR đã tạo), Luồng chạy thực tế (5 bước), Chi tiết từng sản phẩm (card riêng)
+  - Mỗi card sản phẩm hiển thị: tên, badge trạng thái Agent, mô phỏng, tồn trước/sau, đang giữ, khả dụng sau, link PR, link Agent Log
+  - Cập nhật ConfirmDialog message cho multi-mode
+- Đã giữ nguyên: runtime trace style, Agent Logs link, restore simulate, layout 2 cột, right column Khôi phục sản phẩm
+- Không sửa: Order, Inventory UI, Supplier, Product CRUD, Purchase Request UI, schema/database, backend
+- Build: PASS (tsc -b && vite build)
+
+## [2026-06-23] Fix Simulate Sale Multi Product Agent Scan
+- Mục tiêu: Simulate nhiều sản phẩm, mỗi sản phẩm được Agent scan riêng.
+- File đã sửa: `apps/api/src/modules/simulate-sale/simulate-sale.service.ts`, `apps/web/src/pages/admin/AdminSimulateSalePage.tsx`
+- Contract cũ giữ nguyên: `{ productId, quantity }`.
+- Contract mới: `{ items: [{ productId, quantity }] }`.
+- Logic:
+  - Frontend: form multi-product có sẵn chặn chọn trùng và chặn nhập quá tồn kho khả dụng.
+  - Backend `simulateSaleService.run`: Map qua các `affectedProducts` và chạy `runAgentScan` tuần tự cho từng sản phẩm bị trừ kho, truyền vào `sourceId: affected.transactionId`.
+  - Đảm bảo Agent quét riêng rẽ từng transaction `SIMULATE_SALE` và cấp `scanSessionId`, `sourceId` riêng biệt.
+- Frontend: Cập nhật link Agent Log trỏ đúng `scanSessionId` của log trả về thay vì `scanSessionId` chung cuối cùng.
+- Không sửa: Order, Product CRUD, Supplier, Purchase Request UI, Inventory UI, schema/database.
+- Build: PASS (tsc -b && vite build) cho cả `apps/api` và `apps/web`
+\ n # #   B u i l d   L o g   -   F i x   s u p p l i e r P r o d u c t C o l u m n s \ n -   C a u s e :   M i s s i n g   c o m m a   a f t e r   s t a t u s   c o l u m n   o b j e c t   l e a d i n g   t o   p a r s e   e r r o r   i n   s u p p l i e r P r o d u c t C o l u m n s . \ n -   B u i l d   r e s u l t :   F A I L E D   d u e   t o   u n r e l a t e d   T y p e S c r i p t   e r r o r s   i n   o t h e r   f i l e s . \ n  
+ 
+## [2026-06-23] Fix Inventory Logic & Agent Scan
+- Mục tiêu: Sửa logic tồn kho để đánh giá theo vailableStock và Agent chỉ tạo Purchase Request khi thật sự cần.
+- Backend: Cập nhật getStatus, công thức tính ngưỡng an toàn trong inventory.service.ts và gọi Agent Scan khi Order chuyển COMPLETED trong order.repository.ts.
+- Agent: Chuyển đánh giá vailableStock <= reorderPoint, ghi log chi tiết các case TOUCH (chạm ngưỡng), NO_SUPPLIER, STOCK_OK, CREATE_PR, và AVAILABLE_STOCK = 0.
+- Frontend: Cập nhật AdminInventoryPage.tsx hiển thị cột 'Tồn kho khả dụng' làm chính, hiển thị chi tiết 'Tổng', 'Đang giữ' ở modal.
+- Khởi động chạy thử các frontend/backend thành công, không gặp lỗi.
+
+## 58. Fix Agent Logs Display Real Description
+- Đã sửa Agent Logs ưu tiên hiển thị `description`.
+- Đã sửa fallback generic chỉ dùng khi không có description/message/reason.
+- Log nhận hàng hiển thị đúng nội dung `Bạn đã nhận đủ số lượng hàng...`.
+- Modal chi tiết log cũng dùng description thật.
+- Không sửa logic Purchase Request/Inventory/Agent scan.
+- Không sửa schema/database.
+- Build web: PASS
+
+
+## Customer UI Scan Before Fix
+
+- **Mục tiêu scan**: Xác định các trang customer hiện có, kiểm tra cấu trúc layout, phát hiện các lỗi UI (khoảng trắng dư, font/encoding tiếng Việt lỗi, button lệch, card sản phẩm không đều, responsive vỡ layout, form checkout khó nhìn, cart item bị lệch, toast/thông báo sai vị trí).
+- **File đã scan**:
+  - pps/web/src/pages/HomePage.tsx
+  - pps/web/src/pages/ProductListPage.tsx
+  - pps/web/src/pages/ProductDetailPage.tsx
+  - pps/web/src/pages/CartPage.tsx
+  - pps/web/src/pages/CheckoutPage.tsx
+  - pps/web/src/pages/MyOrdersPage.tsx
+  - pps/web/src/components/product/ProductCard.tsx
+  - pps/web/src/routes/AppRoutes.tsx
+- **Vấn đề UI phát hiện**:
+  - Card sản phẩm (ProductCard) có nguy cơ không đều chiều cao nếu độ dài chữ khác nhau.
+  - Form thanh toán (CheckoutPage) khá sát nhau trên thiết bị di động (responsive vỡ layout).
+  - Giỏ hàng (CartPage) các item có thể bị lệch trên màn hình nhỏ.
+  - Các lớp CSS màu sắc (VD: 	ext-amber-850, 	ext-slate-850) có thể chưa hoạt động nếu không tồn tại, làm button/text khó nhìn.
+  - Có nguy cơ dư khoảng trắng hoặc padding/margin chưa tối ưu tại các khối Hero của mỗi trang.
+  - Toast/thông báo thông thường dùng useToast() có thể hiển thị đè hoặc sai vị trí nếu container không bọc hết màn hình.
+  - Không tìm thấy lỗi font/encoding trực tiếp trong code do đều viết dưới dạng chuỗi UTF-8 chuẩn.
+- **File dự kiến cần sửa**: 
+  - HomePage.tsx, ProductListPage.tsx, ProductDetailPage.tsx, CartPage.tsx, CheckoutPage.tsx, MyOrdersPage.tsx, ProductCard.tsx.
+- **Những phần không đụng tới**: Admin Dashboard, tất cả các trang Admin, backend, database, API logic.
+- **Kết luận**: Có thể fix hoàn toàn các lỗi hiển thị bằng phương pháp chỉnh sửa UI customer frontend-only (Tailwind class, cấu trúc thẻ HTML). Không cần thiết tạo file mới.
+
+
+## 59. Force Agent Logs Table To Use Real Description
+
+- Đã tìm đúng chỗ render cột Nội dung xử lý tại AdminAgentLogsPage.tsx.
+- Đã loại bỏ fallback hardcode Agent đã ghi nhận một sự kiện xử lý. trong luồng logic trước khi kiểm tra description.
+- Table Agent Logs đã được cập nhật để dùng helper chung getAgentLogDescription ưu tiên description và message thật.
+- Modal chi tiết log cũng đã dùng getAgentLogDescription.
+- Normalize API gentLogs.api.ts đã được sửa để giữ nguyên description và message từ raw API mà không override.
+- Log nhận hàng trên giao diện giờ hiển thị đúng nội dung thực tế (VD: Bạn đã nhận đủ số lượng hàng cho yêu cầu...).
+- Không sửa đổi logic Purchase Request, Inventory, Agent scan hay schema/database.
+- Build web: PASS

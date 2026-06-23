@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { suppliersApi } from "../../api/suppliers.api";
 import { productsApi } from "../../api/products.api";
+import { purchaseRequestsApi } from "../../api/purchaseRequests.api";
 import type { Supplier, SupplierProduct } from "../../types/supplier.types";
 import type { Product } from "../../types/product.types";
 import { formatCurrency } from "../../utils/formatCurrency";
@@ -12,7 +13,7 @@ import { Input } from "../../components/common/Input";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { DataTable } from "../../components/admin/DataTable";
 import { useToast } from "../../contexts/ToastContext";
-import { Plus, Edit2, Trash2, Link2, Truck, Coffee, AlertTriangle } from "lucide-react";
+import { Plus, Edit2, Trash2, Link2, Truck, Coffee, AlertTriangle, Ban, CheckCircle } from "lucide-react";
 import { ALLOWED_PRODUCT_UNITS } from "../../constants/units";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -42,10 +43,12 @@ export const AdminSuppliersPage: React.FC = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [purchaseRequests, setPurchaseRequests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchSup, setSearchSup] = useState("");
   const [searchProd, setSearchProd] = useState("");
+  const [activeTab, setActiveTab] = useState<"ACTIVE" | "INACTIVE">("ACTIVE");
 
   // Supplier modal states
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
@@ -56,6 +59,8 @@ export const AdminSuppliersPage: React.FC = () => {
   const [address, setAddress] = useState("");
   const [modalLoading, setModalLoading] = useState(false);
   const [enableLinkProduct, setEnableLinkProduct] = useState(false);
+  const [rightColumnMode, setRightColumnMode] = useState<"LIST" | "ADD" | "EDIT">("LIST");
+  const [editingSupplierProductId, setEditingSupplierProductId] = useState<string | null>(null);
 
   // Link product modal states
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
@@ -72,21 +77,23 @@ export const AdminSuppliersPage: React.FC = () => {
   const [linkLoading, setLinkLoading] = useState(false);
 
   // Confirm delete states
-  const [deleteType, setDeleteType] = useState<"supplier" | "link" | null>(null);
+  const [deleteType, setDeleteType] = useState<"link" | "supplier_deactivate" | "supplier_activate" | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchData = async () => {
     try {
       setIsLoading(true);
-      const [sups, prodLinks, prods] = await Promise.all([
+      const [sups, prodLinks, prods, prs] = await Promise.all([
         suppliersApi.getSuppliers(),
         suppliersApi.getSupplierProducts().catch(() => [] as SupplierProduct[]),
         productsApi.getProducts().catch(() => [] as Product[]),
+        purchaseRequestsApi.getPurchaseRequests().catch(() => []),
       ]);
       setSuppliers(sups);
       setSupplierProducts(prodLinks);
       setProducts(prods);
+      setPurchaseRequests(prs);
     } catch (err: any) {
       setError("Không thể tải thông tin nhà cung cấp.");
     } finally {
@@ -106,6 +113,8 @@ export const AdminSuppliersPage: React.FC = () => {
       setPhone(sup.phone || "");
       setAddress(sup.address || "");
       setEnableLinkProduct(false);
+      setRightColumnMode("LIST");
+      setEditingSupplierProductId(null);
     } else {
       setSelectedSupplier(null);
       setName("");
@@ -211,6 +220,74 @@ export const AdminSuppliersPage: React.FC = () => {
     }
   };
 
+  const handleInlineLinkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSupplier || !linkProductId) return;
+
+    const hasAny = hasAnyConversionField(purchaseUnit, conversionQtyStr, weightUnit, conversionTargetUnit);
+    const hasAll = hasAllConversionFields(purchaseUnit, conversionQtyStr, weightUnit, conversionTargetUnit);
+
+    if (hasAny && !hasAll) {
+      toast.error(
+        "Thiếu thông tin quy cách",
+        "Nếu nhập quy cách, vui lòng nhập đủ Đơn vị NCC, Khối lượng, Đơn vị khối lượng và Đơn vị tồn kho."
+      );
+      return;
+    }
+
+    setLinkLoading(true);
+
+    let finalQty = 0;
+    if (hasAll) {
+      const calc = calculateConversionQty(conversionQtyStr, weightUnit, conversionTargetUnit);
+      if (calc.error) {
+        toast.error("Lỗi quy cách", calc.error);
+        setLinkLoading(false);
+        return;
+      }
+      finalQty = calc.qty;
+    }
+
+    const conversionPayload = hasAll
+      ? {
+          purchaseUnit,
+          conversionQuantity: finalQty,
+          conversionTargetUnit,
+        }
+      : {
+          purchaseUnit: null,
+          conversionQuantity: null,
+          conversionTargetUnit: null,
+        };
+
+    const payload = {
+      supplierId: selectedSupplier.id,
+      productId: linkProductId,
+      price: importPrice,
+      minOrderQuantity: minOrderQty,
+      leadTimeDays: leadTime,
+      isPreferred: false,
+      ...conversionPayload,
+    };
+
+    try {
+      if (rightColumnMode === "EDIT" && editingSupplierProductId) {
+        await suppliersApi.updateSupplierProduct(editingSupplierProductId, payload as any);
+        toast.success("Cập nhật thành công", "Điều kiện cung cấp đã được lưu.");
+      } else {
+        await suppliersApi.createSupplierProduct(payload as any);
+        toast.success("Gán thành công", "Sản phẩm đã được gán cho nhà cung cấp.");
+      }
+      await fetchData();
+      setRightColumnMode("LIST");
+      setEditingSupplierProductId(null);
+    } catch (err) {
+      toast.error("Thao tác thất bại", "Lỗi khi lưu thông tin liên kết.");
+    } finally {
+      setLinkLoading(false);
+    }
+  };
+
   const handleOpenLinkModal = (supplierId: string) => {
     setLinkSupplierId(supplierId);
     setLinkProductId("");
@@ -291,30 +368,61 @@ export const AdminSuppliersPage: React.FC = () => {
     if (!deleteId) return;
     setIsDeleting(true);
     try {
-      if (deleteType === "supplier") {
-        await suppliersApi.deleteSupplier(deleteId);
-        toast.success("Xóa thành công", "Nhà cung cấp đã được xóa.");
-      } else {
+      if (deleteType === "link") {
         await suppliersApi.deleteSupplierProduct(deleteId);
         toast.success("Gỡ liên kết thành công", "Đã gỡ sản phẩm khỏi nhà cung cấp.");
       }
       await fetchData();
       setDeleteId(null);
       setDeleteType(null);
-    } catch (err) {
+    } catch (err: any) {
       toast.error("Thao tác thất bại", "Lỗi khi thực hiện xóa.");
     } finally {
       setIsDeleting(false);
     }
   };
 
+  const handleMakeInactive = async () => {
+      if (!deleteId) return;
+      setIsDeleting(true);
+      try {
+          await suppliersApi.updateSupplier(deleteId, { status: "INACTIVE" });
+          toast.success("Thành công", "Đã ngừng hoạt động nhà cung cấp.");
+          await fetchData();
+          setDeleteId(null);
+          setDeleteType(null);
+      } catch (err) {
+          toast.error("Thất bại", "Lỗi khi cập nhật trạng thái.");
+      } finally {
+          setIsDeleting(false);
+      }
+  };
+
+  const handleMakeActive = async () => {
+      if (!deleteId) return;
+      setIsDeleting(true);
+      try {
+          await suppliersApi.updateSupplier(deleteId, { status: "ACTIVE" });
+          toast.success("Thành công", "Đã mở hoạt động nhà cung cấp.");
+          await fetchData();
+          setDeleteId(null);
+          setDeleteType(null);
+      } catch (err) {
+          toast.error("Thất bại", "Lỗi khi cập nhật trạng thái.");
+      } finally {
+          setIsDeleting(false);
+      }
+  };
+
   if (isLoading) {
     return <Loading message="Đang tải danh sách nhà cung cấp..." />;
   }
 
-  const filteredSuppliers = suppliers.filter((sup) =>
-    sup.name.toLowerCase().includes(searchSup.toLowerCase())
-  );
+  const filteredSuppliers = suppliers.filter((sup) => {
+    const matchesSearch = sup.name.toLowerCase().includes(searchSup.toLowerCase());
+    const matchesTab = activeTab === 'ACTIVE' ? sup.status !== 'INACTIVE' : sup.status === 'INACTIVE';
+    return matchesSearch && matchesTab;
+  });
 
   const filteredSupplierProducts = supplierProducts.filter((sp) => {
     const sName = suppliers.find((s) => s.id === (sp.supplierId || sp.supplier_id))?.name || "";
@@ -336,9 +444,16 @@ export const AdminSuppliersPage: React.FC = () => {
     {
       header: "Nhà cung cấp",
       render: (sup: Supplier) => (
-        <div className="flex items-center gap-2">
-          <Truck className="text-slate-400" size={16} />
-          <span className="font-semibold text-slate-800">{sup.name}</span>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Truck className="text-slate-400" size={16} />
+            <span className="font-semibold text-slate-800">{sup.name}</span>
+          </div>
+          {sup.status === 'INACTIVE' ? (
+             <span className="w-fit px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 text-[10px] font-bold uppercase">Ngưng hoạt động</span>
+          ) : (
+             <span className="w-fit px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase">Đang hoạt động</span>
+          )}
         </div>
       ),
     },
@@ -370,18 +485,34 @@ export const AdminSuppliersPage: React.FC = () => {
           <button
             onClick={() => handleOpenSupplierModal(sup)}
             className="p-1.5 text-slate-400 hover:text-amber-800 hover:bg-slate-100 rounded-lg"
+            title="Sửa"
           >
             <Edit2 size={15} />
           </button>
-          <button
-            onClick={() => {
-              setDeleteType("supplier");
-              setDeleteId(sup.id);
-            }}
-            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
-          >
-            <Trash2 size={15} />
-          </button>
+          {sup.status !== "INACTIVE" && (
+            <button
+              onClick={() => {
+                setDeleteType("supplier_deactivate");
+                setDeleteId(sup.id);
+              }}
+              className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
+              title="Ngừng hoạt động"
+            >
+              <Ban size={15} />
+            </button>
+          )}
+          {sup.status === "INACTIVE" && (
+            <button
+              onClick={() => {
+                setDeleteType("supplier_activate");
+                setDeleteId(sup.id);
+              }}
+              className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"
+              title="Mở hoạt động"
+            >
+              <CheckCircle size={15} />
+            </button>
+          )}
         </div>
       ),
     },
@@ -393,6 +524,26 @@ export const AdminSuppliersPage: React.FC = () => {
       render: (sp: SupplierProduct) => {
         const sName = suppliers.find((s) => s.id === (sp.supplierId || sp.supplier_id))?.name || "N/A";
         return <span className="font-bold text-slate-700">{sName}</span>;
+      },
+    },
+    {
+      header: "Trạng thái NCC",
+      render: (sp: SupplierProduct) => {
+        const sup = suppliers.find((s) => s.id === (sp.supplierId || sp.supplier_id));
+        if (!sup) return null;
+        const isInactive = sup.status === 'INACTIVE';
+        return (
+          <>
+            {isInactive ? (
+              <>
+                <span className="w-fit px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 text-[10px] font-bold uppercase">Đã tắt</span>
+                <div className="text-xs text-rose-600 mt-0.5">Agent không chọn</div>
+              </>
+            ) : (
+              <span className="w-fit px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase">Đang hoạt động</span>
+            )}
+          </>
+        );
       },
     },
     {
@@ -466,6 +617,21 @@ export const AdminSuppliersPage: React.FC = () => {
           </Button>
         </div>
 
+        <div className="flex gap-4 border-b border-slate-200">
+          <button
+            className={`pb-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'ACTIVE' ? 'border-amber-700 text-amber-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            onClick={() => setActiveTab('ACTIVE')}
+          >
+            Đang hoạt động
+          </button>
+          <button
+            className={`pb-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'INACTIVE' ? 'border-amber-700 text-amber-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            onClick={() => setActiveTab('INACTIVE')}
+          >
+            Đã tắt / Ngừng hoạt động
+          </button>
+        </div>
+
         {suppliers.length === 0 ? (
           <EmptyState title="Không có nhà cung cấp" description="Hệ thống chưa ghi nhận đối tác nhà cung cấp nào." />
         ) : (
@@ -534,14 +700,96 @@ export const AdminSuppliersPage: React.FC = () => {
                       <span className="text-sm font-medium text-slate-700">Gán sản phẩm ngay</span>
                     </label>
                   )}
+                  {selectedSupplier && rightColumnMode === "LIST" && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        setRightColumnMode("ADD");
+                        setLinkProductId("");
+                        setImportPrice(50000);
+                        setMinOrderQty(10);
+                        setLeadTime(3);
+                        setPurchaseUnit("");
+                        setConversionQtyStr("");
+                        setWeightUnit("");
+                        setConversionTargetUnit("");
+                      }}
+                      className="!py-1.5 !px-3 text-xs bg-amber-100 text-amber-800 hover:bg-amber-200 border-none"
+                    >
+                      <Plus size={14} className="mr-1" /> Gắn thêm sản phẩm
+                    </Button>
+                  )}
                 </div>
 
-                {!enableLinkProduct ? (
+                {!selectedSupplier && !enableLinkProduct && (
                   <div className="p-4 bg-white border border-slate-200 rounded-lg text-sm text-slate-500 italic">
                     Bạn có thể tạo nhà cung cấp trước, sau đó gán sản phẩm sau ở nút "Gán sản phẩm".
                   </div>
-                ) : (
+                )}
+
+                {selectedSupplier && selectedSupplier.status === 'INACTIVE' && rightColumnMode === "LIST" && (
+                  <div className="flex items-start gap-2 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700 mb-2">
+                    <Ban size={14} className="shrink-0 mt-0.5" />
+                    Nhà cung cấp đang ngừng hoạt động. Agent sẽ không chọn nhà cung cấp này cho yêu cầu nhập hàng mới.
+                  </div>
+                )}
+
+                {selectedSupplier && rightColumnMode === "LIST" && (
+                  <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+                    {supplierProducts.filter(sp => sp.supplierId === selectedSupplier.id).length === 0 ? (
+                      <div className="text-center text-slate-500 text-sm py-4 italic bg-white border border-dashed border-slate-200 rounded-lg">Chưa có sản phẩm nào được gán.</div>
+                    ) : (
+                      supplierProducts.filter(sp => sp.supplierId === selectedSupplier.id).map(sp => (
+                        <div key={sp.id} className="bg-white border border-slate-200 rounded-lg p-3 flex flex-col gap-2 shadow-sm">
+                          <div className="flex justify-between items-start gap-3">
+                            <div>
+                              <div className="font-semibold text-slate-800 text-sm">{products.find(p => p.id === sp.productId)?.name || sp.productId}</div>
+                              <div className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                                Giá: <strong className="text-slate-700">{formatCurrency(sp.importPrice || 0)}</strong> • MOQ: <strong className="text-slate-700">{sp.minOrderQuantity || 0}</strong> • Lead time: <strong className="text-slate-700">{sp.leadTime || 0} ngày</strong>
+                              </div>
+                              {sp.purchaseUnit && sp.conversionQuantity && (
+                                <div className="text-[10px] text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mt-1 inline-block border border-amber-100">
+                                  Quy cách: 1 {sp.purchaseUnit} = {sp.conversionQuantity} {sp.conversionTargetUnit}
+                                </div>
+                              )}
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setRightColumnMode("EDIT");
+                                setEditingSupplierProductId(sp.id);
+                                setLinkProductId(sp.productId);
+                                setImportPrice(sp.importPrice || 0);
+                                setMinOrderQty(sp.minOrderQuantity || 0);
+                                setLeadTime(sp.leadTime || 0);
+                                setPurchaseUnit(sp.purchaseUnit || "");
+                                setConversionQtyStr(sp.conversionQuantity ? String(sp.conversionQuantity) : "");
+                                setWeightUnit(sp.conversionTargetUnit || "");
+                                setConversionTargetUnit(sp.conversionTargetUnit || "");
+                              }}
+                              className="!py-1 !px-2 text-[10px] h-auto border-slate-200 text-slate-600 hover:text-amber-700 hover:border-amber-200 hover:bg-amber-50 shrink-0"
+                            >
+                              <Edit2 size={12} className="mr-1" /> Sửa điều kiện
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {((!selectedSupplier && enableLinkProduct) || (selectedSupplier && rightColumnMode !== "LIST")) && (
                   <div className="space-y-4">
+                    {selectedSupplier && rightColumnMode !== "LIST" && (
+                      <div className="flex justify-between items-center bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                        <span className="text-sm font-semibold text-amber-800">{rightColumnMode === "EDIT" ? "Sửa điều kiện cung cấp" : "Gắn thêm sản phẩm"}</span>
+                        <Button type="button" size="sm" variant="outline" onClick={() => { setRightColumnMode("LIST"); setEditingSupplierProductId(null); }} className="!py-1 !px-2 text-xs border-amber-200 bg-white hover:bg-amber-100 text-amber-800">Huỷ bỏ</Button>
+                      </div>
+                    )}
+
                     <div className="bg-white p-4 border border-slate-200 rounded-lg space-y-4 shadow-sm">
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -550,8 +798,9 @@ export const AdminSuppliersPage: React.FC = () => {
                         <select
                           value={linkProductId}
                           onChange={(e) => setLinkProductId(e.target.value)}
-                          className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
-                          required={enableLinkProduct}
+                          className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700 disabled:bg-slate-50"
+                          required={enableLinkProduct || rightColumnMode !== "LIST"}
+                          disabled={rightColumnMode === "EDIT"}
                         >
                           <option value="">Chọn sản phẩm</option>
                           {products.map((p) => (
@@ -566,7 +815,7 @@ export const AdminSuppliersPage: React.FC = () => {
                         type="number"
                         value={importPrice || ""}
                         onChange={(e) => setImportPrice(parseFloat(e.target.value) || 0)}
-                        required={enableLinkProduct}
+                        required={enableLinkProduct || rightColumnMode !== "LIST"}
                       />
                       <div className="grid grid-cols-2 gap-4">
                         <Input
@@ -574,14 +823,14 @@ export const AdminSuppliersPage: React.FC = () => {
                           type="number"
                           value={minOrderQty || ""}
                           onChange={(e) => setMinOrderQty(parseInt(e.target.value) || 0)}
-                          required={enableLinkProduct}
+                          required={enableLinkProduct || rightColumnMode !== "LIST"}
                         />
                         <Input
                           label="Thời gian giao hàng (ngày)"
                           type="number"
                           value={leadTime || ""}
                           onChange={(e) => setLeadTime(parseInt(e.target.value) || 0)}
-                          required={enableLinkProduct}
+                          required={enableLinkProduct || rightColumnMode !== "LIST"}
                         />
                       </div>
                     </div>
@@ -680,6 +929,14 @@ export const AdminSuppliersPage: React.FC = () => {
                         <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800 text-center">
                           Kết quả quy đổi: {linkConversionPreview}
                         </div>
+                      )}
+
+                      {selectedSupplier && rightColumnMode !== "LIST" && (
+                         <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
+                            <Button type="button" onClick={handleInlineLinkSubmit} isLoading={linkLoading} className="text-sm px-4">
+                              Lưu điều kiện cung cấp
+                            </Button>
+                         </div>
                       )}
                     </div>
                   </div>
@@ -865,21 +1122,51 @@ export const AdminSuppliersPage: React.FC = () => {
 
       {/* Confirm deletion */}
       <ConfirmDialog
-        isOpen={!!deleteId}
+        isOpen={!!deleteId && deleteType === "link"}
         onClose={() => {
           setDeleteId(null);
           setDeleteType(null);
         }}
         onConfirm={handleConfirmDelete}
-        title={deleteType === "supplier" ? "Xóa nhà cung cấp" : "Hủy gán sản phẩm"}
-        message={
-          deleteType === "supplier"
-            ? "Bạn có chắc chắn muốn xóa nhà cung cấp này khỏi danh mục? Tất cả các liên kết sản phẩm của nhà cung cấp này cũng sẽ bị gỡ bỏ."
-            : "Bạn có chắc chắn muốn gỡ bỏ gán liên kết sản phẩm này khỏi nhà cung cấp?"
-        }
+        title="Hủy gán sản phẩm"
+        message="Bạn có chắc chắn muốn gỡ bỏ gán liên kết sản phẩm này khỏi nhà cung cấp?"
         confirmText="Đồng ý xóa"
         cancelText="Hủy"
         type="danger"
+        isLoading={isDeleting}
+      />
+
+      <ConfirmDialog
+        isOpen={!!deleteId && deleteType === "supplier_deactivate"}
+        onClose={() => {
+          setDeleteId(null);
+          setDeleteType(null);
+        }}
+        onConfirm={handleMakeInactive}
+        title="Ngừng hoạt động nhà cung cấp"
+        message={
+          purchaseRequests.some(pr => pr.supplier?.id === deleteId && ['PENDING', 'APPROVED', 'SENT'].includes(pr.status))
+            ? "Nhà cung cấp này đang có yêu cầu nhập hàng chưa hoàn tất. Nếu ngừng hoạt động, Agent sẽ không chọn NCC này cho yêu cầu mới, nhưng yêu cầu cũ vẫn cần admin xử lý."
+            : "Bạn có chắc chắn muốn chuyển nhà cung cấp này sang trạng thái Ngừng hoạt động? Nhà cung cấp sẽ không bị xóa nhưng sẽ không được chọn để nhập hàng nữa."
+        }
+        confirmText="Ngừng hoạt động"
+        cancelText="Hủy"
+        type="warning"
+        isLoading={isDeleting}
+      />
+
+      <ConfirmDialog
+        isOpen={!!deleteId && deleteType === "supplier_activate"}
+        onClose={() => {
+          setDeleteId(null);
+          setDeleteType(null);
+        }}
+        onConfirm={handleMakeActive}
+        title="Mở hoạt động nhà cung cấp"
+        message="Bạn có chắc chắn muốn mở lại hoạt động cho nhà cung cấp này? Nhà cung cấp sẽ có thể được chọn để nhập hàng lại bình thường."
+        confirmText="Mở hoạt động"
+        cancelText="Hủy"
+        type="warning"
         isLoading={isDeleting}
       />
     </div>

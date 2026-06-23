@@ -1,4 +1,4 @@
-﻿import type { Response } from 'express';
+import type { Response } from 'express';
 import { sendError, sendSuccess } from '../../common/response';
 import type { AuthenticatedRequest } from '../auth/auth.middleware';
 import { purchaseService } from './purchase.service';
@@ -10,6 +10,6 @@ export const storePurchaseRequest = async (req: AuthenticatedRequest, res: Respo
 export const approvePurchaseRequest = async (req: AuthenticatedRequest, res: Response): Promise<void> => { if (!req.user) return sendError(res, 401, 'Authentication is required.'); sendSuccess(res, 200, 'Approve purchase request successfully.', { purchaseRequest: await purchaseService.approve(req.params.id, req.user.id) }); };
 export const rejectPurchaseRequest = async (req: AuthenticatedRequest, res: Response): Promise<void> => sendSuccess(res, 200, 'Reject purchase request successfully.', { purchaseRequest: await purchaseService.reject(req.params.id, req.body as RejectPurchaseRequestInput) });
 export const markPurchaseRequestSent = async (req: AuthenticatedRequest, res: Response): Promise<void> => sendSuccess(res, 200, 'Mark purchase request sent successfully.', { purchaseRequest: await purchaseService.markSent(req.params.id) });
-export const receivePurchaseRequest = async (req: AuthenticatedRequest, res: Response): Promise<void> => { if (!req.user) return sendError(res, 401, 'Authentication is required.'); sendSuccess(res, 200, 'Receive purchase request successfully.', { purchaseRequest: await purchaseService.receive(req.params.id, req.body as ReceivePurchaseRequestInput, req.user.id) }); };
+export const receivePurchaseRequest = async (req: AuthenticatedRequest, res: Response): Promise<void> => { if (!req.user) return sendError(res, 401, 'Authentication is required.'); sendSuccess(res, 200, 'Receive purchase request successfully.', await purchaseService.receive(req.params.id, req.body as ReceivePurchaseRequestInput, req.user.id)); };
 export const completePurchaseRequest = async (req: AuthenticatedRequest, res: Response): Promise<void> => sendSuccess(res, 200, 'Complete purchase request successfully.', { purchaseRequest: await purchaseService.complete(req.params.id) });
 export const removePurchaseRequest = async (req: AuthenticatedRequest, res: Response): Promise<void> => sendSuccess(res, 200, 'Delete purchase request successfully.', { purchaseRequest: await purchaseService.delete(req.params.id) });

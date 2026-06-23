@@ -15,6 +15,7 @@ export interface AgentLog {
   result: string;
   reason?: string;
   message: string;
+  description?: string;
   triggerType?: string;
   sourceType?: string;
   sourceId?: string;
@@ -24,6 +25,7 @@ export interface AgentLog {
   purchaseRequestId?: string;
   referenceType?: string;
   referenceId?: string;
+  referenceProductId?: string;
   scanSessionId?: string;
   input?: unknown;
   output?: unknown;

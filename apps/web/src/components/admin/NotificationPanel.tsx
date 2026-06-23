@@ -93,7 +93,7 @@ function buildAgentNotification(log: AgentLog): Notification | null {
       id: `agent-failed-${log.id}`,
       type: "agent_error",
       title: "Agent xử lý thất bại",
-      description: log.message || log.errorMessage || log.error || log.error_message || "Agent gặp lỗi khi xử lý.",
+      description: log.description || log.message || log.errorMessage || log.error || log.error_message || "Agent gặp lỗi khi xử lý.",
       link: "/admin/agent-logs",
       time,
     };
@@ -148,7 +148,7 @@ function buildAgentNotification(log: AgentLog): Notification | null {
       id: `agent-success-${log.id}`,
       type: "agent_success",
       title: result === "SUCCESS" ? "Email đã gửi" : "Agent xử lý thành công",
-      description: log.message || "AI Agent đã xử lý thành công.",
+      description: log.description || log.message || "AI Agent đã xử lý thành công.",
       link: "/admin/agent-logs",
       time,
     };
@@ -159,7 +159,7 @@ function buildAgentNotification(log: AgentLog): Notification | null {
       id: `agent-running-${log.id}`,
       type: "info",
       title: "Agent đang xử lý",
-      description: log.message || "AI Agent đang xử lý tác vụ.",
+      description: log.description || log.message || "AI Agent đang xử lý tác vụ.",
       link: "/admin/agent-logs",
       time,
     };
@@ -346,6 +346,7 @@ export const NotificationPanel: React.FC = () => {
     type: toast.type,
     title: toast.title,
     description: toast.message || "",
+    link: toast.link,
     time: "Vừa xong",
   }));
 

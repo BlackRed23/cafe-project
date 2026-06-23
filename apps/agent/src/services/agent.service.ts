@@ -154,10 +154,23 @@ const messageFromLog = (action?: string | null, result?: string | null, reason?:
     const normalizedResult = (result || '').toUpperCase();
     const normalizedReason = (reason || '').toUpperCase();
 
-    if (normalizedAction === 'SCAN_INVENTORY_SESSION') return 'AI Agent bắt đầu quét tồn kho.';
-    if (normalizedResult === 'CREATED_PURCHASE_REQUEST') return 'AI Agent đã tạo yêu cầu nhập hàng cho sản phẩm này.';
-    if (normalizedResult === 'NO_SUPPLIER' || normalizedReason === 'NO_SUPPLIER' || normalizedReason === 'NO_SUPPLIERS_MAPPED' || normalizedReason === 'SUPPLIERS_INACTIVE') {
+    if (normalizedAction === 'SCAN_INVENTORY_SESSION') {
+        if (normalizedResult === 'SUCCESS') return 'AI Agent đã quét xong tồn kho.';
+        if (normalizedResult === 'FAILED') return 'AI Agent quét tồn kho thất bại.';
+        return 'AI Agent đang quét tồn kho.';
+    }
+    if (normalizedResult === 'CREATED_PURCHASE_REQUEST') {
+        const sName = asString(output?.supplierName);
+        return sName ? `Tồn kho dưới ngưỡng, đã tạo yêu cầu nhập hàng từ nhà cung cấp ${sName}.` : 'Tồn kho dưới ngưỡng, đã tạo yêu cầu nhập hàng từ nhà cung cấp.';
+    }
+    if (normalizedResult === 'NO_SUPPLIER' || normalizedReason === 'NO_SUPPLIER' || normalizedReason === 'NO_SUPPLIERS_MAPPED') {
         return 'Sản phẩm tồn kho thấp nhưng chưa có nhà cung cấp hợp lệ.';
+    }
+    if (normalizedReason === 'SUPPLIERS_INACTIVE' || normalizedReason === 'SUPPLIER_INACTIVE') {
+        return 'Nhà cung cấp không hoạt động';
+    }
+    if (normalizedReason === 'PRODUCT_PENDING_DELETE') {
+        return 'Sản phẩm đang chờ xoá nên Agent không tạo yêu cầu nhập hàng.';
     }
     if (normalizedResult === 'SKIPPED_DUPLICATE' || normalizedReason === 'ACTIVE_PR_EXISTS') {
         return 'Sản phẩm đã có yêu cầu nhập hàng đang chờ xử lý.';
@@ -179,12 +192,16 @@ const messageFromLog = (action?: string | null, result?: string | null, reason?:
     if (normalizedReason === 'DATABASE_ERROR') return 'AI Agent khÃ´ng thá»ƒ Ä‘á»c dá»¯ liá»‡u tá»“n kho tá»« há»‡ thá»‘ng.';
     if (normalizedReason === 'AGENT_CONFIG_ERROR') return 'AI Agent thiáº¿u cáº¥u hÃ¬nh cáº§n thiáº¿t Ä‘á»ƒ xá»­ lÃ½.';
     if (normalizedReason === 'AGENT_IMPORT_ERROR') return 'Backend khÃ´ng thá»ƒ náº¡p module AI Agent.';
-    if (normalizedResult === 'CREATED_PURCHASE_REQUEST') return 'AI Agent Ä‘Ã£ táº¡o yÃªu cáº§u nháº­p hÃ ng cho sáº£n pháº©m nÃ y.';
+    if (normalizedResult === 'CREATED_PURCHASE_REQUEST') {
+        const sName = asString(output?.supplierName);
+        return sName ? `Tồn kho dưới ngưỡng, đã tạo yêu cầu nhập hàng từ nhà cung cấp ${sName}.` : 'Tồn kho dưới ngưỡng, đã tạo yêu cầu nhập hàng từ nhà cung cấp.';
+    }
     if (normalizedResult === 'RECOMMENDED') return 'AI Agent Ä‘Ã£ táº¡o khuyáº¿n nghá»‹ nháº­p hÃ ng.';
     if (normalizedResult === 'CONVERTED_TO_PR') return 'Khuyáº¿n nghá»‹ Ä‘Ã£ Ä‘Æ°á»£c chuyá»ƒn thÃ nh yÃªu cáº§u nháº­p hÃ ng.';
     if (normalizedResult === 'SKIPPED_DUPLICATE' || normalizedReason === 'ACTIVE_PR_EXISTS') return 'Sáº£n pháº©m Ä‘Ã£ cÃ³ yÃªu cáº§u nháº­p hÃ ng chá» báº¡n xÃ¡c nháº­n, nÃªn AI Agent khÃ´ng táº¡o thÃªm.';
     if (normalizedResult === 'NO_SUPPLIER' || normalizedReason === 'NO_SUPPLIER' || normalizedReason === 'NO_SUPPLIERS_MAPPED') return 'Sáº£n pháº©m tá»“n kho tháº¥p nhÆ°ng chÆ°a cÃ³ nhÃ  cung cáº¥p há»£p lá»‡.';
-    if (normalizedReason === 'SUPPLIERS_INACTIVE') return 'Sáº£n pháº©m tá»“n kho tháº¥p nhÆ°ng chÆ°a cÃ³ nhÃ  cung cáº¥p há»£p lá»‡.';
+    if (normalizedReason === 'SUPPLIERS_INACTIVE' || normalizedReason === 'SUPPLIER_INACTIVE') return 'NhÃ  cung cáº¥p khÃ´ng hoáº¡t Ä‘á»™ng';
+    if (normalizedReason === 'PRODUCT_PENDING_DELETE') return 'Sáº£n pháº©m Ä‘ang chá»  xoÃ¡ nÃªn Agent khÃ´ng táº¡o yÃªu cáº§u nháº­p hÃ ng.';
     if (normalizedResult === 'SKIPPED_DISABLED' || normalizedReason === 'AI_DISABLED') return 'AI Agent Ä‘ang bá»‹ táº¯t trong cáº¥u hÃ¬nh há»‡ thá»‘ng.';
     if (normalizedReason === 'ABOVE_THRESHOLD' || normalizedReason === 'STOCK_OK' || normalizedResult === 'SKIPPED') return 'Tá»“n kho váº«n Ä‘ang á»Ÿ má»©c an toÃ n nÃªn Agent khÃ´ng táº¡o yÃªu cáº§u nháº­p hÃ ng.';
     if (normalizedAction === 'SEND_SUPPLIER_EMAIL' && normalizedResult === 'SUCCESS') return 'Email Ä‘áº·t hÃ ng Ä‘Ã£ Ä‘Æ°á»£c gá»­i cho nhÃ  cung cáº¥p.';
@@ -232,6 +249,9 @@ const toLogDto = (log: any) => {
     const productId = asString(output?.productId) || asString(input?.productId);
     const scanSessionId = asString(output?.scanSessionId) || asString(input?.scanSessionId);
 
+    const sourceId = asString(output?.sourceId) || asString(input?.sourceId);
+    const sourceType = asString(output?.sourceType) || asString(input?.sourceType);
+
     return {
         id: log.id,
         action: log.action,
@@ -247,6 +267,8 @@ const toLogDto = (log: any) => {
         purchaseRequestId,
         referenceType: log.reference_type,
         referenceId: log.reference_id,
+        sourceId,
+        sourceType,
         input,
         output,
         reasoning: fixVietnameseMojibakeText(log.reasoning),
@@ -500,33 +522,33 @@ export const agentService = {
             const supplierProduct = product.supplierProducts.find((sp) => isSupplierActive(sp.supplier));
 
             const planningDays = settings.reorderPlanningDays;
-            let reorderPoint = minThreshold;
-            let safetyStock = minThreshold;
-            let averageDailySales = 0;
+            
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            const recentSales = await prisma.inventoryTransaction.aggregate({
+                where: {
+                    productId: product.id,
+                    type: { in: [InventoryTransactionType.ORDER, InventoryTransactionType.SIMULATE_SALE] },
+                    createdAt: { gte: thirtyDaysAgo }
+                },
+                _sum: { quantity: true }
+            });
+            const totalSold = Math.abs(recentSales._sum.quantity || 0);
+            const averageDailySales = totalSold / 30;
+            const baseDailySales = averageDailySales > 0 ? averageDailySales : 1;
+
             const delayBufferDays = 2;
             const leadTimeDays = supplierProduct?.leadTimeDays && supplierProduct.leadTimeDays > 0 ? supplierProduct.leadTimeDays : 0;
-            if (supplierProduct && supplierProduct.leadTimeDays > 0) {
-                const thirtyDaysAgo = new Date();
-                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                const recentSales = await prisma.inventoryTransaction.aggregate({
-                    where: {
-                        productId: product.id,
-                        type: { in: [InventoryTransactionType.ORDER, InventoryTransactionType.SIMULATE_SALE] },
-                        createdAt: { gte: thirtyDaysAgo }
-                    },
-                    _sum: { quantity: true }
-                });
-                const totalSold = Math.abs(recentSales._sum.quantity || 0);
-                averageDailySales = totalSold / 30;
-                safetyStock = averageDailySales > 0 ? Math.ceil(averageDailySales * 2) : minThreshold;
-                reorderPoint = Math.max(
-                    Math.ceil(averageDailySales * (leadTimeDays + delayBufferDays) + safetyStock),
-                    minThreshold
-                );
-            }
+            const effectiveLeadTimeDays = leadTimeDays + delayBufferDays;
 
-            const targetStock = averageDailySales > 0
-                ? Math.ceil(averageDailySales * (planningDays + leadTimeDays + delayBufferDays))
+            const bufferDays = 2;
+            const defaultSafetyStock = 10;
+            const safetyStock = Math.max(defaultSafetyStock, Math.ceil(baseDailySales * bufferDays));
+            const leadTimeDemand = Math.ceil(baseDailySales * effectiveLeadTimeDays);
+            const reorderPoint = leadTimeDemand + safetyStock;
+
+            const targetStock = baseDailySales > 0
+                ? Math.ceil(baseDailySales * (planningDays + effectiveLeadTimeDays + bufferDays))
                 : minThreshold;
             const minimumReorderQty = supplierProduct?.minOrderQuantity && supplierProduct.minOrderQuantity > 0 ? supplierProduct.minOrderQuantity : 1;
             const recommendedQty = Math.max(targetStock - inventory.quantity, minimumReorderQty, minThreshold - inventory.quantity, 1);
@@ -540,6 +562,10 @@ export const agentService = {
                     moq: sp.minOrderQuantity,
                     purchasePrice: Number(sp.price)
                 }));
+            const currentQty = inventory.quantity;
+            const reservedQty = inventory.reservedStock ?? 0;
+            const availableStock = currentQty - reservedQty;
+
             const baseInput = {
                 scanSessionId,
                 triggerType,
@@ -549,7 +575,9 @@ export const agentService = {
                 inventoryId: inventory.id,
                 productId: inventory.productId,
                 productName: product.name,
-                currentQty: inventory.quantity,
+                currentQty,
+                reservedQty,
+                availableStock,
                 minThreshold,
                 avgDailySales: Number(averageDailySales.toFixed(2)),
                 reorderPlanningPeriod: settings.reorderPlanningPeriod,
@@ -564,19 +592,55 @@ export const agentService = {
                 capacityNote: 'SupplierProduct hiá»‡n chÆ°a cÃ³ availableQuantity/capacity; Agent khÃ´ng tá»± káº¿t luáº­n nhÃ  cung cáº¥p Ä‘á»§ hay thiáº¿u.'
             };
 
-            if (inventory.quantity > reorderPoint) {
+            if (product.pendingDeleteUntil) {
+                const log = await agentRepository.createLog({
+                    action: 'SCAN_INVENTORY_SKIP',
+                    input: JSON.stringify(baseInput),
+                    output: JSON.stringify({
+                        scanSessionId,
+                        triggerType,
+                        sourceType: input.sourceType,
+                        sourceId: input.sourceId,
+                        skipped: true,
+                        reason: 'PRODUCT_PENDING_DELETE',
+                        productId: inventory.productId,
+                        productName: product.name,
+                        inventoryId: inventory.id,
+                        currentQty: inventory.quantity,
+                        minThreshold,
+                        reorderPoint,
+                        message: 'Sản phẩm đang chờ xoá nên Agent không tạo yêu cầu nhập hàng.'
+                    }),
+                    reasoning: 'Sản phẩm đang chờ xoá nên Agent không tạo yêu cầu nhập hàng.',
+                    result: 'SKIPPED',
+                    fallback_used: false,
+                    reference_type: 'Inventory',
+                    reference_id: inventory.id,
+                    creator: userId ? { connect: { id: userId } } : undefined
+                });
+                results.push(toLogDto(log));
+                continue;
+            }
+
+            if (availableStock > reorderPoint) {
                 const log = await agentRepository.createLog({
                     action: 'SCAN_INVENTORY_STOCK_OK',
                     input: JSON.stringify(baseInput),
                     output: JSON.stringify({
+                        scanSessionId,
+                        triggerType,
+                        sourceType: input.sourceType,
+                        sourceId: input.sourceId,
                         skipped: true,
                         reason: 'STOCK_OK',
                         productId: inventory.productId,
                         productName: product.name,
                         inventoryId: inventory.id,
                         currentQty: inventory.quantity,
+                        availableStock,
                         minThreshold,
-                        reorderPoint
+                        reorderPoint,
+                        message: 'AI Agent đã quét xong, tồn kho vẫn an toàn'
                     }),
                     reasoning: 'Tá»“n kho váº«n Ä‘ang á»Ÿ má»©c an toÃ n.',
                     result: 'STOCK_OK',
@@ -589,24 +653,29 @@ export const agentService = {
                 continue;
             }
 
-            const openPurchaseRequest = await agentRepository.findOpenPurchaseRequest(inventory.productId, inventory.id);
-            if (openPurchaseRequest) {
-                const reasoning = 'Sáº£n pháº©m Ä‘Ã£ cÃ³ yÃªu cáº§u nháº­p hÃ ng vÃ  Ä‘ang Ä‘Æ°á»£c xá»­ lÃ½.';
+            if (availableStock === reorderPoint && availableStock > 0) {
                 const log = await agentRepository.createLog({
-                    action: 'SCAN_INVENTORY_SKIP_DUPLICATE',
+                    action: 'SCAN_INVENTORY_WARNING',
                     input: JSON.stringify(baseInput),
                     output: JSON.stringify({
+                        scanSessionId,
+                        triggerType,
+                        sourceType: input.sourceType,
+                        sourceId: input.sourceId,
                         skipped: true,
-                        reason: 'ACTIVE_PR_EXISTS',
+                        reason: 'THRESHOLD_REACHED',
                         productId: inventory.productId,
                         productName: product.name,
                         inventoryId: inventory.id,
-                        purchaseRequestId: openPurchaseRequest.id,
-                        notification: notificationForDuplicatePurchaseRequest(product.name, openPurchaseRequest.id)
+                        currentQty: inventory.quantity,
+                        availableStock,
+                        minThreshold,
+                        reorderPoint,
+                        message: 'Tồn kho khả dụng chạm ngưỡng an toàn, cần theo dõi.'
                     }),
-                    reasoning,
-                    result: 'SKIPPED_DUPLICATE',
-                    fallback_used: true,
+                    reasoning: 'Tồn kho khả dụng vừa chạm ngưỡng, ghi nhận cảnh báo nhưng chưa tạo PR.',
+                    result: 'SKIPPED',
+                    fallback_used: false,
                     reference_type: 'Inventory',
                     reference_id: inventory.id,
                     creator: userId ? { connect: { id: userId } } : undefined
@@ -615,12 +684,103 @@ export const agentService = {
                 continue;
             }
 
+            const openPurchaseRequest = await agentRepository.findOpenPurchaseRequest(inventory.productId, inventory.id);
+            if (openPurchaseRequest) {
+                const isPRSupplierActive = isSupplierActive(openPurchaseRequest.supplier);
+
+                if (!isPRSupplierActive) {
+                    const suggestedSuppliers = product.supplierProducts
+                        .filter((sp) => sp.supplierId !== openPurchaseRequest.supplier.id && isSupplierActive(sp.supplier))
+                        .map((sp) => ({
+                            supplierId: sp.supplierId,
+                            supplierName: sp.supplier.name,
+                            isPreferred: sp.isPreferred,
+                            leadTimeDays: sp.leadTimeDays,
+                            moq: sp.minOrderQuantity,
+                            purchasePrice: Number(sp.price)
+                        }));
+                    
+                    const reasoning = suggestedSuppliers.length > 0
+                        ? 'Đã có yêu cầu nhập hàng đang chờ xử lý nhưng nhà cung cấp của yêu cầu này hiện đã bị tắt. Agent tìm thấy nhà cung cấp thay thế đang hoạt động.'
+                        : 'Đã có yêu cầu nhập hàng đang chờ xử lý nhưng nhà cung cấp của yêu cầu này hiện đã bị tắt. Không có nhà cung cấp thay thế đang hoạt động.';
+
+                    const log = await agentRepository.createLog({
+                        action: 'SCAN_INVENTORY_SKIP_DUPLICATE',
+                        input: JSON.stringify(baseInput),
+                        output: JSON.stringify({
+                            scanSessionId,
+                            triggerType,
+                            sourceType: input.sourceType,
+                            sourceId: input.sourceId,
+                            skipped: true,
+                            reason: 'EXISTING_PR_SUPPLIER_INACTIVE',
+                            productId: inventory.productId,
+                            productName: product.name,
+                            inventoryId: inventory.id,
+                            currentStock: inventory.quantity,
+                            minThreshold,
+                            existingPurchaseRequestId: openPurchaseRequest.id,
+                            existingPurchaseRequestStatus: openPurchaseRequest.status,
+                            supplierId: openPurchaseRequest.supplier.id,
+                            supplierName: openPurchaseRequest.supplier.name,
+                            supplierStatus: 'INACTIVE',
+                            suggestedSuppliers,
+                            notification: {
+                                title: "Yêu cầu nhập hàng dùng nhà cung cấp đã tắt",
+                                description: `Sản phẩm ${product.name} đang có yêu cầu nhập hàng chờ xử lý, nhưng nhà cung cấp ${openPurchaseRequest.supplier.name} hiện đã ngừng hoạt động.`,
+                                actionLabel: "Xem yêu cầu nhập hàng",
+                                actionUrl: `/admin/purchase-requests/${openPurchaseRequest.id}`
+                            }
+                        }),
+                        reasoning,
+                        result: 'SKIPPED',
+                        fallback_used: true,
+                        reference_type: 'Inventory',
+                        reference_id: inventory.id,
+                        creator: userId ? { connect: { id: userId } } : undefined
+                    });
+                    results.push(toLogDto(log));
+                    continue;
+                } else {
+                    const reasoning = 'Đã có yêu cầu nhập hàng đang chờ xử lý, Agent không tạo thêm yêu cầu mới để tránh trùng.';
+                    const log = await agentRepository.createLog({
+                        action: 'SCAN_INVENTORY_SKIP_DUPLICATE',
+                        input: JSON.stringify(baseInput),
+                        output: JSON.stringify({
+                            scanSessionId,
+                            triggerType,
+                            sourceType: input.sourceType,
+                            sourceId: input.sourceId,
+                            skipped: true,
+                            reason: 'ACTIVE_PR_EXISTS',
+                            productId: inventory.productId,
+                            productName: product.name,
+                            inventoryId: inventory.id,
+                            purchaseRequestId: openPurchaseRequest.id,
+                            notification: notificationForDuplicatePurchaseRequest(product.name, openPurchaseRequest.id)
+                        }),
+                        reasoning,
+                        result: 'SKIPPED_DUPLICATE',
+                        fallback_used: true,
+                        reference_type: 'Inventory',
+                        reference_id: inventory.id,
+                        creator: userId ? { connect: { id: userId } } : undefined
+                    });
+                    results.push(toLogDto(log));
+                    continue;
+                }
+            }
+
             if (product.supplierProducts.length === 0) {
                 const reasoning = 'Sáº£n pháº©m chÆ°a Ä‘Æ°á»£c liÃªn káº¿t vá»›i nhÃ  cung cáº¥p.';
                 const log = await agentRepository.createLog({
                     action: 'SCAN_INVENTORY_NO_SUPPLIER',
                     input: JSON.stringify(baseInput),
                     output: JSON.stringify({
+                        scanSessionId,
+                        triggerType,
+                        sourceType: input.sourceType,
+                        sourceId: input.sourceId,
                         skipped: true,
                         reason: 'NO_SUPPLIER',
                         productId: inventory.productId,
@@ -645,15 +805,21 @@ export const agentService = {
                     action: 'SCAN_INVENTORY_INACTIVE_SUPPLIER',
                     input: JSON.stringify(baseInput),
                     output: JSON.stringify({
+                        scanSessionId,
+                        triggerType,
+                        sourceType: input.sourceType,
+                        sourceId: input.sourceId,
                         skipped: true,
                         reason: 'SUPPLIERS_INACTIVE',
                         productId: inventory.productId,
                         productName: product.name,
                         inventoryId: inventory.id,
+                        supplierIds: product.supplierProducts.map((sp) => sp.supplierId),
+                        inactiveSupplierIds: product.supplierProducts.filter((sp) => !isSupplierActive(sp.supplier)).map((sp) => sp.supplierId),
                         notification: notificationForNoSupplier(product.name)
                     }),
                     reasoning,
-                    result: 'NO_SUPPLIER',
+                    result: 'SKIPPED',
                     fallback_used: true,
                     reference_type: 'Inventory',
                     reference_id: inventory.id,
@@ -661,6 +827,43 @@ export const agentService = {
                 });
                 results.push(toLogDto(log));
                 continue;
+            }
+
+            if (triggerType === 'PURCHASE_RECEIVED') {
+                 const reasoningWarning = 'Sau khi nhận hàng, tồn kho vẫn thấp hơn mức cần thiết. Admin cần kiểm tra lại số lượng nhập hoặc tạo yêu cầu bổ sung.';
+                 const log = await agentRepository.createLog({
+                     action: 'SCAN_INVENTORY_WARNING',
+                     input: JSON.stringify(baseInput),
+                     output: JSON.stringify({
+                         scanSessionId,
+                         triggerType,
+                         sourceType: input.sourceType,
+                         sourceId: input.sourceId,
+                         skipped: true,
+                         reason: 'RECEIVED_BUT_LOW_STOCK',
+                         productId: inventory.productId,
+                         productName: product.name,
+                         inventoryId: inventory.id,
+                         currentQty: inventory.quantity,
+                         minThreshold,
+                         reorderPoint,
+                         message: reasoningWarning,
+                         notification: {
+                             title: "Nhận hàng chưa đủ tồn kho an toàn",
+                             description: `Sản phẩm ${product.name} sau khi nhận hàng vẫn thấp hơn mức an toàn. Vui lòng kiểm tra lại.`,
+                             actionLabel: "Kiểm tra tồn kho",
+                             actionUrl: `/admin/inventory`
+                         }
+                     }),
+                     reasoning: reasoningWarning,
+                     result: 'WARNING',
+                     fallback_used: false,
+                     reference_type: 'Inventory',
+                     reference_id: inventory.id,
+                     creator: userId ? { connect: { id: userId } } : undefined
+                 });
+                 results.push(toLogDto(log));
+                 continue;
             }
 
             const reasoning = withOptionalText(
@@ -675,22 +878,31 @@ export const agentService = {
                     averageDailySales,
                     supplierProduct.supplier.name
                 ),
-                [settings.promptPrefix, settings.slogan]
+                [
+                    availableStock === 0 ? 'Tồn kho khả dụng đã bằng 0, cần ưu tiên tạo yêu cầu nhập hàng khẩn cấp.' : null,
+                    settings.promptPrefix, 
+                    settings.slogan
+                ]
             );
             const request = await agentRepository.createAiPurchaseRequest(inventory, supplierProduct, recommendedQty, reasoning, userId);
             createdPurchaseRequests.push({ id: request.id, requestNumber: request.requestNumber, supplierName: request.supplier.name, status: request.status });
             const output = {
-                reason: 'CREATED_PURCHASE_REQUEST',
-                productId: inventory.productId,
-                productName: product.name,
-                inventoryId: inventory.id,
-                purchaseRequestId: request.id,
-                recommendedSupplierId: supplierProduct.supplierId,
-                recommendedQty,
-                backupSuppliers,
-                confidence: 0.82,
-                notification: notificationForCreatedPurchaseRequest(product.name, request.id)
-            };
+                        scanSessionId,
+                        triggerType,
+                        sourceType: input.sourceType,
+                        sourceId: input.sourceId,
+                        reason: 'CREATED_PURCHASE_REQUEST',
+                        productId: inventory.productId,
+                        productName: product.name,
+                        inventoryId: inventory.id,
+                        purchaseRequestId: request.id,
+                        recommendedSupplierId: supplierProduct.supplierId,
+                        supplierName: supplierProduct.supplier.name,
+                        recommendedQty,
+                        backupSuppliers,
+                        confidence: 0.82,
+                        notification: notificationForCreatedPurchaseRequest(product.name, request.id)
+                    };
             const log = await agentRepository.createLog({
                 action: 'SCAN_INVENTORY_CREATE_PURCHASE_REQUEST',
                 input: JSON.stringify(baseInput),
@@ -716,8 +928,12 @@ export const agentService = {
                     productName: product.name
                 };
                 const failureOutput = {
+                    scanSessionId,
+                    triggerType,
+                    sourceType: input.sourceType,
+                    sourceId: input.sourceId,
                     reason: 'SERVER_ERROR',
-                    message: 'AI Agent khÃ´ng thá»ƒ kiá»ƒm tra tá»“n kho cho sáº£n pháº©m nÃ y.',
+                    message: 'AI Agent không thể kiểm tra tồn kho cho sản phẩm này.',
                     errorMessage,
                     productId: inventory.productId,
                     productName: product.name,

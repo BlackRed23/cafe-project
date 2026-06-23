@@ -8,7 +8,7 @@ import type { Inventory } from "../../types/inventory.types";
 import { Button } from "../../components/common/Button";
 import { Loading } from "../../components/common/Loading";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
-import { Play, Sparkles, Terminal, Mail, RefreshCw, AlertTriangle, ShieldCheck, Info } from "lucide-react";
+import { Play, Terminal, Mail, RefreshCw, Info } from "lucide-react";
 
 import { useToast } from "../../contexts/ToastContext";
 
@@ -18,6 +18,8 @@ export const AdminSimulateSalePage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [inventories, setInventories] = useState<Inventory[]>([]);
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [multiMode, setMultiMode] = useState(false);
+  const [items, setItems] = useState<Array<{ productId: string; quantity: number }>>([]);
   const [simulationMode, setSimulationMode] = useState<"ONE_DAY" | "WEEK" | "MONTH" | "CUSTOM_RANGE">("ONE_DAY");
   const [dailySimulatedQuantity, setDailySimulatedQuantity] = useState(5);
   const [startDate, setStartDate] = useState("");
@@ -32,8 +34,8 @@ export const AdminSimulateSalePage: React.FC = () => {
 
   const toast = useToast();
 
-  // Result state
-  const [result, setResult] = useState<{
+  // Result state (legacy single-product)
+  const [_result, setResult] = useState<{
     success: boolean;
     productId?: string;
     inventoryId?: string;
@@ -52,7 +54,18 @@ export const AdminSimulateSalePage: React.FC = () => {
     prNumber?: string;
     hasNoSupplierSkip?: boolean;
     hasDuplicateSkip?: boolean;
+    hasAgentWarning?: boolean;
+    hasAgentFailed?: boolean;
+    scanSessionId?: string;
+    agentWarning?: string;
+    cooldownRemainingSeconds?: number;
+    activeScanSessionId?: string;
+    agentLogs?: any[];
   } | null>(null);
+
+  // Multi-product simulation results
+  const [simulationProductResults, setSimulationProductResults] = useState<any[]>([]);
+  const [_lastSubmittedItems, setLastSubmittedItems] = useState<Array<{ productId: string; quantity: number }>>([]);
 
   const [pendingRestores, setPendingRestores] = useState<any[]>([]);
   const [selectedRestoreId, setSelectedRestoreId] = useState("");
@@ -110,6 +123,9 @@ export const AdminSimulateSalePage: React.FC = () => {
 
   const currentQty = selectedInventory?.quantity ?? 0;
   const threshold = selectedInventory?.minThreshold ?? selectedInventory?.min_threshold ?? 0;
+  // Compute availableStock per rules
+  const availableStock = selectedInventory?.availableStock ??
+    (selectedInventory?.quantity ?? 0) - (selectedInventory?.reservedStock ?? selectedInventory?.reserved_stock ?? 0);
   let unit = selectedProduct?.unit || "đơn vị";
   if (unit.toLowerCase() === "ly") unit = "đơn vị";
 
@@ -117,114 +133,261 @@ export const AdminSimulateSalePage: React.FC = () => {
   if (simulationMode === "WEEK") localNumberOfDays = 7;
   else if (simulationMode === "MONTH") localNumberOfDays = 30;
   else if (simulationMode === "CUSTOM_RANGE" && startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const diffTime = end.getTime() - start.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      localNumberOfDays = diffDays >= 0 ? diffDays + 1 : 0;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = end.getTime() - start.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    localNumberOfDays = diffDays >= 0 ? diffDays + 1 : 0;
   } else if (simulationMode === "CUSTOM_RANGE") {
-      localNumberOfDays = 0;
+    localNumberOfDays = 0;
   }
   const localSimulatedDemand = localNumberOfDays * (dailySimulatedQuantity || 0);
 
   const handleSimulate = async () => {
-    if (isSimulating || !selectedProductId || localSimulatedDemand <= 0) return;
+    // Validate before simulation
+    if (isSimulating) {
+      return;
+    }
+    if (multiMode) {
+      const validItems = items.filter(i => i.productId?.trim() && i.quantity > 0);
+      if (validItems.length === 0) {
+        toast.error('Vui lòng chọn ít nhất một sản phẩm để mô phỏng.');
+        return;
+      }
+      const duplicated = validItems.find((item, idx) =>
+        validItems.findIndex(i => i.productId === item.productId) !== idx
+      );
+      if (duplicated) {
+        toast.error('Không được chọn trùng sản phẩm trong cùng một lần mô phỏng.');
+        return;
+      }
+      const overStock = validItems.find(item => {
+        const inv = inventories.find(i => i.productId === item.productId);
+        const available = inv?.availableStock ?? ((inv?.quantity ?? 0) - (inv?.reservedStock ?? 0));
+        return item.quantity > (available ?? 0);
+      });
+      if (overStock) {
+        toast.error('Số lượng mô phỏng không được vượt quá tồn kho khả dụng.');
+        return;
+      }
+    } else {
+      if (!selectedProductId) {
+        toast.error('Vui lòng chọn sản phẩm để mô phỏng.');
+        return;
+      }
+      if (localSimulatedDemand <= 0) {
+        toast.error('Số lượng mô phỏng phải lớn hơn 0.');
+        return;
+      }
+      const inv = inventories.find(i => i.productId === selectedProductId);
+      const available = inv?.availableStock ?? ((inv?.quantity ?? 0) - (inv?.reservedStock ?? 0));
+      if (localSimulatedDemand > (available ?? 0)) {
+        toast.error('Số lượng mô phỏng không được vượt quá tồn kho khả dụng.');
+        return;
+      }
+    }
     setIsSimulating(true);
     setApiError(null);
     setResult(null);
+    setSimulationProductResults([]);
 
     try {
-      const res: any = await simulateSaleApi.simulateSale({
-        productId: selectedProductId,
-        simulationMode,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        dailySimulatedQuantity,
-        note: note
+      // Prepare payload based on mode
+      const payload = multiMode
+        ? { items }
+        : { productId: selectedProductId, quantity: localSimulatedDemand };
+      // Call simulate sale API
+      const res = await simulateSaleApi.simulateSale(payload);
+
+      const affectedProducts: any[] = res?.affectedProducts ?? (res?.affectedProduct ? [res.affectedProduct] : []);
+      const allLogs: any[] = res?.agentLogs ?? res?.agentResults ?? [];
+      const createdPRs: any[] = res?.createdPurchaseRequests ?? [];
+      const scanSessionId = res?.scanSessionId;
+
+      // Helper to parse JSON safely
+      const parseJson = (val: any) => {
+        if (typeof val === 'string') { try { return JSON.parse(val); } catch { return null; } }
+        return val;
+      };
+
+      // Helper to resolve agent status from logs
+      const resolveAgentStatus = (logs: any[]): string => {
+        for (const log of logs) {
+          const output = parseJson(log.output);
+          if (log.result === 'CREATED_PURCHASE_REQUEST' || log.action === 'CREATE_PURCHASE_REQUEST' || output?.action === 'CREATE_PURCHASE_REQUEST') return 'CREATED_PURCHASE_REQUEST';
+        }
+        for (const log of logs) {
+          const output = parseJson(log.output);
+          if (log.result === 'SKIPPED_DUPLICATE' || output?.reason === 'ACTIVE_PR_EXISTS' || log.reasonCode === 'ACTIVE_PR_EXISTS' || log.result === 'ACTIVE_PR_EXISTS') return 'SKIPPED_DUPLICATE';
+        }
+        for (const log of logs) {
+          const output = parseJson(log.output);
+          if (log.result === 'NO_SUPPLIER' || log.result === 'SUPPLIER_NOT_FOUND' || log.result === 'SUPPLIER_PRODUCTS_EMPTY' || output?.reason === 'NO_SUPPLIERS_MAPPED' || output?.reason === 'SUPPLIERS_INACTIVE' || output?.reason === 'SUPPLIER_MISSING') return 'NO_SUPPLIER';
+        }
+        for (const log of logs) {
+          if (log.status === 'FAILED') return 'FAILED';
+        }
+        for (const log of logs) {
+          if (log.reason === 'STOCK_OK' || log.result === 'STOCK_OK' || log.reason === 'ABOVE_THRESHOLD' || log.result === 'ABOVE_THRESHOLD') return 'STOCK_OK';
+        }
+        return logs.length > 0 ? 'PROCESSED' : 'UNKNOWN';
+      };
+
+      // Helper to resolve agent message
+      const resolveAgentMessage = (status: string): string => {
+        switch (status) {
+          case 'CREATED_PURCHASE_REQUEST': return 'Đã tạo yêu cầu nhập hàng';
+          case 'SKIPPED_DUPLICATE': return 'Đã có yêu cầu nhập hàng đang xử lý';
+          case 'NO_SUPPLIER': return 'Thiếu nhà cung cấp hợp lệ';
+          case 'FAILED': return 'Xử lý thất bại';
+          case 'STOCK_OK': return 'Tồn kho an toàn';
+          case 'PROCESSED': return 'Đã xử lý';
+          default: return 'Chưa có kết quả';
+        }
+      };
+
+      // Build submitted items list
+      const submittedItems = multiMode
+        ? items.filter(i => i.productId?.trim() && i.quantity > 0)
+        : [{ productId: selectedProductId, quantity: localSimulatedDemand }];
+
+      // Build per-product results
+      const productResults = submittedItems.map((item) => {
+        const product = products.find(p => p.id === item.productId);
+        const affected = affectedProducts.find((x: any) => x.productId === item.productId);
+        const inv = inventories.find(i => i.productId === item.productId);
+
+        // Filter agent logs for this product
+        const productLogs = allLogs.filter((log: any) => {
+          const input = parseJson(log.input);
+          const output = parseJson(log.output);
+          return (
+            log.productId === item.productId ||
+            input?.productId === item.productId ||
+            output?.productId === item.productId ||
+            log.productName === product?.name ||
+            input?.productName === product?.name ||
+            output?.productName === product?.name
+          );
+        });
+
+        // Find purchase request for this product
+        const pr = createdPRs.find((p: any) =>
+          p.productId === item.productId ||
+          p.inventory?.productId === item.productId ||
+          p.items?.some((prItem: any) => prItem.inventory?.productId === item.productId)
+        );
+
+        const agentStatus = resolveAgentStatus(productLogs);
+        let pUnit = product?.unit || affected?.unit || 'đơn vị';
+        if (pUnit.toLowerCase() === 'ly') pUnit = 'đơn vị';
+
+        const stockBefore = affected?.stockBefore ?? affected?.previousQuantity;
+        const stockAfter = affected?.stockAfter ?? affected?.newQuantity;
+        const reservedBefore = inv?.reservedStock ?? inv?.reserved_stock ?? 0;
+        const availableBefore = stockBefore != null ? stockBefore - reservedBefore : undefined;
+        const availableAfter = stockAfter != null ? stockAfter - reservedBefore : undefined;
+
+        return {
+          productId: item.productId,
+          productName: product?.name ?? affected?.productName ?? 'Sản phẩm',
+          unit: pUnit,
+          simulatedQuantity: item.quantity,
+          stockBefore,
+          stockAfter,
+          reservedStock: reservedBefore,
+          availableBefore,
+          availableAfter,
+          decreasedQuantity: affected?.decreasedQuantity ?? item.quantity,
+          minThreshold: affected?.minThreshold ?? inv?.minThreshold ?? inv?.min_threshold ?? 0,
+          agentStatus,
+          agentMessage: resolveAgentMessage(agentStatus),
+          agentLogs: productLogs,
+          purchaseRequest: pr,
+          transactionId: affected?.transactionId,
+          inventoryId: affected?.inventoryId,
+          scanSessionId: productLogs[0]?.scanSessionId || scanSessionId,
+        };
       });
 
-      const affected = res?.affectedProduct ?? res?.affectedProducts?.[0] ?? {};
-      const stockBefore = affected.stockBefore ?? res?.stockBefore ?? currentQty;
-      const stockAfter = affected.stockAfter ?? res?.stockAfter ?? stockBefore;
-      const decreasedQuantity = affected.decreasedQuantity ?? res?.decreasedQuantity ?? localSimulatedDemand;
-      const minThreshold = affected.minThreshold ?? res?.minThreshold ?? threshold;
-      let status: "OK" | "WARNING" | "NEED_RESTOCK" = "OK";
-      if (stockAfter < minThreshold) {
-        status = "NEED_RESTOCK";
-      } else if (stockAfter === minThreshold) {
-        status = "WARNING";
+      setSimulationProductResults(productResults);
+      setLastSubmittedItems(submittedItems);
+
+      // Also set the legacy single-product result for backward compat
+      if (!multiMode && productResults.length === 1) {
+        const pr = productResults[0];
+        let status: "OK" | "WARNING" | "NEED_RESTOCK" = "OK";
+        if ((pr.stockAfter ?? 0) < (pr.minThreshold ?? 0)) status = "NEED_RESTOCK";
+        else if ((pr.stockAfter ?? 0) === (pr.minThreshold ?? 0)) status = "WARNING";
+
+        setResult({
+          success: true,
+          productId: pr.productId,
+          inventoryId: pr.inventoryId,
+          transactionId: pr.transactionId,
+          productName: pr.productName,
+          stockBefore: pr.stockBefore ?? 0,
+          stockAfter: pr.stockAfter ?? 0,
+          decreasedQuantity: pr.decreasedQuantity,
+          statusAfter: status,
+          minThreshold: pr.minThreshold ?? 0,
+          prCreated: !!pr.purchaseRequest,
+          prId: pr.purchaseRequest?.id,
+          prNumber: pr.purchaseRequest?.requestNumber || pr.purchaseRequest?.id,
+          hasNoSupplierSkip: pr.agentStatus === 'NO_SUPPLIER',
+          hasDuplicateSkip: pr.agentStatus === 'SKIPPED_DUPLICATE',
+          hasAgentWarning: !!res?.agentWarning || res?.cooldownRemainingSeconds > 0 || !!res?.activeScanSessionId,
+          hasAgentFailed: pr.agentStatus === 'FAILED',
+          scanSessionId,
+          agentWarning: res?.agentWarning,
+          cooldownRemainingSeconds: res?.cooldownRemainingSeconds,
+          activeScanSessionId: res?.activeScanSessionId,
+          agentLogs: pr.agentLogs,
+        });
       }
-
-      const createdPRs = res?.createdPurchaseRequests ?? [];
-      const logs: any[] = res?.agentLogs ?? res?.agentResults ?? [];
-
-      const hasDuplicateSkip = logs.some((log: any) => {
-        const output = typeof log?.output === "string"
-          ? (() => { try { return JSON.parse(log.output); } catch { return null; } })()
-          : log?.output;
-        return (
-          log?.result === "SKIPPED_DUPLICATE" ||
-          output?.reason === "ACTIVE_PR_EXISTS" ||
-          log?.reasonCode === "ACTIVE_PR_EXISTS"
-        );
-      });
-
-      const hasNoSupplierSkip = logs.some((log: any) => {
-        const output = typeof log?.output === "string"
-          ? (() => { try { return JSON.parse(log.output); } catch { return null; } })()
-          : log?.output;
-        return (
-          log?.result === "NO_SUPPLIER" ||
-          log?.result === "SUPPLIER_NOT_FOUND" ||
-          log?.result === "SUPPLIER_PRODUCTS_EMPTY" ||
-          output?.reason === "NO_SUPPLIERS_MAPPED" ||
-          output?.reason === "SUPPLIERS_INACTIVE" ||
-          log?.reasoning?.includes("Sản phẩm chưa được liên kết với nhà cung cấp") ||
-          log?.reasoning?.includes("Nhà cung cấp của sản phẩm đang bị vô hiệu hóa") ||
-          output?.reason === "SUPPLIER_MISSING"
-        );
-      });
-
-      setResult({
-        success: true,
-        productId: affected.productId ?? res?.productId ?? selectedProductId,
-        inventoryId: affected.inventoryId ?? res?.inventoryId,
-        transactionId: affected.transactionId ?? res?.transactionId,
-        productName: affected.productName ?? res?.productName ?? selectedProduct?.name,
-        stockBefore,
-        stockAfter,
-        decreasedQuantity,
-        statusAfter: status,
-        minThreshold,
-        prCreated: !!(res?.purchaseRequestId || res?.purchaseRequest || createdPRs.length > 0),
-        prId: res?.purchaseRequestId || res?.purchaseRequest?.id || createdPRs[0]?.id || undefined,
-        prNumber: createdPRs[0]?.requestNumber || createdPRs[0]?.id || undefined,
-        hasNoSupplierSkip,
-        hasDuplicateSkip
-      });
 
       /* ─── Toast notifications based on response ─── */
-
-      toast.success("Mô phỏng thành công", `Tồn kho còn ${stockAfter} ${unit}.`);
+      if (multiMode) {
+        toast.success("Mô phỏng thành công", `Đã mô phỏng ${submittedItems.length} sản phẩm. Xem kết quả chi tiết bên dưới.`);
+      } else {
+        const singleAfter = productResults[0]?.stockAfter ?? 0;
+        toast.success("Mô phỏng thành công", `Tồn kho còn ${singleAfter} ${unit}.`);
+      }
 
       if (createdPRs.length > 0) {
-        const prNumber = createdPRs[0]?.requestNumber || createdPRs[0]?.id || "";
-        toast.success("Tạo yêu cầu tự động", `AI Agent đã tạo yêu cầu nhập hàng: ${prNumber}.`);
-      } else if (hasNoSupplierSkip) {
-        toast.warning("Chưa có nhà cung cấp", "Sản phẩm chưa được liên kết với nhà cung cấp nên AI Agent không thể tạo yêu cầu nhập hàng.");
-      } else if (hasDuplicateSkip) {
-        toast.info("Yêu cầu nhập hàng tồn tại", "Sản phẩm đã có yêu cầu nhập hàng đang chờ xử lý.");
-      }
-      
-      if (stockAfter <= 0) {
-        toast.error("Sản phẩm hết hàng", "Vui lòng kiểm tra yêu cầu nhập hàng.");
-      } else if (stockAfter < minThreshold) {
-        toast.warning("Sản phẩm sắp hết hàng", `Tồn kho hiện tại: ${stockAfter} ${unit}, ngưỡng cảnh báo: ${minThreshold} ${unit}.`);
+        const prCount = createdPRs.length;
+        toast.success("Tạo yêu cầu tự động", prCount === 1
+          ? `AI Agent đã tạo yêu cầu nhập hàng: ${createdPRs[0]?.requestNumber || createdPRs[0]?.id || ''}.`
+          : `AI Agent đã tạo ${prCount} yêu cầu nhập hàng.`);
+      } else {
+        const hasNoSupplier = productResults.some(p => p.agentStatus === 'NO_SUPPLIER');
+        const hasDuplicate = productResults.some(p => p.agentStatus === 'SKIPPED_DUPLICATE');
+        if (hasNoSupplier) {
+          toast.warning("Chưa có nhà cung cấp", "Có sản phẩm chưa được liên kết với nhà cung cấp nên AI Agent không thể tạo yêu cầu nhập hàng.");
+        }
+        if (hasDuplicate) {
+          toast.info("Yêu cầu nhập hàng tồn tại", "Có sản phẩm đã có yêu cầu nhập hàng đang chờ xử lý.");
+        }
       }
 
-      const simulationTransactionId = affected.transactionId ?? res?.transactionId;
-      if (simulationTransactionId) {
-        localStorage.setItem(LAST_SIMULATION_TRANSACTION_KEY, simulationTransactionId);
+      // Stock warnings
+      const lowStockProducts = productResults.filter(p => (p.stockAfter ?? 0) <= 0);
+      const nearThreshold = productResults.filter(p => (p.stockAfter ?? 0) > 0 && (p.stockAfter ?? 0) < (p.minThreshold ?? 0));
+      if (lowStockProducts.length > 0) {
+        toast.error("Sản phẩm hết hàng", lowStockProducts.length === 1
+          ? `${lowStockProducts[0].productName} đã hết hàng. Vui lòng kiểm tra yêu cầu nhập hàng.`
+          : `${lowStockProducts.length} sản phẩm hết hàng. Vui lòng kiểm tra yêu cầu nhập hàng.`);
+      }
+      if (nearThreshold.length > 0) {
+        toast.warning("Sản phẩm sắp hết hàng", nearThreshold.length === 1
+          ? `${nearThreshold[0].productName} dưới ngưỡng cảnh báo.`
+          : `${nearThreshold.length} sản phẩm dưới ngưỡng cảnh báo.`);
+      }
+
+      // Save transaction ID for restore
+      const firstTransactionId = affectedProducts[0]?.transactionId ?? res?.transactionId;
+      if (firstTransactionId) {
+        localStorage.setItem(LAST_SIMULATION_TRANSACTION_KEY, firstTransactionId);
       }
       await loadData(false);
     } catch (err: any) {
@@ -247,7 +410,7 @@ export const AdminSimulateSalePage: React.FC = () => {
 
   const handleRestoreSimulation = async () => {
     if (!selectedRestoreId || isRestoring) return;
-    
+
     const itemToRestore = pendingRestores.find(r => r.productId === selectedRestoreId);
     if (!itemToRestore || !itemToRestore.transactionIds.length) return;
 
@@ -259,7 +422,7 @@ export const AdminSimulateSalePage: React.FC = () => {
         await simulateSaleApi.restoreSimulation(tId);
       }
       toast.success("Khôi phục sản phẩm mô phỏng thành công.");
-      
+
       setSelectedRestoreId("");
       localStorage.removeItem(LAST_SIMULATION_TRANSACTION_KEY);
       await loadData(true);
@@ -289,44 +452,109 @@ export const AdminSimulateSalePage: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Left Column: Mô phỏng bán */}
-        <section className="bg-white border border-slate-100 rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col h-full">
+        <section className="bg-white border border-slate-100 rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col h-fit">
           <div className="border-b border-slate-100 pb-3 mb-6">
             <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
               <Play size={20} className="text-amber-800" /> Mô phỏng bán
             </h3>
+            {/* Mode Switch */}
+             <div className="flex items-center mb-4">
+               <label className="mr-2 font-medium text-sm">Chế độ đa sản phẩm</label>
+               <input type="checkbox" checked={multiMode} onChange={(e) => setMultiMode(e.target.checked)} />
+             </div>
+             {multiMode ? (
+               <div className="space-y-4">
+                 {items.map((item, idx) => (
+                   <div key={idx} className="grid grid-cols-3 gap-2 items-end">
+                     <select
+                       value={item.productId}
+                       onChange={(e) => {
+                         const newItems = [...items];
+                         newItems[idx].productId = e.target.value;
+                         setItems(newItems);
+                       }}
+                       className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm"
+                     >
+                       <option value="">-- Chọn sản phẩm --</option>
+                       {products.map((p) => (
+                         <option key={p.id} value={p.id}>
+                           {p.name}
+                         </option>
+                       ))}
+                     </select>
+                     <input
+                       type="number"
+                       min={1}
+                       value={item.quantity || ''}
+                       onChange={(e) => {
+                         const val = parseInt(e.target.value) || 0;
+                         const newItems = [...items];
+                         newItems[idx].quantity = val;
+                         setItems(newItems);
+                       }}
+                       placeholder="Số lượng"
+                       className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm"
+                     />
+                     <button type="button" onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-600">Xóa</button>
+                   </div>
+                 ))}
+                 <button type="button" onClick={() => setItems([...items, { productId: '', quantity: 0 }])} className="px-3 py-1 bg-amber-600 text-white rounded">
+                   Thêm sản phẩm
+                 </button>
+               </div>
+             ) : (
+               <div>
+                 <label className="block text-sm font-medium text-slate-750 mb-1.5 font-semibold">Chọn sản phẩm</label>
+                 <select
+                   value={selectedProductId}
+                   onChange={(e) => {
+                     setSelectedProductId(e.target.value);
+                   }}
+                   className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
+                 >
+                   <option value="">-- Chọn sản phẩm cần mô phỏng --</option>
+                   {products.map((p) => (
+                     <option key={p.id} value={p.id}>
+                       {p.name}
+                     </option>
+                   ))}
+                 </select>
+               </div>
+             )}
             <p className="text-xs text-slate-500 mt-2 leading-relaxed">
               Chọn sản phẩm và nhập số lượng để mô phỏng bán hàng. Hệ thống sẽ dùng logic mô phỏng hiện có và kích hoạt AI Agent sau khi tồn kho thay đổi.
             </p>
           </div>
 
           <div className="flex-1 space-y-6">
-            {/* Select Product */}
-            <div>
-              <label className="block text-sm font-medium text-slate-750 mb-1.5 font-semibold">Chọn sản phẩm</label>
-              <select
-                value={selectedProductId}
-                onChange={(e) => {
-                  setSelectedProductId(e.target.value);
-                }}
-                className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
-              >
-                <option value="">-- Chọn sản phẩm cần mô phỏng --</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {!selectedProductId ? (
-              <div className="p-4 bg-slate-50 border border-slate-200 text-slate-600 text-sm rounded-xl">
-                Vui lòng chọn sản phẩm cần mô phỏng.
-              </div>
-            ) : (
+            {!multiMode && selectedProductId && (
               <div className="space-y-6">
+                {/* Inventory Card */}
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-4">
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div>
+                      <span className="block text-xs text-slate-600">Tồn kho thật</span>
+                      <strong className="block text-base text-slate-800">{currentQty} {unit}</strong>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-slate-600">Đang giữ</span>
+                      <strong className="block text-base text-slate-800">{selectedInventory?.reservedStock ?? selectedInventory?.reserved_stock ?? 0} {unit}</strong>
+                    </div>
+                    <div>
+                      <span className="block text-xs text-slate-600">Khả dụng</span>
+                      <strong className="block text-base text-slate-800">{availableStock} {unit}</strong>
+                    </div>
+                  </div>
+                  {selectedInventory?.minThreshold ?? selectedInventory?.min_threshold ? (
+                    <p className="mt-2 text-xs text-slate-600">Ngưỡng tối thiểu: {threshold} {unit}</p>
+                  ) : null}
+                  <p className="mt-1 text-xs font-medium">
+                    Trạng thái: 
+                    {availableStock <= 0 ? "Hết hàng" : availableStock < threshold ? "Dưới ngưỡng" : availableStock === threshold ? "Sắp chạm ngưỡng" : "Còn hàng"}
+                  </p>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-750 mb-1.5 font-semibold">Số lượng dự kiến bán mỗi ngày</label>
                   <div className="flex gap-2 items-center">
@@ -335,10 +563,12 @@ export const AdminSimulateSalePage: React.FC = () => {
                       min={1}
                       value={dailySimulatedQuantity || ""}
                       onChange={(e) => { setDailySimulatedQuantity(parseInt(e.target.value) || 0); }}
+                      disabled={availableStock <= 0}
                       className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
                     />
                     <span className="text-sm font-medium text-slate-600 whitespace-nowrap">{unit}/ngày</span>
                   </div>
+                  <p className="mt-1 text-xs text-slate-500">Có thể mô phỏng tối đa: {availableStock} {unit}</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -418,86 +648,246 @@ export const AdminSimulateSalePage: React.FC = () => {
                   {localSimulatedDemand <= 0 && (
                     <p className="text-sm text-rose-600 mt-2 font-medium">Số lượng mô phỏng phải lớn hơn 0.</p>
                   )}
-                  {localSimulatedDemand > currentQty && (
-                    <p className="text-sm text-rose-600 mt-2 font-medium">Số lượng mô phỏng không được vượt quá tồn kho hiện tại ({currentQty} {unit}).</p>
+                  {localSimulatedDemand > availableStock && (
+                    <p className="text-sm text-rose-600 mt-2 font-medium">Số lượng mô phỏng không được vượt quá tồn kho khả dụng ({availableStock} {unit}).</p>
                   )}
                 </div>
               </div>
             )}
+                
+                <div className="pt-4 flex justify-end">
+                  <Button
+                    onClick={() => setShowConfirm(true)}
+                    className="px-6 py-3"
+                    disabled={
+                      (multiMode && items.some(i => !i.productId || i.quantity <= 0)) ||
+                      (!multiMode && (!selectedProductId || localSimulatedDemand <= 0 || localSimulatedDemand > availableStock))
+                      || isSimulating
+                    }
+                  >
+                    Apply Simulation
+                  </Button>
+                </div>
 
-            {/* PR Status Result inside the left column */}
-            {result && result.productId === selectedProductId && !result.restored && (
-              <div className="mt-6">
-                {result.prCreated ? (
-                  <div className="p-4 bg-amber-50 border border-amber-250 text-amber-900 rounded-xl space-y-3">
-                    <p className="text-xs font-semibold flex items-center gap-1.5">
-                      <Sparkles size={14} className="text-amber-700 animate-pulse" />
-                      AI Agent đã tạo yêu cầu nhập hàng: {result.prNumber || result.prId}
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <Link to={result.prId ? `/admin/purchase-requests/${result.prId}` : `/admin/purchase-requests`}>
-                        <Button size="sm" className="bg-amber-800 hover:bg-amber-900 text-xs flex items-center gap-1 border-none text-white">
-                          <Mail size={12} /> Xem yêu cầu mua hàng
-                        </Button>
-                      </Link>
-                      <Link to="/admin/agent-logs">
-                        <Button size="sm" variant="outline" className="text-xs flex items-center gap-1 border-amber-300 text-amber-900 hover:bg-amber-50/50 bg-white">
-                          <Terminal size={12} /> Xem Agent Logs
-                        </Button>
-                      </Link>
+            {/* ═══ Simulation Results Section ═══ */}
+            {simulationProductResults.length > 0 && (
+              <div className="mt-6 border-t border-slate-100 pt-6 space-y-4">
+                {/* Summary */}
+                <div className="mb-4 p-4 border border-emerald-200 rounded-xl bg-emerald-50 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-bold text-slate-800">Kết quả mô phỏng</h4>
+                    <div className="flex gap-2">
+                      {simulationProductResults[0]?.scanSessionId && (
+                        <Link to={`/admin/agent-logs?scanSessionId=${simulationProductResults[0].scanSessionId}`}>
+                          <Button size="sm" variant="outline" className="text-[10px] h-7 px-2 flex items-center gap-1 border-slate-300 bg-white text-slate-700 hover:bg-slate-50">
+                            <Terminal size={12} /> Xem Nhật ký Agent
+                          </Button>
+                        </Link>
+                      )}
                     </div>
                   </div>
-                ) : result.hasNoSupplierSkip ? (
-                  <div className="p-4 bg-orange-50 border border-orange-200 text-orange-900 rounded-xl space-y-3">
-                    <p className="text-xs font-semibold flex items-center gap-1.5">
-                      <AlertTriangle size={14} className="text-orange-600" />
-                      Sản phẩm chưa được liên kết với nhà cung cấp nên AI Agent không thể tạo yêu cầu nhập hàng.
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <Link to="/admin/suppliers">
-                        <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-xs flex items-center gap-1 border-none text-white">
-                          Đi đến Nhà cung cấp
-                        </Button>
-                      </Link>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div className="bg-white p-2 border border-slate-100 rounded">
+                      <span className="block text-slate-400">Số sản phẩm</span>
+                      <strong className="text-slate-700">{simulationProductResults.length}</strong>
+                    </div>
+                    <div className="bg-white p-2 border border-slate-100 rounded">
+                      <span className="block text-slate-400">Tổng mô phỏng</span>
+                      <strong className="text-amber-600">{simulationProductResults.reduce((s, p) => s + (p.simulatedQuantity ?? 0), 0)} đơn vị</strong>
+                    </div>
+                    <div className="bg-white p-2 border border-slate-100 rounded">
+                      <span className="block text-slate-400">Trạng thái</span>
+                      <strong className={`truncate block ${
+                        simulationProductResults.some(p => p.agentStatus === 'FAILED') ? 'text-rose-600' :
+                        simulationProductResults.some(p => p.agentStatus === 'NO_SUPPLIER') ? 'text-amber-600' :
+                        'text-emerald-600'
+                      }`}>
+                        {simulationProductResults.some(p => p.agentStatus === 'FAILED') ? 'Có lỗi Agent' :
+                         simulationProductResults.some(p => p.agentStatus === 'NO_SUPPLIER') ? 'Có cảnh báo' :
+                         'Thành công'}
+                      </strong>
+                    </div>
+                    <div className="bg-white p-2 border border-slate-100 rounded">
+                      <span className="block text-slate-400">PR đã tạo</span>
+                      <strong className="text-slate-700">{simulationProductResults.filter(p => p.purchaseRequest).length}</strong>
                     </div>
                   </div>
-                ) : result.hasDuplicateSkip ? (
-                  <div className="p-4 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl space-y-3">
-                    <p className="text-xs font-semibold flex items-center gap-1.5">
-                      <Info size={14} className="text-blue-600" />
-                      Sản phẩm đã có yêu cầu nhập hàng đang chờ xử lý.
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <Link to="/admin/purchase-requests">
-                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-xs flex items-center gap-1 border-none text-white">
-                          <Mail size={12} /> Xem yêu cầu mua hàng
-                        </Button>
-                      </Link>
+                </div>
+
+                {/* Runtime trace */}
+                <div className="p-5 border border-slate-200 rounded-xl bg-white shadow-sm">
+                  <h4 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2 mb-4">Luồng chạy thực tế</h4>
+                  <div className="max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="relative pl-6 space-y-4 before:absolute before:inset-0 before:ml-[11px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-slate-200 before:via-slate-200 before:to-transparent">
+                      {/* Step 1 */}
+                      <div className="relative">
+                        <div className="absolute -left-6 bg-emerald-500 w-2 h-2 rounded-full ring-2 ring-emerald-100 mt-1.5"></div>
+                        <div className="text-sm">
+                          <strong className="text-slate-800 text-xs block">1. Nhận danh sách sản phẩm mô phỏng</strong>
+                          <div className="text-slate-500 text-[10px] mt-0.5">Thành công · {simulationProductResults.length} sản phẩm · {simulationProductResults.reduce((s, p) => s + (p.simulatedQuantity ?? 0), 0)} đơn vị</div>
+                        </div>
+                      </div>
+                      {/* Step 2 */}
+                      <div className="relative">
+                        <div className="absolute -left-6 bg-emerald-500 w-2 h-2 rounded-full ring-2 ring-emerald-100 mt-1.5"></div>
+                        <div className="text-sm">
+                          <strong className="text-slate-800 text-xs block">2. Kiểm tra tồn kho khả dụng</strong>
+                          <div className="text-slate-500 text-[10px] mt-0.5">Thành công · Đủ tồn kho cho tất cả sản phẩm</div>
+                        </div>
+                      </div>
+                      {/* Step 3 */}
+                      <div className="relative">
+                        <div className="absolute -left-6 bg-emerald-500 w-2 h-2 rounded-full ring-2 ring-emerald-100 mt-1.5"></div>
+                        <div className="text-sm">
+                          <strong className="text-slate-800 text-xs block">3. Trừ tồn kho mô phỏng</strong>
+                          <div className="text-slate-500 text-[10px] mt-0.5">Thành công · Đã cập nhật {simulationProductResults.length} sản phẩm</div>
+                        </div>
+                      </div>
+                      {/* Step 4 */}
+                      <div className="relative">
+                        <div className={`absolute -left-6 w-2 h-2 rounded-full ring-2 mt-1.5 ${
+                          simulationProductResults.some(p => p.agentStatus === 'FAILED') ? 'bg-rose-500 ring-rose-100' : 'bg-emerald-500 ring-emerald-100'
+                        }`}></div>
+                        <div className="text-sm">
+                          <strong className="text-slate-800 text-xs block">4. Kích hoạt AI Agent scan tồn kho</strong>
+                          <div className={`text-[10px] mt-0.5 ${
+                            simulationProductResults.some(p => p.agentStatus === 'FAILED') ? 'text-rose-600' : 'text-slate-500'
+                          }`}>
+                            {simulationProductResults[0]?.scanSessionId ? 'Đã kích hoạt' : 'Chưa có phản hồi'}
+                          </div>
+                        </div>
+                      </div>
+                      {/* Step 5 */}
+                      <div className="relative">
+                        <div className={`absolute -left-6 w-2 h-2 rounded-full ring-2 mt-1.5 ${
+                          simulationProductResults.some(p => p.purchaseRequest) ? 'bg-amber-500 ring-amber-100' :
+                          simulationProductResults.some(p => p.agentStatus === 'FAILED') ? 'bg-rose-500 ring-rose-100' :
+                          'bg-blue-500 ring-blue-100'
+                        }`}></div>
+                        <div className="text-sm">
+                          <strong className="text-slate-800 text-xs block">5. AI Agent đánh giá từng sản phẩm</strong>
+                          <div className="text-slate-500 text-[10px] mt-0.5">
+                            {(() => {
+                              const prCreated = simulationProductResults.filter(p => p.agentStatus === 'CREATED_PURCHASE_REQUEST').length;
+                              const stockOk = simulationProductResults.filter(p => p.agentStatus === 'STOCK_OK').length;
+                              const skipped = simulationProductResults.filter(p => p.agentStatus === 'SKIPPED_DUPLICATE').length;
+                              const noSupplier = simulationProductResults.filter(p => p.agentStatus === 'NO_SUPPLIER').length;
+                              const failed = simulationProductResults.filter(p => p.agentStatus === 'FAILED').length;
+                              const parts: string[] = [];
+                              if (prCreated > 0) parts.push(`${prCreated} tạo PR`);
+                              if (stockOk > 0) parts.push(`${stockOk} an toàn`);
+                              if (skipped > 0) parts.push(`${skipped} đã có PR`);
+                              if (noSupplier > 0) parts.push(`${noSupplier} thiếu NCC`);
+                              if (failed > 0) parts.push(`${failed} thất bại`);
+                              return parts.length > 0 ? parts.join(' · ') : 'Hoàn tất';
+                            })()}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="p-4 bg-slate-50 border border-slate-200 text-slate-650 rounded-xl text-xs flex items-center gap-1.5">
-                    <ShieldCheck size={14} className="text-emerald-600" />
-                    Tồn kho sau bán vẫn ở mức an toàn. AI Agent không tạo Purchase Request mới.
-                  </div>
-                )}
+                </div>
+
+                {/* Per-product result cards */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-bold text-slate-700">Chi tiết từng sản phẩm</h4>
+                  {simulationProductResults.map((item) => {
+                    const getProductAgentLogUrl = () => {
+                      const params = new URLSearchParams();
+                      if (item.productId) params.set('productId', item.productId);
+                      if (item.scanSessionId) params.set('scanSessionId', item.scanSessionId);
+                      return `/admin/agent-logs?${params.toString()}`;
+                    };
+
+                    const statusBadge = (() => {
+                      switch (item.agentStatus) {
+                        case 'CREATED_PURCHASE_REQUEST':
+                          return <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 text-[10px] font-bold uppercase">Đã tạo YC nhập hàng</span>;
+                        case 'SKIPPED_DUPLICATE':
+                          return <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 text-[10px] font-bold uppercase">Đã có YC nhập hàng</span>;
+                        case 'NO_SUPPLIER':
+                          return <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-700 text-[10px] font-bold uppercase">Thiếu NCC</span>;
+                        case 'FAILED':
+                          return <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 text-[10px] font-bold uppercase">Thất bại</span>;
+                        case 'STOCK_OK':
+                          return <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase">Tồn kho an toàn</span>;
+                        default:
+                          return <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-bold uppercase">Đã xử lý</span>;
+                      }
+                    })();
+
+                    return (
+                      <div key={item.productId} className="p-4 border border-slate-200 rounded-xl bg-white shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <strong className="text-sm text-slate-800">{item.productName}</strong>
+                            {statusBadge}
+                          </div>
+                          <div className="flex gap-1.5">
+                            {item.purchaseRequest && (
+                              <Link to={`/admin/purchase-requests/${item.purchaseRequest.id}`}>
+                                <Button size="sm" className="bg-amber-800 hover:bg-amber-900 text-[10px] h-6 px-2 flex items-center gap-1 border-none text-white">
+                                  <Mail size={10} /> PR
+                                </Button>
+                              </Link>
+                            )}
+                            {item.agentLogs && item.agentLogs.length > 0 && (
+                              <Link to={getProductAgentLogUrl()}>
+                                <Button size="sm" variant="outline" className="text-[10px] h-6 px-2 flex items-center gap-1 border-slate-300 bg-white text-slate-700 hover:bg-slate-50">
+                                  <Terminal size={10} /> Log
+                                </Button>
+                              </Link>
+                            )}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                          <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                            <span className="block text-slate-400">Mô phỏng</span>
+                            <strong className="text-amber-600">{item.simulatedQuantity} {item.unit}</strong>
+                          </div>
+                          <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                            <span className="block text-slate-400">Tồn trước</span>
+                            <strong className="text-slate-700">{item.stockBefore != null ? `${item.stockBefore} ${item.unit}` : 'Không có dữ liệu'}</strong>
+                          </div>
+                          <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                            <span className="block text-slate-400">Tồn sau</span>
+                            <strong className={`${(item.stockAfter ?? 0) <= 0 ? 'text-rose-600' : (item.stockAfter ?? 0) < (item.minThreshold ?? 0) ? 'text-amber-600' : 'text-slate-700'}`}>
+                              {item.stockAfter != null ? `${item.stockAfter} ${item.unit}` : 'Không có dữ liệu'}
+                            </strong>
+                          </div>
+                          <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                            <span className="block text-slate-400">Agent</span>
+                            <strong className={`truncate block ${
+                              item.agentStatus === 'FAILED' ? 'text-rose-600' :
+                              item.agentStatus === 'NO_SUPPLIER' ? 'text-orange-600' :
+                              item.agentStatus === 'CREATED_PURCHASE_REQUEST' ? 'text-amber-700' :
+                              'text-emerald-600'
+                            }`}>{item.agentMessage}</strong>
+                          </div>
+                        </div>
+                        {item.reservedStock > 0 && (
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                            <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                              <span className="block text-slate-400">Đang giữ</span>
+                              <strong className="text-slate-600">{item.reservedStock} {item.unit}</strong>
+                            </div>
+                            <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                              <span className="block text-slate-400">Khả dụng sau</span>
+                              <strong className="text-slate-600">{item.availableAfter != null ? `${item.availableAfter} ${item.unit}` : 'Không có dữ liệu'}</strong>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
-          </div>
-
-          <div className="pt-6 mt-6 border-t border-slate-100 flex justify-end">
-            <Button
-              onClick={() => setShowConfirm(true)}
-              className="px-6 py-3"
-              disabled={!selectedProductId || localSimulatedDemand <= 0 || localSimulatedDemand > currentQty || isSimulating}
-            >
-              Apply Simulation
-            </Button>
           </div>
         </section>
 
         {/* Right Column: Khôi phục sản phẩm */}
-        <section className="bg-white border border-slate-100 rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col h-full">
+        <section className="bg-white border border-slate-100 rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col h-fit">
           <div className="flex items-start justify-between border-b border-slate-100 pb-3 mb-6">
             <div>
               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
@@ -512,9 +902,9 @@ export const AdminSimulateSalePage: React.FC = () => {
             </button>
           </div>
 
-          <div className="flex-1 flex flex-col">
+          <div className="flex flex-col">
             {pendingRestores.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 min-h-[200px]">
+              <div className="flex items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 min-h-[200px]">
                 <p className="text-slate-500 text-sm font-medium">Chưa có mô phỏng nào cần khôi phục.</p>
               </div>
             ) : (
@@ -541,8 +931,8 @@ export const AdminSimulateSalePage: React.FC = () => {
                     <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
                       <div className="flex justify-between items-start gap-2">
                         <div>
-                            <span className="text-xs text-slate-500 block mb-1">Tên sản phẩm</span>
-                            <strong className="text-slate-800 text-sm">{r.productName || "Sản phẩm không tên"}</strong>
+                          <span className="text-xs text-slate-500 block mb-1">Tên sản phẩm</span>
+                          <strong className="text-slate-800 text-sm">{r.productName || "Sản phẩm không tên"}</strong>
                         </div>
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 border border-amber-200 text-amber-800 shrink-0">
                           Chưa khôi phục
@@ -559,7 +949,7 @@ export const AdminSimulateSalePage: React.FC = () => {
                           <strong className="text-base text-slate-700">{r.transactionIds.length}</strong>
                         </div>
                       </div>
-                      
+
                       {r.transactionIds.length > 0 && (
                         <div className="text-[10px] text-slate-400 break-all bg-white p-2 rounded border border-slate-150 max-h-24 overflow-y-auto">
                           <strong>Các mã giao dịch:</strong>
@@ -596,7 +986,10 @@ export const AdminSimulateSalePage: React.FC = () => {
         onClose={() => setShowConfirm(false)}
         onConfirm={handleSimulate}
         title="Xác nhận Apply Simulation"
-        message={`Bạn muốn thực hiện Apply Simulation mô phỏng bán ${localSimulatedDemand} ${unit} cho sản phẩm ${selectedProduct?.name}? Giao dịch này sẽ cập nhật kho thực tế và kích hoạt AI Agent kiểm định.`}
+        message={multiMode
+          ? `Bạn muốn thực hiện Apply Simulation cho ${items.filter(i => i.productId?.trim() && i.quantity > 0).length} sản phẩm? Giao dịch này sẽ cập nhật kho thực tế và kích hoạt AI Agent kiểm định.`
+          : `Bạn muốn thực hiện Apply Simulation mô phỏng bán ${localSimulatedDemand} ${unit} cho sản phẩm ${selectedProduct?.name}? Giao dịch này sẽ cập nhật kho thực tế và kích hoạt AI Agent kiểm định.`
+        }
         confirmText="Apply Simulation"
         cancelText="Hủy"
         type="warning"

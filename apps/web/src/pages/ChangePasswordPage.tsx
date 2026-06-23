@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+
 import { Key, Eye, EyeOff, CheckCircle } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/common/Button";

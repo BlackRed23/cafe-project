@@ -130,7 +130,7 @@ export const agentRepository = {
         return Boolean(item);
     },
 
-    async findOpenPurchaseRequest(productId: string, inventoryId: string): Promise<{ id: string } | null> {
+    async findOpenPurchaseRequest(productId: string, inventoryId: string): Promise<{ id: string, status: string, supplier: { id: string, name: string, status: string, deletedAt: Date | null } } | null> {
         const item = await prisma.purchaseRequestItem.findFirst({
             where: {
                 productId,
@@ -139,7 +139,18 @@ export const agentRepository = {
             },
             select: {
                 request: {
-                    select: { id: true }
+                    select: { 
+                        id: true,
+                        status: true,
+                        supplier: {
+                            select: {
+                                id: true,
+                                name: true,
+                                status: true,
+                                deletedAt: true
+                            }
+                        }
+                    }
                 }
             }
         });

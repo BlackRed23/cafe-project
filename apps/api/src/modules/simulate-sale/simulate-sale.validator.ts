@@ -1,43 +1,53 @@
 import { z } from 'zod';
 
-export const simulateSaleSchema = z.object({
-    productId: z.string().trim().min(1, 'Product is required.').optional(),
-    quantity: z.coerce.number().int('Quantity must be an integer.').min(1, 'Quantity must be at least 1.').optional(),
-    
-    // New preview fields
+// Item schema for both legacy and multi-product payloads
+const simulateSaleItemSchema = z.object({
+  productId: z.string().trim().min(1, 'Product is required.'),
+  quantity: z.coerce.number().int('Quantity must be an integer.').positive('Quantity must be greater than 0.'),
+});
+
+export const simulateSaleSchema = z
+  .object({
+    // Legacy fields (optional)
+    productId: z.string().trim().min(1).optional(),
+    quantity: z.coerce.number().int().positive().optional(),
+    // New multi-product field (optional)
+    items: z.array(simulateSaleItemSchema).optional(),
+
+    // Additional optional fields used elsewhere
     isPreview: z.boolean().optional(),
     simulationMode: z.enum(['ONE_DAY', 'WEEK', 'MONTH', 'CUSTOM_RANGE']).optional(),
-    startDate: z.string().optional(),
-    endDate: z.string().optional(),
+    startDate: z.string().optional().nullable(),
+    endDate: z.string().optional().nullable(),
     dailySimulatedQuantity: z.coerce.number().optional(),
+    note: z.string().optional().nullable(),
+    productCount: z.coerce.number().int().positive().optional(),
+    minDecrease: z.coerce.number().int().positive().optional(),
+    maxDecrease: z.coerce.number().int().positive().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const hasItems = Array.isArray(data.items) && data.items.length > 0;
+    const hasLegacy = Boolean(data.productId) && typeof data.quantity === 'number' && data.quantity > 0;
 
-    productCount: z.coerce.number().int('Product count must be an integer.').min(1, 'Product count must be at least 1.').optional(),
-    minDecrease: z.coerce.number().int('Minimum decrease must be an integer.').min(1, 'Minimum decrease must be at least 1.').optional(),
-    maxDecrease: z.coerce.number().int('Maximum decrease must be an integer.').min(1, 'Maximum decrease must be at least 1.').optional(),
-    note: z.string().trim().max(1000, 'Note must be at most 1000 characters.').optional().nullable()
-}).superRefine((data, ctx) => {
-    if (data.productId || data.quantity !== undefined || data.dailySimulatedQuantity !== undefined) {
-        if (!data.productId) {
-            ctx.addIssue({ code: 'custom', message: 'Product is required.', path: ['productId'] });
-        }
-        if (data.quantity === undefined && data.dailySimulatedQuantity === undefined) {
-            ctx.addIssue({ code: 'custom', message: 'Quantity or dailySimulatedQuantity is required.', path: ['quantity'] });
-        }
-        return;
+    if (!hasItems && !hasLegacy) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['items'],
+        message: 'Vui lòng chọn ít nhất một sản phẩm để mô phỏng.',
+      });
     }
 
-    if (data.productCount === undefined) {
-        ctx.addIssue({ code: 'custom', message: 'Product count is required.', path: ['productCount'] });
+    if (hasItems) {
+      const productIds = data.items!.map((i) => i.productId);
+      const duplicated = productIds.find((id, idx) => productIds.indexOf(id) !== idx);
+      if (duplicated) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['items'],
+          message: 'Không được chọn trùng sản phẩm trong cùng một lần mô phỏng.',
+        });
+      }
     }
-    if (data.minDecrease === undefined) {
-        ctx.addIssue({ code: 'custom', message: 'Minimum decrease is required.', path: ['minDecrease'] });
-    }
-    if (data.maxDecrease === undefined) {
-        ctx.addIssue({ code: 'custom', message: 'Maximum decrease is required.', path: ['maxDecrease'] });
-    }
-    if (data.minDecrease !== undefined && data.maxDecrease !== undefined && data.maxDecrease < data.minDecrease) {
-        ctx.addIssue({ code: 'custom', message: 'Maximum decrease must be greater than or equal to minimum decrease.', path: ['maxDecrease'] });
-    }
-});
+  });
 
 export type SimulateSaleInput = z.infer<typeof simulateSaleSchema>;

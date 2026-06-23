@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../../contexts/AuthContext";
+import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Coffee,
@@ -10,15 +9,12 @@ import {
   Play,
   FileSpreadsheet,
   Terminal,
-  LogOut,
-  Home,
   X,
   ChevronRight,
   Boxes,
   Users,
   LayoutGrid,
   Settings,
-  Key,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -68,8 +64,6 @@ const MENU_GROUPS = [
 
 export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
   const location = useLocation();
-  const navigate = useNavigate();
-  const { logout } = useAuth();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const isActive = (path: string) => {
@@ -77,11 +71,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
       return false;
     }
     return location.pathname === path || location.pathname.startsWith(path + "/");
-  };
-
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
   };
 
   const toggleGroup = (label: string) => {

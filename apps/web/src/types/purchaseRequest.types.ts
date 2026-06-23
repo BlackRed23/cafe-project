@@ -25,6 +25,7 @@ export interface PurchaseRequestItem {
   convertedQuantity?: number | null;
   inventoryUnit?: string | null;
   conversionMissing?: boolean;
+  productPendingDelete?: boolean;
 }
 
 export interface PurchaseRequestEmailDraft {
@@ -80,6 +81,7 @@ export interface PurchaseRequest {
     id: string;
     name: string;
     email: string;
+    status?: string;
   };
   supplierId?: string;
   requester?: { id: string; name: string; email: string } | null;

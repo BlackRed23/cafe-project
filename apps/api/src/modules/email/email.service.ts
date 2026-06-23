@@ -85,7 +85,8 @@ export const emailService = {
         const request = await prisma.purchaseRequest.findUnique({
             where: { id },
             include: {
-                supplier: true
+                supplier: true,
+                items: { include: { product: true } }
             }
         });
 
@@ -97,9 +98,102 @@ export const emailService = {
             throw new HttpError(400, 'Only approved purchase requests can be emailed.');
         }
 
+        const isPendingDelete = request.items.some(item => item.product.pendingDeleteUntil);
+        if (isPendingDelete) {
+            await createAgentLogViaAgentService({
+                action: 'SEND_SUPPLIER_EMAIL_BLOCKED',
+                result: 'SKIPPED',
+                reason: 'PRODUCT_PENDING_DELETE',
+                message: 'Không thể gửi email vì sản phẩm đang chờ xoá.',
+                reference_type: 'PurchaseRequest',
+                reference_id: id,
+                creator: userId ? { connect: { id: userId } } : undefined
+            });
+            throw new HttpError(400, 'Không thể gửi email vì sản phẩm đang chờ xoá.');
+        }
+
         const recipientEmail = to.trim();
-        if (!recipientEmail || !EMAIL_REGEX.test(recipientEmail)) {
-            throw new HttpError(400, 'Recipient email is required and must be valid.');
+        if (!recipientEmail) {
+            await createAgentLogViaAgentService({
+                action: 'SEND_SUPPLIER_EMAIL',
+                result: 'FAILED',
+                reason: 'SUPPLIER_EMAIL_MISSING',
+                message: 'Gửi email thất bại vì nhà cung cấp chưa có email.',
+                reference_type: 'PurchaseRequest',
+                reference_id: id,
+                creator: userId ? { connect: { id: userId } } : undefined
+            });
+            throw new HttpError(400, 'Nhà cung cấp chưa có email. Vui lòng cập nhật email nhà cung cấp trước khi gửi.');
+        }
+
+        if (!EMAIL_REGEX.test(recipientEmail)) {
+            await createAgentLogViaAgentService({
+                action: 'SEND_SUPPLIER_EMAIL',
+                result: 'FAILED',
+                reason: 'SUPPLIER_EMAIL_INVALID',
+                message: 'Gửi email thất bại vì email nhà cung cấp không hợp lệ.',
+                reference_type: 'PurchaseRequest',
+                reference_id: id,
+                creator: userId ? { connect: { id: userId } } : undefined
+            });
+            throw new HttpError(400, 'Email nhà cung cấp không hợp lệ.');
+        }
+
+        if (request.supplier?.status === 'INACTIVE') {
+            let suggestedSuppliers: any[] = [];
+            const productId = request.items?.[0]?.productId;
+            if (productId) {
+                const altSupplierProducts = await prisma.supplierProduct.findMany({
+                    where: {
+                        productId,
+                        supplierId: { not: request.supplier.id },
+                        supplier: { status: 'ACTIVE' }
+                    },
+                    include: { supplier: true },
+                    orderBy: [
+                        { isPreferred: 'desc' },
+                        { leadTimeDays: 'asc' },
+                        { price: 'asc' }
+                    ]
+                });
+                suggestedSuppliers = altSupplierProducts.map(sp => ({
+                    supplierId: sp.supplierId,
+                    supplierName: sp.supplier.name,
+                    isPreferred: sp.isPreferred,
+                    leadTimeDays: sp.leadTimeDays,
+                    moq: sp.minOrderQuantity,
+                    purchasePrice: Number(sp.price)
+                }));
+            }
+
+            const errorMessage = "Nhà cung cấp của yêu cầu nhập hàng đang bị tắt. Vui lòng mở lại nhà cung cấp hoặc đổi nhà cung cấp trước khi gửi email.";
+            await createAgentLogViaAgentService({
+                action: 'SEND_SUPPLIER_EMAIL_BLOCKED',
+                result: 'SKIPPED',
+                reason: 'PURCHASE_REQUEST_SUPPLIER_INACTIVE',
+                error_message: errorMessage,
+                message: "Không gửi email vì nhà cung cấp của yêu cầu nhập hàng đang bị tắt.",
+                reference_type: 'PurchaseRequest',
+                reference_id: id,
+                creator: userId ? { connect: { id: userId } } : undefined,
+                output: JSON.stringify({
+                    purchaseRequestId: id,
+                    supplierId: request.supplier.id,
+                    supplierName: request.supplier.name,
+                    supplierStatus: 'INACTIVE',
+                    productId,
+                    productName: request.items?.[0]?.product?.name,
+                    suggestedSuppliers,
+                    notification: {
+                        title: "Không thể gửi email",
+                        description: "Nhà cung cấp của yêu cầu nhập hàng đang bị tắt. Vui lòng mở lại hoặc đổi nhà cung cấp.",
+                        actionLabel: "Xem yêu cầu nhập hàng",
+                        actionUrl: `/admin/purchase-requests/${id}`
+                    }
+                })
+            });
+
+            throw new HttpError(400, errorMessage);
         }
 
         if (request.retryCount >= 3) {

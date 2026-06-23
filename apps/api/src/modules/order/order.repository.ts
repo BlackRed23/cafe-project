@@ -2,6 +2,7 @@ import { InventoryTransactionType, OrderStatus, type Prisma } from '@cafe-projec
 import { prisma } from '../../common/prisma';
 import type { CreateOrderInput, OrderFiltersInput } from './order.validator';
 import { detectShippingZone, calculateShippingFee } from './shipping.service';
+import { scanInventoryViaAgentService } from '../agent/agent.client';
 
 const orderInclude = {
     user: { select: { id: true, name: true, email: true } },
@@ -159,6 +160,17 @@ export const orderRepository = {
                         }
                     });
                 }
+
+                const productIds = order.items.map(item => item.productId);
+                scanInventoryViaAgentService({
+                    productIds,
+                    triggerType: 'ORDER_COMPLETED',
+                    sourceType: 'ORDER',
+                    sourceId: order.id,
+                    note: 'Order completed, stock finalized'
+                }, userId).catch((error) => {
+                    console.error('[AI_AGENT] Failed to scan inventory after order completion', error);
+                });
             }
 
             if (shouldReleaseReserved) {

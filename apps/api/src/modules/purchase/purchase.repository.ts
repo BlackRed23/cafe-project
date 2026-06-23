@@ -1,4 +1,4 @@
-﻿import { InventoryTransactionType, PurchaseRequestStatus, type Prisma } from '@cafe-project/database';
+import { InventoryTransactionType, PurchaseRequestStatus, type Prisma } from '@cafe-project/database';
 import { prisma } from '../../common/prisma';
 import type { CreatePurchaseRequestInput, PurchaseRequestFiltersInput, ReceivePurchaseRequestInput } from './purchase.validator';
 
@@ -26,7 +26,7 @@ export const purchaseRepository = {
         });
     },
     async findById(id: string): Promise<PurchaseRequestRecord | null> { return prisma.purchaseRequest.findUnique({ where: { id }, include: purchaseInclude }); },
-    async supplierExists(supplierId: string): Promise<boolean> { return Boolean(await prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true } })); },
+    async supplierExists(supplierId: string): Promise<boolean> { return Boolean(await prisma.supplier.findFirst({ where: { id: supplierId, status: { not: 'INACTIVE' }, deletedAt: null }, select: { id: true } })); },
     async inventoriesByIds(ids: string[]) { return prisma.inventory.findMany({ where: { id: { in: ids }, product: { isActive: true } }, include: { product: true } }); },
     async hasActiveRequestForInventory(inventoryId: string): Promise<boolean> {
         const item = await prisma.purchaseRequestItem.findFirst({
@@ -74,19 +74,69 @@ export const purchaseRepository = {
     async updateStatus(id: string, data: Prisma.PurchaseRequestUpdateInput): Promise<PurchaseRequestRecord> { return prisma.purchaseRequest.update({ where: { id }, data, include: purchaseInclude }); },
     async receive(request: PurchaseRequestRecord, input: ReceivePurchaseRequestInput, userId: string): Promise<PurchaseRequestRecord> {
         return prisma.$transaction(async (tx) => {
-            const currentRequest = await tx.purchaseRequest.findUnique({ where: { id: request.id }, select: { status: true } });
-            if (currentRequest?.status !== PurchaseRequestStatus.SENT) throw new Error('Cannot receive before request is sent.');
+            const currentRequest = await tx.purchaseRequest.findUnique({ where: { id: request.id }, select: { status: true, emailSentAt: true } });
+            if (currentRequest?.status === PurchaseRequestStatus.RECEIVED || currentRequest?.status === PurchaseRequestStatus.COMPLETED) {
+                throw new Error('Yêu cầu nhập hàng này đã được nhận đủ trước đó, không thể cộng kho lần nữa.');
+            }
+            if (currentRequest?.status !== PurchaseRequestStatus.SENT && !currentRequest?.emailSentAt) {
+                throw new Error('Chỉ có thể nhận hàng sau khi đã gửi email đặt hàng cho nhà cung cấp.');
+            }
 
             for (const receiveItem of input.items) {
+                if (receiveItem.receivedQuantity <= 0) {
+                    throw new Error('Số lượng thực nhận phải lớn hơn 0.');
+                }
                 const requestItem = request.items.find((item) => item.id === receiveItem.purchaseRequestItemId);
                 if (!requestItem) throw new Error('Purchase request item not found.');
+                
+                const currentQuantityReceived = requestItem.quantityReceived || 0;
+                const remaining = requestItem.quantity - currentQuantityReceived;
+                
+                if (receiveItem.receivedQuantity > remaining) {
+                    throw new Error('Số lượng nhận không được vượt quá số lượng còn lại của yêu cầu.');
+                }
+
                 const inventory = await tx.inventory.findUnique({ where: { id: requestItem.inventoryId } });
                 if (!inventory) throw new Error('Inventory not found.');
-                await tx.purchaseRequestItem.update({ where: { id: requestItem.id }, data: { quantityReceived: receiveItem.receivedQuantity } });
-                await tx.inventory.update({ where: { id: inventory.id }, data: { quantity: { increment: receiveItem.receivedQuantity } } });
-                await tx.inventoryTransaction.create({ data: { productId: requestItem.productId, userId, type: InventoryTransactionType.IMPORT, quantity: receiveItem.receivedQuantity, reason: input.note ?? `Import from purchase request ${request.requestNumber}` } });
+                
+                await tx.purchaseRequestItem.update({ 
+                    where: { id: requestItem.id }, 
+                    data: { quantityReceived: { increment: receiveItem.receivedQuantity } } 
+                });
+                
+                await tx.inventory.update({ 
+                    where: { id: inventory.id }, 
+                    data: { quantity: { increment: receiveItem.receivedQuantity } } 
+                });
+                
+                await tx.inventoryTransaction.create({ 
+                    data: { 
+                        productId: requestItem.productId, 
+                        userId, 
+                        type: InventoryTransactionType.IMPORT, 
+                        quantity: receiveItem.receivedQuantity, 
+                        reason: input.note ?? `Nhập hàng từ yêu cầu ${request.requestNumber}` 
+                    } 
+                });
             }
-            return tx.purchaseRequest.update({ where: { id: request.id }, data: { status: PurchaseRequestStatus.RECEIVED, receivedAt: new Date() }, include: purchaseInclude });
+
+            // Check if all items are fully received
+            const allItems = await tx.purchaseRequestItem.findMany({ where: { requestId: request.id } });
+            let allItemsFullyReceived = true;
+            for (const item of allItems) {
+                if (item.quantityReceived < item.quantity) {
+                    allItemsFullyReceived = false;
+                    break;
+                }
+            }
+
+            const newStatus = allItemsFullyReceived ? PurchaseRequestStatus.RECEIVED : currentRequest?.status || PurchaseRequestStatus.SENT;
+
+            return tx.purchaseRequest.update({ 
+                where: { id: request.id }, 
+                data: { status: newStatus, receivedAt: new Date() }, 
+                include: purchaseInclude 
+            });
         });
     },
     async delete(id: string): Promise<PurchaseRequestRecord> { return prisma.purchaseRequest.delete({ where: { id }, include: purchaseInclude }); }

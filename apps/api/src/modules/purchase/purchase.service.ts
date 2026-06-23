@@ -3,7 +3,7 @@ import { HttpError } from '../../common/http-error';
 import { ACTIVE_PURCHASE_REQUEST_MESSAGE, purchaseRepository, type PurchaseRequestRecord } from './purchase.repository';
 import type { CreatePurchaseRequestInput, PurchaseRequestFiltersInput, ReceivePurchaseRequestInput, RejectPurchaseRequestInput } from './purchase.validator';
 import { scanInventoryViaAgentService } from '../agent/agent.client';
-
+import { prisma } from '../../common/prisma';
 const totalForItem = (quantity: number, unitPrice: number | null): number => quantity * (unitPrice ?? 0);
 
 const purchaseConversionForItem = (request: PurchaseRequestRecord, item: PurchaseRequestRecord['items'][number]) => {
@@ -209,6 +209,7 @@ const toDto = (request: PurchaseRequestRecord) => ({
             unitPrice: item.unitPrice ? Number(item.unitPrice) : 0,
             subtotal: totalForItem(item.quantity, item.unitPrice ? Number(item.unitPrice) : 0),
             notes: item.notes,
+            productPendingDelete: !!item.product.pendingDeleteUntil,
             ...conversion
         };
     }),
@@ -243,7 +244,7 @@ export const purchaseService = {
     },
 
     async create(input: CreatePurchaseRequestInput, userId: string) {
-        if (!(await purchaseRepository.supplierExists(input.supplierId))) throw new HttpError(404, 'Supplier not found.');
+        if (!(await purchaseRepository.supplierExists(input.supplierId))) throw new HttpError(404, 'Không thể tạo yêu cầu nhập hàng với nhà cung cấp đang ngưng hoạt động hoặc không tồn tại.');
         for (const item of input.items) {
             if (await purchaseRepository.hasActiveRequestForInventory(item.inventoryId)) {
                 throw new HttpError(400, ACTIVE_PURCHASE_REQUEST_MESSAGE);
@@ -259,6 +260,46 @@ export const purchaseService = {
     async approve(id: string, userId: string) {
         const request = await ensureRequest(id);
         ensureStatus(request, PurchaseRequestStatus.PENDING, 'Only pending requests can be approved.');
+
+        const isPendingDelete = request.items.some(item => item.product.pendingDeleteUntil);
+        if (isPendingDelete) {
+            await prisma.agentLog.create({
+                data: {
+                    action: 'APPROVE_PURCHASE_REQUEST_BLOCKED',
+                    result: 'SKIPPED',
+                    reasoning: 'Không thể duyệt yêu cầu vì sản phẩm đang chờ xoá.',
+                    reference_type: 'PurchaseRequest',
+                    reference_id: id,
+                    input: JSON.stringify({ purchaseRequestId: id }),
+                    output: JSON.stringify({ 
+                        reason: 'PRODUCT_PENDING_DELETE', 
+                        message: 'Không thể duyệt yêu cầu vì sản phẩm đang chờ xoá.' 
+                    }),
+                    fallback_used: false
+                }
+            });
+            throw new HttpError(400, 'Không thể duyệt yêu cầu vì sản phẩm đang chờ xoá.');
+        }
+
+        if (request.supplier.status === 'INACTIVE') {
+            await prisma.agentLog.create({
+                data: {
+                    action: 'APPROVE_PURCHASE_REQUEST_BLOCKED',
+                    result: 'SKIPPED',
+                    reasoning: 'Không thể duyệt yêu cầu vì nhà cung cấp đang bị tắt.',
+                    reference_type: 'PurchaseRequest',
+                    reference_id: id,
+                    input: JSON.stringify({ purchaseRequestId: id }),
+                    output: JSON.stringify({ 
+                        reason: 'PURCHASE_REQUEST_SUPPLIER_INACTIVE', 
+                        message: 'Không thể duyệt yêu cầu vì nhà cung cấp đang bị tắt.' 
+                    }),
+                    fallback_used: false
+                }
+            });
+            throw new HttpError(400, 'Không thể duyệt yêu cầu vì nhà cung cấp đang bị tắt.');
+        }
+
         return toDto(await purchaseRepository.updateStatus(id, {
             status: PurchaseRequestStatus.APPROVED,
             approver: { connect: { id: userId } },
@@ -268,7 +309,29 @@ export const purchaseService = {
 
     async reject(id: string, input: RejectPurchaseRequestInput) {
         const request = await ensureRequest(id);
-        ensureStatus(request, PurchaseRequestStatus.PENDING, 'Only pending requests can be rejected.');
+        if (request.status === PurchaseRequestStatus.RECEIVED || request.status === PurchaseRequestStatus.COMPLETED) {
+            throw new HttpError(400, 'Không thể huỷ/từ chối yêu cầu đã nhận hàng hoặc hoàn thành.');
+        }
+
+        const isPendingDelete = request.items.some(item => item.product.pendingDeleteUntil);
+        if (isPendingDelete) {
+            await prisma.agentLog.create({
+                data: {
+                    action: 'CANCEL_PURCHASE_REQUEST',
+                    result: 'SUCCESS',
+                    reasoning: 'Huỷ yêu cầu do sản phẩm đang chờ xoá.',
+                    reference_type: 'PurchaseRequest',
+                    reference_id: id,
+                    input: JSON.stringify({ purchaseRequestId: id }),
+                    output: JSON.stringify({ 
+                        reason: 'PRODUCT_PENDING_DELETE', 
+                        message: 'Huỷ/Từ chối yêu cầu thành công.' 
+                    }),
+                    fallback_used: false
+                }
+            });
+        }
+
         return toDto(await purchaseRepository.updateStatus(id, { status: PurchaseRequestStatus.REJECTED, notes: input.reason }));
     },
 
@@ -280,9 +343,73 @@ export const purchaseService = {
 
     async receive(id: string, input: ReceivePurchaseRequestInput, userId: string) {
         const request = await ensureRequest(id);
-        ensureStatus(request, PurchaseRequestStatus.SENT, 'Cannot receive before request is sent.');
+
+        const isPendingDelete = request.items.some(item => item.product.pendingDeleteUntil);
+        if (isPendingDelete) {
+            await prisma.agentLog.create({
+                data: {
+                    action: 'RECEIVE_PURCHASE_REQUEST_BLOCKED',
+                    result: 'SKIPPED',
+                    reasoning: 'Không thể nhận hàng vì sản phẩm đang chờ xoá.',
+                    reference_type: 'PurchaseRequest',
+                    reference_id: id,
+                    input: JSON.stringify({ purchaseRequestId: id }),
+                    output: JSON.stringify({ 
+                        reason: 'PRODUCT_PENDING_DELETE', 
+                        message: 'Không thể nhận hàng vì sản phẩm đang chờ xoá. Vui lòng khôi phục sản phẩm trước khi nhận hàng.' 
+                    }),
+                    fallback_used: false
+                }
+            });
+            throw new HttpError(400, 'Không thể nhận hàng vì sản phẩm đang chờ xoá. Vui lòng khôi phục sản phẩm trước khi nhận hàng.');
+        }
+
+        if (request.status === PurchaseRequestStatus.RECEIVED || request.status === PurchaseRequestStatus.COMPLETED) {
+            throw new HttpError(400, 'Yêu cầu nhập hàng này đã được nhận trước đó, không thể cộng kho lần nữa.');
+        }
+        if (request.status !== PurchaseRequestStatus.SENT && !request.emailSentAt) {
+            throw new HttpError(400, 'Chỉ có thể nhận hàng sau khi đã gửi email đặt hàng cho nhà cung cấp.');
+        }
         try {
             const received = await purchaseRepository.receive(request, input, userId);
+
+            let isStockSafe = true;
+            for (const item of received.items) {
+                const inventory = await prisma.inventory.findUnique({ where: { productId: item.productId } });
+                const minThreshold = inventory?.minThreshold || 0;
+                // For a more accurate check, we ideally would compute the reorderPoint,
+                // but checking against minThreshold as a base fallback is acceptable here for the flag.
+                // In a real scenario, we might just check if it's > minThreshold.
+                if (inventory && inventory.quantity <= minThreshold) {
+                    isStockSafe = false;
+                    break;
+                }
+            }
+
+            const isPartial = received.status !== PurchaseRequestStatus.RECEIVED && received.status !== PurchaseRequestStatus.COMPLETED;
+            
+            await prisma.agentLog.create({
+                data: {
+                    action: 'RECEIVE_PURCHASE_REQUEST',
+                    result: 'SUCCESS',
+                    reasoning: 'Admin đã nhận hàng từ hệ thống.',
+                    reference_type: 'PurchaseRequest',
+                    reference_id: id,
+                    creator: userId ? { connect: { id: userId } } : undefined,
+                    input: JSON.stringify({ items: input.items, note: input.note }),
+                    output: JSON.stringify({
+                        isPartial,
+                        notification: {
+                            title: isPartial ? "Đã nhận một phần" : "Đã nhận hàng",
+                            description: `Bạn đã nhận ${isPartial ? 'một phần' : 'đủ'} số lượng hàng cho yêu cầu nhập hàng ${received.requestNumber}.`,
+                            actionLabel: "Xem yêu cầu",
+                            actionUrl: `/admin/purchase-requests/${id}`
+                        }
+                    }),
+                    fallback_used: false
+                }
+            });
+
             const productIds = received.items.map((item) => item.productId);
             scanInventoryViaAgentService({
                 productIds,
@@ -293,7 +420,7 @@ export const purchaseService = {
             }, userId).catch((error) => {
                 console.error('[AI_AGENT] Failed to scan inventory after purchase receive', error);
             });
-            return toDto(received);
+            return { purchaseRequest: toDto(received), isStockSafe };
         } catch (error) {
             throw new HttpError(400, error instanceof Error ? error.message : 'Unable to receive purchase request.');
         }

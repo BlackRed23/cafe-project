@@ -8,7 +8,7 @@ interface ConfirmDialogProps {
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
   title: string;
-  message: string;
+  message: string | React.ReactNode;
   confirmText?: string;
   cancelText?: string;
   type?: "danger" | "warning" | "info";
@@ -45,9 +45,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <div className={`p-3.5 rounded-full border mb-4 ${typeColorMap[type]}`}>
           <AlertTriangle size={28} />
         </div>
-        <p className="text-slate-600 text-[15px] text-center mb-6 leading-relaxed">
+        <div className="text-slate-600 text-[15px] text-center mb-6 leading-relaxed w-full">
           {message}
-        </p>
+        </div>
         <div className="flex items-center gap-3 w-full">
           <Button
             variant="outline"

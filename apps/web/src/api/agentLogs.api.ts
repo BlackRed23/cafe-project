@@ -60,8 +60,10 @@ const normalizeAgentOutput = (output: Record<string, any>): Record<string, any> 
   const next = { ...output };
   const message = cleanDisplayText(next.message);
   const errorMessage = cleanDisplayText(next.errorMessage);
+  const description = cleanDisplayText(next.description);
   if (message !== undefined) next.message = message;
   if (errorMessage !== undefined) next.errorMessage = errorMessage;
+  if (description !== undefined) next.description = description;
 
   if (next.notification && typeof next.notification === "object" && !Array.isArray(next.notification)) {
     const notification = { ...next.notification };
@@ -96,7 +98,8 @@ const normalizeAgentLog = (log: any): AgentLog => {
       : normalizeAgentLogStatus(result, errorMessage),
     result,
     reason: firstString(log?.reason, output.reason, input.reason, result),
-    message: firstString(log?.message, output.message, log?.reasoning, output.reasoning) || "Agent đã ghi nhận một sự kiện xử lý.",
+    description: firstString(log?.description, log?.data?.description, output?.description, output?.message, log?.message) || "",
+    message: firstString(log?.message, log?.description, output?.message, output?.description) || "",
     triggerType: firstString(log?.triggerType, input.triggerType),
     sourceType: firstString(log?.sourceType, log?.source_type, input.sourceType, output.sourceType),
     sourceId: firstString(log?.sourceId, log?.source_id, input.sourceId, output.sourceId),

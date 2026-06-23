@@ -8,15 +8,16 @@ export interface Toast {
   type: ToastType;
   title: string;
   message?: string;
+  link?: string;
 }
 
 interface ToastContextType {
   toasts: Toast[];
   toast: {
-    success: (title: string, message?: string) => void;
-    error: (title: string, message?: string) => void;
-    warning: (title: string, message?: string) => void;
-    info: (title: string, message?: string) => void;
+    success: (title: string, message?: string, link?: string) => void;
+    error: (title: string, message?: string, link?: string) => void;
+    warning: (title: string, message?: string, link?: string) => void;
+    info: (title: string, message?: string, link?: string) => void;
   };
   dismiss: (id: string) => void;
 }
@@ -144,9 +145,9 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const addToast = useCallback(
-    (type: ToastType, title: string, message?: string) => {
+    (type: ToastType, title: string, message?: string, link?: string) => {
       const id = `${Date.now()}-${Math.random()}`;
-      const t = { id, type, title, message };
+      const t = { id, type, title, message, link };
       setToasts((prev) => [...prev.slice(-49), t]); // Keep up to 50 in history
       setFloatingToasts((prev) => [...prev, t]); // Show as floating
     },
@@ -154,10 +155,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const toast = {
-    success: (title: string, message?: string) => addToast("success", title, message),
-    error: (title: string, message?: string) => addToast("error", title, message),
-    warning: (title: string, message?: string) => addToast("warning", title, message),
-    info: (title: string, message?: string) => addToast("info", title, message),
+    success: (title: string, message?: string, link?: string) => addToast("success", title, message, link),
+    error: (title: string, message?: string, link?: string) => addToast("error", title, message, link),
+    warning: (title: string, message?: string, link?: string) => addToast("warning", title, message, link),
+    info: (title: string, message?: string, link?: string) => addToast("info", title, message, link),
   };
 
   return (

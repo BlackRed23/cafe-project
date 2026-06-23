@@ -68,9 +68,9 @@ export type InventoryMutationDto = {
     stockBefore?: number;
 };
 
-const getStatus = (quantity: number, minThreshold: number): InventoryStatus => {
-    if (quantity <= 0) return 'OUT_OF_STOCK';
-    if (quantity <= minThreshold) return 'LOW_STOCK';
+const getStatus = (availableStock: number, minThreshold: number): InventoryStatus => {
+    if (availableStock <= 0) return 'OUT_OF_STOCK';
+    if (availableStock <= minThreshold) return 'LOW_STOCK';
 
     return 'IN_STOCK';
 };
@@ -251,7 +251,9 @@ export const importInventory = async (input: ImportInventoryInput, userId: strin
 
     const updatedInventory = await inventoryRepository.importStock(inventory, importQuantity, appendConversionNote(normalizeNote(input.note), conversionNote), userId);
     const dto = toInventoryDto(updatedInventory);
-    const isLow = dto.quantity <= dto.minThreshold;
+    const availableStockAfter = dto.quantity - dto.reservedStock;
+    const isLow = availableStockAfter < dto.minThreshold;
+    const isWarning = availableStockAfter === dto.minThreshold;
 
     scanInventoryViaAgentService({
         productIds: [inventory.productId],
@@ -263,19 +265,23 @@ export const importInventory = async (input: ImportInventoryInput, userId: strin
         console.error('[AI_AGENT] Failed to scan inventory after inventory import', error);
     });
 
+    let message = 'Nhập kho thành công. Đủ hàng.';
+    if (isLow) message = 'Số lượng sau nhập vẫn chưa đủ an toàn.';
+    else if (isWarning) message = 'Nhập kho thành công nhưng đang chạm ngưỡng.';
+
+    const warningsArr: ThresholdWarning[] = [];
+    if (isLow) {
+        warningsArr.push({ level: 'warning', message: 'Số lượng sau nhập vẫn chưa đủ an toàn.' });
+    } else if (isWarning) {
+        warningsArr.push({ level: 'warning', message: 'Nhập kho thành công nhưng đang chạm ngưỡng.' });
+    }
+
     return {
         inventory: dto,
         stockAfter: dto.quantity,
         minThreshold: dto.minThreshold,
-        message: isLow ? 'Số lượng sau nhập vẫn thấp hơn ngưỡng tối thiểu.' : 'Nhập kho thành công. Đủ hàng.',
-        warnings: isLow
-            ? [
-                  {
-                      level: 'warning',
-                      message: 'Số lượng sau nhập vẫn thấp hơn ngưỡng tối thiểu.'
-                  }
-              ]
-            : [],
+        message,
+        warnings: warningsArr,
         purchaseQuantity,
         purchaseUnit,
         conversionQuantity,
@@ -299,32 +305,36 @@ export const adjustInventory = async (input: AdjustInventoryInput, userId: strin
     const updatedInventory = await inventoryRepository.adjustStock(inventory, input.quantity, normalizeNote(input.note), userId);
     const dto = toInventoryDto(updatedInventory);
 
-    if (dto.quantity <= dto.minThreshold) {
+    const availableStockAfter = dto.quantity - dto.reservedStock;
+    const isLow = availableStockAfter < dto.minThreshold;
+    const isWarning = availableStockAfter === dto.minThreshold;
+
+    if (availableStockAfter <= dto.minThreshold || input.quantity < 0) {
         scanInventoryViaAgentService({
             productIds: [inventory.productId],
             triggerType: 'INVENTORY_ADJUSTED',
             sourceType: 'INVENTORY',
             sourceId: inventory.id,
-            note: 'Inventory adjusted below threshold'
+            note: 'Inventory adjusted below threshold or downward'
         }, userId).catch((error) => {
             console.error('[AI_AGENT] Failed to scan inventory after inventory adjustment', error);
         });
     }
 
+    let message = 'Điều chỉnh thành công. Đủ hàng.';
+    if (isLow) message = 'Số lượng sau điều chỉnh thấp hơn ngưỡng, cần nhập hàng.';
+    else if (isWarning) message = 'Số lượng sau điều chỉnh chạm ngưỡng.';
+
+    const warningsArr: ThresholdWarning[] = [];
+    if (isLow) warningsArr.push({ level: 'warning', message: 'Số lượng sau điều chỉnh thấp hơn ngưỡng, cần nhập hàng.' });
+    else if (isWarning) warningsArr.push({ level: 'warning', message: 'Số lượng sau điều chỉnh chạm ngưỡng.' });
+
     return {
         inventory: dto,
         stockAfter: dto.quantity,
         minThreshold: dto.minThreshold,
-        message: dto.quantity <= dto.minThreshold ? 'Số lượng sau điều chỉnh thấp hơn ngưỡng, cần nhập hàng.' : 'Điều chỉnh thành công.',
-        warnings:
-            dto.quantity <= dto.minThreshold
-                ? [
-                      {
-                          level: 'warning',
-                          message: 'Số lượng sau điều chỉnh thấp hơn ngưỡng, cần nhập hàng.'
-                      }
-                  ]
-                : []
+        message,
+        warnings: warningsArr
     };
 };
 
@@ -379,22 +389,13 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string, optio
 
     const totalSalesInWindow = Math.abs(salesTransactions._sum.quantity ?? 0);
     const avgDailySales = totalSalesInWindow / salesWindowDays;
-    const safetyStock = avgDailySales > 0 ? Math.ceil(avgDailySales * bufferDays) : 10;
-    const leadTimeDemand = Math.ceil(avgDailySales * effectiveLeadTimeDays);
+    const baseDailySales = avgDailySales > 0 ? avgDailySales : 1;
     
-    let recommendedThreshold = 0;
-    if (avgDailySales > 0) {
-        recommendedThreshold = Math.ceil(avgDailySales * (planningDays + effectiveLeadTimeDays + bufferDays));
-    } else {
-        const currentMin = inventory.minThreshold;
-        if (planningPeriod === 'WEEKLY') {
-            recommendedThreshold = Math.max(currentMin, 10);
-        } else if (planningPeriod === 'MONTHLY') {
-            recommendedThreshold = Math.max(currentMin * 3, 30);
-        } else {
-            recommendedThreshold = Math.max(Math.ceil(currentMin * (planningDays / 7)), 10);
-        }
-    }
+    const defaultSafetyStock = 10;
+    const leadTimeDemand = Math.ceil(baseDailySales * effectiveLeadTimeDays);
+    const safetyStock = Math.max(defaultSafetyStock, Math.ceil(baseDailySales * bufferDays));
+    
+    const recommendedThreshold = leadTimeDemand + safetyStock;
 
     const warnings = getThresholdWarnings(inventory.minThreshold, leadTimeDemand, recommendedThreshold);
 
@@ -411,8 +412,8 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string, optio
 
     const unit = inventory.unit || 'đơn vị';
     const explanation = avgDailySales > 0
-        ? `Sản phẩm ${inventory.product.name} đang được tính ngưỡng theo chu kỳ nhập hàng ${periodText}. Dựa trên tốc độ bán trung bình ${Number(avgDailySales.toFixed(2))} ${unit}/ngày, thời gian nhập hàng ${effectiveLeadTimeDays} ngày và ${bufferDays} ngày dự phòng, hệ thống gợi ý ngưỡng tồn kho là ${recommendedThreshold} ${unit}.`
-        : `Sản phẩm ${inventory.product.name} chưa có đủ lịch sử bán hàng. Hệ thống tạm thời gợi ý mức an toàn là ${recommendedThreshold} ${unit} dựa trên chu kỳ ${periodText}.`;
+        ? `Sản phẩm ${inventory.product.name} đang được tính ngưỡng. Dựa trên tốc độ bán trung bình ${Number(avgDailySales.toFixed(2))} ${unit}/ngày, thời gian nhập hàng thực tế ${effectiveLeadTimeDays} ngày và dự phòng rủi ro, hệ thống gợi ý hàng an toàn là ${safetyStock} ${unit} và ngưỡng đề xuất là ${recommendedThreshold} ${unit}.`
+        : `Sản phẩm ${inventory.product.name} chưa có lịch sử bán hàng. Hệ thống dùng tốc độ bán giả định 1 ${unit}/ngày và gợi ý mức an toàn là ${safetyStock} ${unit}, tổng ngưỡng đề xuất là ${recommendedThreshold} ${unit}.`;
 
     return {
         inventoryId: inventory.id,
@@ -423,10 +424,14 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string, optio
         planningDays,
         explanation,
         currentStock: inventory.quantity,
+        stock: inventory.quantity,
+        reservedStock: inventory.reservedStock,
+        availableStock: inventory.quantity - inventory.reservedStock,
         currentThreshold: inventory.minThreshold,
         salesWindowDays,
         totalSalesInWindow,
         avgDailySales: Number(avgDailySales.toFixed(2)),
+        baseDailySales: Number(baseDailySales.toFixed(2)),
         leadTimeDays,
         delayBufferDays,
         effectiveLeadTimeDays,

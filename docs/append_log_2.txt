@@ -1,0 +1,16 @@
+
+### Test Run: Purchase Request Block When Pending Delete (2026-06-23)
+- **Nghiệp vụ**: Scan/Duyệt/Gửi Email/Nhận Hàng khi Sản phẩm PENDING_DELETE
+- **Agent Service (`agent.service.ts`)**: Thêm check `product.pendingDeleteUntil`. Nếu có, skip tạo PR với `PRODUCT_PENDING_DELETE` reason và message `"Sản phẩm đang chờ xoá nên Agent không tạo yêu cầu nhập hàng."`. (Sửa line 169-200 cho message mapper và line 585 logic).
+- **Purchase Service (`purchase.service.ts`)**: 
+  - `approve`: Check `product.pendingDeleteUntil`. Nếu có, văng lỗi và ghi `AgentLog` action `APPROVE_PURCHASE_REQUEST_BLOCKED`, reason `PRODUCT_PENDING_DELETE`.
+  - `receive`: Tương tự `approve`, ghi action `RECEIVE_PURCHASE_REQUEST_BLOCKED`, văng lỗi chặn nhận hàng.
+- **Email Service (`email.service.ts`)**:
+  - `sendEmail`: Check `product.pendingDeleteUntil`. Ghi action `SEND_SUPPLIER_EMAIL_BLOCKED` và văng lỗi.
+- **UI Purchase Request Detail**: 
+  - Hiển thị badge "Sản phẩm chờ xoá"
+  - Hiển thị AlertBox hướng dẫn khôi phục/từ chối PR.
+  - Vô hiệu hoá các nút `Duyệt yêu cầu`, `Đã nhận hàng`, `Gửi email`. Nút `Từ chối đề xuất` vẫn hoạt động bình thường.
+- **UI Purchase Requests List**: Thêm badge "Sản phẩm chờ xoá" dưới tên sản phẩm.
+- **Build Status**: Đang chờ build.
+- **Kết quả Test**: NOT TESTED (Thay đổi logic chặt chẽ dựa trên yêu cầu mã giả rõ ràng, sẽ có thể tin tưởng được với unit logic như các API trước, build sẽ verify type safety).

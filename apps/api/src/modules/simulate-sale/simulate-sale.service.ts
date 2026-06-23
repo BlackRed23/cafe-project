@@ -5,6 +5,17 @@ import { scanInventoryViaAgentService } from '../agent/agent.client';
 
 const randomInt = (min: number, max: number): number => Math.floor(Math.random() * (max - min + 1)) + min;
 
+// Helper to normalize simulate sale input into items array
+const normalizeSimulateItems = (input: SimulateSaleInput) => {
+  if (input.items && input.items.length > 0) {
+    return input.items;
+  }
+  if (input.productId) {
+    return [{ productId: input.productId, quantity: input.quantity ?? 0 }];
+  }
+  return [];
+};
+
 const runAgentScan = async (input: { productIds: string[]; userId: string; sourceId?: string }) => {
     try {
         const scan = await scanInventoryViaAgentService({
@@ -26,7 +37,53 @@ const runAgentScan = async (input: { productIds: string[]; userId: string; sourc
 
 export const simulateSaleService = {
     async run(input: SimulateSaleInput, userId: string) {
-        if (input.productId) {
+        // Multi-product support
+    if (input.items && input.items.length > 0) {
+        // Resolve inventories for all items
+        const allInventories = await simulateSaleRepository.findInventories();
+        const plans = input.items.map((it) => {
+            const inv = allInventories.find((i) => i.productId === it.productId);
+            if (!inv) {
+                throw new HttpError(404, `Inventory not found for product ${it.productId}.`);
+            }
+            if (!inv.product.isActive) {
+                throw new HttpError(400, `Selected product ${it.productId} is inactive.`);
+            }
+            const available = (inv.quantity ?? 0) - (inv.reservedStock ?? 0);
+            if (available < it.quantity) {
+                const unit = inv.product?.unit || 'đơn vị';
+                throw new HttpError(400, `Không đủ tồn kho để mô phỏng bán hàng cho sản phẩm ${it.productId}. Tồn kho hiện tại: ${available} ${unit}, yêu cầu: ${it.quantity} ${unit}.`);
+            }
+            return { inventory: inv, decrease: it.quantity };
+        });
+        const affectedProducts = await simulateSaleRepository.applySale(plans, input.note ?? null, userId);
+        const allAgentResults: any[] = [];
+        const allCreatedPurchaseRequests: any[] = [];
+        let anyWarning: string | null = null;
+        let lastScanSessionId: string | undefined;
+
+        for (const affected of affectedProducts) {
+            const scan = await runAgentScan({
+                productIds: [affected.productId],
+                sourceId: affected.transactionId,
+                userId
+            });
+            allAgentResults.push(...scan.results);
+            allCreatedPurchaseRequests.push(...scan.createdPurchaseRequests);
+            if (scan.agentWarning) anyWarning = scan.agentWarning;
+            if (scan.scanSessionId) lastScanSessionId = scan.scanSessionId;
+        }
+
+        return {
+            affectedProducts,
+            createdPurchaseRequests: allCreatedPurchaseRequests,
+            agentLogs: allAgentResults,
+            agentResults: allAgentResults,
+            agentWarning: anyWarning,
+            scanSessionId: lastScanSessionId,
+        };
+    }
+    if (input.productId) {
             const inventory = await simulateSaleRepository.findInventoryByProductId(input.productId);
 
             if (!inventory) {
@@ -90,7 +147,8 @@ export const simulateSaleService = {
                 createdPurchaseRequests: scan.createdPurchaseRequests,
                 agentLogs: scan.results,
                 agentResults: scan.results,
-                agentWarning: scan.agentWarning
+                agentWarning: scan.agentWarning,
+                scanSessionId: scan.scanSessionId
             };
         }
 
@@ -108,7 +166,7 @@ export const simulateSaleService = {
             productIds,
             userId
         });
-        return { affectedProducts, createdPurchaseRequests: scan.createdPurchaseRequests, agentLogs: scan.results, agentResults: scan.results, agentWarning: scan.agentWarning };
+        return { affectedProducts, createdPurchaseRequests: scan.createdPurchaseRequests, agentLogs: scan.results, agentResults: scan.results, agentWarning: scan.agentWarning, scanSessionId: scan.scanSessionId };
     },
 
     async restore(transactionId: string, userId: string) {

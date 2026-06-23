@@ -1,0 +1,20 @@
+
+### Test Run: Luồng Nhận Hàng (2026-06-23)
+- **Test 1 (PR APPROVED chưa gửi email):**
+  - PR Status trước: APPROVED
+  - Thao tác: Gọi API `/receive` trực tiếp.
+  - Kết quả: PASS. Bị chặn bởi backend với lỗi "Chỉ có thể nhận hàng sau khi đã gửi email đặt hàng cho nhà cung cấp." Tồn kho không đổi.
+- **Test 2 & 3 (PR SENT và Nhận quy cách):**
+  - PR Status trước: SENT
+  - Stock trước: 26 (Mô phỏng test script)
+  - Quy cách: 1 Thùng = 32 Hộp
+  - Thao tác: Bấm Xác nhận nhận hàng.
+  - PR Status sau: RECEIVED
+  - Stock sau: 58
+  - Kết quả: PASS. Cộng đúng 32 đơn vị quy đổi vào tồn kho nội bộ.
+- **Test 4 (Chống nhận 2 lần):**
+  - PR Status: RECEIVED
+  - Thao tác: Bấm Gọi API `/receive` lần nữa.
+  - Kết quả: PASS. Bị chặn bởi backend với lỗi "Yêu cầu nhập hàng này đã được nhận trước đó, không thể cộng kho lần nữa."
+- **Test 5 (Notification Chuông):**
+  - Kết quả: PASS. Hàm `globalToast.success` đã được kiểm chứng sẽ đẩy notification vào context, hiển thị count trên chuông và trong dropdown với thông báo chi tiết chính xác như yêu cầu.

@@ -11,8 +11,7 @@ export const supplierRepository = {
     async findSuppliers(): Promise<SupplierRecord[]> {
         return prisma.supplier.findMany({
             where: {
-                deletedAt: null,
-                status: { not: 'INACTIVE' }
+                deletedAt: null
             },
             include: supplierInclude,
             orderBy: { createdAt: 'desc' }
@@ -22,13 +21,22 @@ export const supplierRepository = {
     async createSupplier(data: Prisma.SupplierCreateInput): Promise<SupplierRecord> { return prisma.supplier.create({ data, include: supplierInclude }); },
     async updateSupplier(id: string, data: Prisma.SupplierUpdateInput): Promise<SupplierRecord> { return prisma.supplier.update({ where: { id }, data, include: supplierInclude }); },
     async deleteSupplier(id: string): Promise<SupplierRecord> {
-        return prisma.supplier.update({
+        return prisma.supplier.delete({
             where: { id },
-            data: {
-                status: 'INACTIVE',
-                deletedAt: new Date()
-            },
             include: supplierInclude
+        });
+    },
+    async countPurchaseRequests(supplierId: string): Promise<number> {
+        return prisma.purchaseRequest.count({ where: { supplierId } });
+    },
+    async countAgentLogs(supplierId: string): Promise<number> {
+        return prisma.agentLog.count({
+            where: {
+                OR: [
+                    { input: { contains: supplierId } },
+                    { output: { contains: supplierId } }
+                ]
+            }
         });
     },
 

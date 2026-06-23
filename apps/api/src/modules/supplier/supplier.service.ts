@@ -13,6 +13,7 @@ const toSupplierDto = (supplier: SupplierRecord) => ({
     phone: supplier.contact,
     contact: supplier.contact,
     address: supplier.address,
+    status: supplier.status,
     products: supplier.products.map((mapping) => ({
         id: mapping.id,
         supplierId: mapping.supplierId,
@@ -78,9 +79,26 @@ export const supplierService = {
     },
     async updateSupplier(id: string, input: UpdateSupplierInput) {
         await ensureSupplier(id);
-        return toSupplierDto(await supplierRepository.updateSupplier(id, { ...(input.name !== undefined ? { name: input.name } : {}), ...(input.email !== undefined ? { email: normalize(input.email) } : {}), ...(input.phone !== undefined || input.contact !== undefined ? { contact: contactFromInput(input) } : {}), ...(input.address !== undefined ? { address: normalize(input.address) } : {}) }));
+        return toSupplierDto(await supplierRepository.updateSupplier(id, {
+            ...(input.name !== undefined ? { name: input.name } : {}),
+            ...(input.email !== undefined ? { email: normalize(input.email) } : {}),
+            ...(input.phone !== undefined || input.contact !== undefined ? { contact: contactFromInput(input) } : {}),
+            ...(input.address !== undefined ? { address: normalize(input.address) } : {}),
+            ...(input.status !== undefined ? { status: input.status } : {})
+        }));
     },
-    async deleteSupplier(id: string) { await ensureSupplier(id); return toSupplierDto(await supplierRepository.deleteSupplier(id)); },
+    async deleteSupplier(id: string) {
+        const supplier = await ensureSupplier(id);
+        const supplierProductsCount = supplier.products.length;
+        const purchaseRequestsCount = await supplierRepository.countPurchaseRequests(id);
+        const agentLogsCount = await supplierRepository.countAgentLogs(id);
+
+        if (supplierProductsCount > 0 || purchaseRequestsCount > 0 || agentLogsCount > 0) {
+            throw new HttpError(409, 'Không thể xoá nhà cung cấp vì đã có dữ liệu liên quan. Hãy chuyển nhà cung cấp sang trạng thái ngưng hoạt động.', 'SUPPLIER_HAS_RELATIONS');
+        }
+
+        return toSupplierDto(await supplierRepository.deleteSupplier(id));
+    },
 
     async listSupplierProducts() { return (await supplierRepository.findSupplierProducts()).map(toSupplierProductDto); },
     async listProductsBySupplier(supplierId: string) { await ensureSupplier(supplierId); return (await supplierRepository.findSupplierProductsBySupplier(supplierId)).map(toSupplierProductDto); },

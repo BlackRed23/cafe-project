@@ -121,4 +121,15 @@ export const purchaseRequestsApi = {
     const response = await apiClient.post(`/purchase-requests/${id}/send-email`, payload);
     return normalizePurchaseRequest(unwrapApiField<any>(response.data, "purchaseRequest"));
   },
+
+  receivePurchaseRequest: async (
+    id: string,
+    payload: { notes?: string; items: Array<{ purchaseRequestItemId: string; receivedQuantity: number }> }
+  ): Promise<{ purchaseRequest: PurchaseRequest; isStockSafe: boolean }> => {
+    const response = await apiClient.patch(`/purchase-requests/${id}/receive`, payload);
+    const data = response.data;
+    const purchaseRequest = normalizePurchaseRequest(unwrapApiField<any>(data, "purchaseRequest"));
+    const isStockSafe = data?.data?.isStockSafe ?? true;
+    return { purchaseRequest, isStockSafe };
+  },
 };

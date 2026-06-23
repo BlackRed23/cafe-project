@@ -1,0 +1,3 @@
+
+### Lịch sử nâng cấp Logic Agent (2026-06-23)
+- **Ngăn PR cho sản phẩm xoá**: Thêm logic kiểm tra `product.pendingDeleteUntil`. Nếu đang chờ xoá, Agent sẽ skip và ghi lại reason `PRODUCT_PENDING_DELETE` với message `"Sản phẩm đang chờ xoá nên Agent không tạo yêu cầu nhập hàng."`. Bổ sung logic hiển thị thông báo này ở UI Agent Logs và Purchase Request tương ứng. Việc chặn này giúp tránh nhầm lẫn khi người dùng tiếp tục thao tác với sản phẩm không còn kinh doanh.

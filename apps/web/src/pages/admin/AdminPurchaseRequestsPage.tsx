@@ -154,12 +154,20 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
       header: "Sản phẩm đề xuất",
       render: (pr: PurchaseRequest) => {
         const isPending = pr.status === "PENDING";
+        const isPendingDelete = pr.items?.some((item: any) => !!item.productPendingDelete);
         return (
-          <div className="flex items-center gap-2">
-            {isPending && <MailWarning className="flex-shrink-0 animate-bounce text-amber-700" size={13} />}
-            <span className={`font-semibold ${isPending ? "text-amber-900" : "text-slate-800"}`}>
-              {pr.product?.name || "Sản phẩm"}
-            </span>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              {isPending && <MailWarning className="flex-shrink-0 animate-bounce text-amber-700" size={13} />}
+              <span className={`font-semibold ${isPending ? "text-amber-900" : "text-slate-800"}`}>
+                {pr.product?.name || "Sản phẩm"}
+              </span>
+            </div>
+            {isPendingDelete && (
+              <span className="w-fit rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">
+                Sản phẩm chờ xoá
+              </span>
+            )}
           </div>
         );
       },
@@ -167,7 +175,12 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
     {
       header: "Nhà cung cấp",
       render: (pr: PurchaseRequest) => (
-        <span className="text-sm font-medium text-slate-600">{pr.supplier?.name || "Chưa gán"}</span>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium text-slate-600">{pr.supplier?.name || "Chưa gán"}</span>
+          {pr.supplier?.status === 'INACTIVE' && (
+            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded w-fit">Ngừng hoạt động</span>
+          )}
+        </div>
       ),
     },
     {

@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertOctagon, ArrowLeft, Ban, CheckCircle, Info, Mail, Send, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Ban, CheckCircle, Mail, Info, Sparkles, PackageCheck, AlertOctagon, Send, X } from "lucide-react";
 import { purchaseRequestsApi } from "../../api/purchaseRequests.api";
+import { suppliersApi } from "../../api/suppliers.api";
 import type { PurchaseRequest, PurchaseRequestEmailPreview } from "../../types/purchaseRequest.types";
 import { formatDate } from "../../utils/formatDate";
-import { Badge } from "../../components/common/Badge";
 import { Loading } from "../../components/common/Loading";
 import { Button } from "../../components/common/Button";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { Modal } from "../../components/common/Modal";
 import { getErrorMessage } from "../../api/client";
+import { useToast } from "../../contexts/ToastContext";
 
 const TOAST_DURATION = 4500;
 
@@ -125,11 +126,15 @@ Cafe Admin`;
 
 export const AdminPurchaseRequestDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const globalToast = useToast();
   const [pr, setPr] = useState<PurchaseRequest | null>(null);
   const [emailPreview, setEmailPreview] = useState<PurchaseRequestEmailPreview | null>(null);
   const [manualEmailDraft, setManualEmailDraft] = useState<PurchaseRequestEmailPreview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showConfirmApprove, setShowConfirmApprove] = useState(false);
+  const [showConfirmReceive, setShowConfirmReceive] = useState(false);
+  const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
+  const [isReceiving, setIsReceiving] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -141,6 +146,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
   const [editEmailBody, setEditEmailBody] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [suggestedSuppliers, setSuggestedSuppliers] = useState<any[]>([]);
 
   const removeToast = useCallback((toastId: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== toastId));
@@ -185,6 +191,39 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
       const data = await purchaseRequestsApi.getPurchaseRequestById(id);
       setPr(data);
       await fetchEmailPreview(data);
+
+      if (data.supplier?.status === 'INACTIVE' && data.items?.[0]?.productId) {
+        try {
+          const [supplierProducts, activeSuppliers] = await Promise.all([
+            suppliersApi.getSupplierProducts(),
+            suppliersApi.getSuppliers(),
+          ]);
+          const altSp = supplierProducts.filter((sp: any) => sp.productId === data.items![0].productId && sp.supplierId !== data.supplier?.id);
+          const activeAltSp = altSp.filter((sp: any) => {
+            const sup = activeSuppliers.find(s => s.id === sp.supplierId);
+            return sup?.status === 'ACTIVE';
+          });
+          const mappedAlt = activeAltSp.map((sp: any) => {
+            const sup = activeSuppliers.find(s => s.id === sp.supplierId);
+            return {
+              supplierId: sp.supplierId,
+              supplierName: sup?.name,
+              isPreferred: sp.isPreferred,
+              leadTimeDays: sp.leadTimeDays ?? sp.leadTime,
+              moq: sp.minOrderQuantity,
+              purchasePrice: sp.price ?? sp.importPrice
+            };
+          }).sort((a: any, b: any) => {
+            if (a.isPreferred && !b.isPreferred) return -1;
+            if (!a.isPreferred && b.isPreferred) return 1;
+            if (a.leadTimeDays !== b.leadTimeDays) return a.leadTimeDays - b.leadTimeDays;
+            return a.purchasePrice - b.purchasePrice;
+          });
+          setSuggestedSuppliers(mappedAlt);
+        } catch (e) {
+          // Ignore error silently
+        }
+      }
     } catch {
       showToast("load-detail", "error", "Không thể tải chi tiết yêu cầu.");
       setPr(null);
@@ -212,13 +251,59 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
     try {
       const updated = await purchaseRequestsApi.approvePurchaseRequest(id);
       setPr(updated);
-      showToast("approve", "success", "Duyệt yêu cầu thành công.");
+      showToast("approve", "success", "Đã duyệt yêu cầu nhập hàng. Bạn có thể gửi email cho nhà cung cấp.");
       await fetchEmailPreview(updated);
     } catch (err: any) {
       showToast("approve", "error", getErrorMessage(err) || "Không thể duyệt yêu cầu, vui lòng thử lại.");
     } finally {
       setIsApproving(false);
       setShowConfirmApprove(false);
+    }
+  };
+
+  const openReceiveModal = () => {
+    const init: Record<string, number> = {};
+    pr?.items?.forEach(item => {
+      const remaining = (item.quantity || 0) - (item.quantityReceived || 0);
+      init[item.id] = remaining > 0 ? remaining : 0;
+    });
+    setReceivedQuantities(init);
+    setShowConfirmReceive(true);
+  };
+
+  const handleReceive = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsReceiving(true);
+    try {
+      const items = pr?.items?.map((item: any) => ({
+        purchaseRequestItemId: item.id,
+        receivedQuantity: receivedQuantities[item.id] || 0
+      })) || [];
+      const res = await purchaseRequestsApi.receivePurchaseRequest(id!, {
+        notes: "Admin nhận hàng",
+        items
+      });
+      
+      const productName = pr ? getPrimaryProductName(pr) : "Sản phẩm";
+
+      if (res.purchaseRequest.status === "RECEIVED") {
+         showToast("receive", "success", "Nhận hàng thành công. Tồn kho đã được cập nhật.");
+         globalToast.success("Đã nhận đủ hàng", `Đã cập nhật tồn kho cho sản phẩm ${productName}.`, `/admin/purchase-requests/${id}`);
+      } else {
+         showToast("receive", "success", "Đã nhận một phần. Tồn kho đã cộng.");
+         globalToast.success("Đã nhận một phần", `Tồn kho đã cộng cho sản phẩm ${productName}.`, `/admin/purchase-requests/${id}`);
+      }
+
+      if (!res.isStockSafe) {
+         globalToast.warning("Tồn kho vẫn thấp", `Sản phẩm ${productName} vẫn dưới ngưỡng an toàn.`, `/admin/purchase-requests/${id}`);
+      }
+
+      fetchPR();
+      setShowConfirmReceive(false);
+    } catch (err: any) {
+      showToast("receive", "error", getErrorMessage(err) || "Không thể nhận hàng.");
+    } finally {
+      setIsReceiving(false);
     }
   };
 
@@ -234,9 +319,9 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
       setShowRejectModal(false);
       setRejectReason("");
       setEmailPreview(null);
-      showToast("reject", "success", "Từ chối yêu cầu thành công.");
+      showToast("reject", "success", isPending ? "Từ chối yêu cầu thành công." : "Huỷ yêu cầu thành công.");
     } catch (err: any) {
-      showToast("reject", "error", getErrorMessage(err) || "Không thể từ chối yêu cầu, vui lòng thử lại.");
+      showToast("reject", "error", getErrorMessage(err) || (isPending ? "Không thể từ chối yêu cầu, vui lòng thử lại." : "Không thể huỷ yêu cầu, vui lòng thử lại."));
     } finally {
       setIsRejecting(false);
     }
@@ -337,7 +422,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
   const isRejected = pr.status === "REJECTED";
   const isSent = pr.status === "SENT" || emailDraft?.emailStatus === "SENT" || emailDraft?.emailStatus === "Đã gửi";
   const hasUsableEmailDraft = Boolean(emailDraft?.subject?.trim()) && Boolean(emailDraft?.body?.trim());
-  const canSendEmail = isApproved && !isSent;
+  const canSendEmail = isApproved && !isSent && pr.supplier?.status !== "INACTIVE";
   const canEditEmailDraft = hasUsableEmailDraft;
   const canInputManualEmail = !hasUsableEmailDraft && !isRejected && !isSent;
   const canShowEmailBlock =
@@ -349,6 +434,16 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
   const suggestedQty = pr.suggestedQuantity ?? pr.suggested_quantity ?? 0;
   const invUnit = pr.inventoryUnit ?? pr.conversionTargetUnit;
   const hasPurchaseConversion = Boolean(pr.purchaseQuantity && pr.purchaseUnit && invUnit);
+
+  const supplierEmail = pr.supplier?.email?.trim() || "";
+  const isSupplierEmailEmpty = !supplierEmail;
+  const isSupplierEmailInvalid = !isSupplierEmailEmpty && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supplierEmail);
+  const hasEmailError = isSupplierEmailEmpty || isSupplierEmailInvalid;
+  const emailErrorMessage = isSupplierEmailEmpty 
+    ? "Nhà cung cấp chưa có email. Vui lòng cập nhật email nhà cung cấp trước khi gửi." 
+    : "Email nhà cung cấp không hợp lệ.";
+
+  const isPendingDelete = pr.items?.some(item => !!item.productPendingDelete);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -369,8 +464,47 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
               Ngày đề xuất: {createdDate ? formatDate(createdDate) : ""}
             </span>
           </div>
-          <Badge status={pr.status} />
+          <div className="flex items-center gap-3">
+            {isPendingDelete && (
+              <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700">
+                Sản phẩm chờ xoá
+              </span>
+            )}
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold shadow-sm ${
+              pr.status === "COMPLETED" ? "bg-emerald-100 text-emerald-800 border border-emerald-200" :
+              pr.status === "RECEIVED" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+              pr.status === "REJECTED" || (pr.status as string) === "CANCELLED" ? "bg-rose-50 text-rose-700 border border-rose-200" :
+              pr.status === "SENT" ? ((pr.items?.[0]?.quantityReceived || 0) > 0 ? "bg-indigo-50 text-indigo-700 border border-indigo-200" : "bg-blue-50 text-blue-700 border border-blue-200") :
+              pr.status === "APPROVED" ? "bg-indigo-50 text-indigo-700 border border-indigo-200" :
+              "bg-amber-100 text-amber-800 border border-amber-200"
+            }`}>
+              {pr.status === "COMPLETED" ? "Hoàn thành" : 
+               pr.status === "RECEIVED" ? "Đã nhận hàng" : 
+               pr.status === "REJECTED" || (pr.status as string) === "CANCELLED" ? "Đã huỷ/Từ chối" :
+               pr.status === "SENT" ? ((pr.items?.[0]?.quantityReceived || 0) > 0 ? "Đã nhận một phần" : "Đã gửi email") : 
+               pr.status === "APPROVED" ? "Đã duyệt" : 
+               "Chờ duyệt"}
+            </span>
+            {isSent && pr.status !== "RECEIVED" && pr.status !== "COMPLETED" && !isPendingDelete && (
+                <Button onClick={openReceiveModal} className="border-none bg-emerald-600 text-white hover:bg-emerald-700">
+                  <PackageCheck size={14} className="mr-1.5" /> Đã nhận hàng
+                </Button>
+            )}
+          </div>
         </div>
+
+        {isPendingDelete && (
+          <div className="flex items-start gap-2 rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700 w-full mb-4">
+            <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <span className="block mb-1 text-base font-bold">Sản phẩm đang chờ xoá</span>
+              <span className="block mb-2">Không thể tiếp tục xử lý yêu cầu nhập hàng vì sản phẩm đang chờ xoá. Vui lòng khôi phục sản phẩm hoặc huỷ/từ chối yêu cầu này.</span>
+              <Link to="/admin/products" className="underline font-bold hover:text-rose-800">
+                Khôi phục sản phẩm hoặc huỷ yêu cầu nhập hàng.
+              </Link>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-3">
           <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
@@ -470,21 +604,56 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
           <p className="whitespace-pre-line text-xs leading-relaxed text-slate-600 sm:text-sm">{aiReasonText}</p>
         </div>
 
-        {pr.supplier && (
-          <div className="space-y-2 rounded-2xl border border-slate-100 bg-slate-50/50 p-5 text-sm">
-            <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-              Thông tin nhà cung cấp nhận thư
-            </h4>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <span className="block text-[10px] font-medium text-slate-400">Tên liên hệ:</span>
-                <span className="font-semibold text-slate-800">{pr.supplier.name}</span>
-              </div>
-              <div>
-                <span className="block text-[10px] font-medium text-slate-400">Hộp thư nhận đặt hàng:</span>
-                <span className="font-semibold text-slate-800">{pr.supplier.email || "Nhà cung cấp chưa có email."}</span>
-              </div>
+
+
+        {pr.supplier?.status === 'INACTIVE' && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 mb-2 flex items-start gap-3 mt-4">
+            <Ban className="text-rose-500 shrink-0 mt-0.5" size={20} />
+            <div>
+              <h4 className="font-bold text-rose-800 text-sm">Nhà cung cấp đã ngừng hoạt động</h4>
+              <p className="text-rose-700 text-sm mt-1">
+                Nhà cung cấp của yêu cầu này hiện đã bị tắt. Mở lại nhà cung cấp, đổi nhà cung cấp hoặc từ chối yêu cầu này.
+              </p>
             </div>
+          </div>
+        )}
+
+        {pr.supplier?.status === 'INACTIVE' && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 mb-2 mt-2">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="text-blue-600" size={18} />
+              <h4 className="font-bold text-blue-900 text-sm">AI Agent đề xuất nhà cung cấp thay thế</h4>
+            </div>
+            
+            {suggestedSuppliers.length > 0 ? (
+              <div className="space-y-3">
+                {suggestedSuppliers.map((sp: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between bg-white border border-blue-100 rounded-lg p-3">
+                    <div>
+                      <strong className="block text-sm text-slate-800 flex items-center gap-2">
+                        {sp.supplierName}
+                        {sp.isPreferred && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded uppercase">Ưu tiên</span>}
+                      </strong>
+                      <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
+                        {sp.purchasePrice > 0 && <span>Giá nhập: <strong className="text-slate-700">{sp.purchasePrice.toLocaleString()}đ</strong></span>}
+                        {sp.leadTimeDays > 0 && <span>Giao hàng: <strong className="text-slate-700">{sp.leadTimeDays} ngày</strong></span>}
+                        {sp.moq > 0 && <span>MOQ: <strong className="text-slate-700">{sp.moq}</strong></span>}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 block mb-1">Đổi nhà cung cấp chưa hỗ trợ tự động</span>
+                    </div>
+                  </div>
+                ))}
+                <p className="text-xs text-blue-800 mt-2 bg-blue-100/50 p-2 rounded">
+                  Chức năng đổi nhà cung cấp trực tiếp chưa được bật. Admin có thể huỷ yêu cầu cũ và tạo yêu cầu mới với nhà cung cấp đang hoạt động ở mục Quản lý tồn kho.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-blue-800">
+                Không có nhà cung cấp đang hoạt động thay thế. Vui lòng mở lại nhà cung cấp hiện tại hoặc gán thêm nhà cung cấp mới cho sản phẩm này.
+              </p>
+            )}
           </div>
         )}
 
@@ -495,15 +664,43 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
                 <Mail size={16} className="text-amber-800" /> {hasUsableEmailDraft ? "Email đặt hàng do Agent đề xuất" : "Email đặt hàng"}
               </h4>
               {(canEditEmailDraft || canInputManualEmail) && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                   {canEditEmailDraft ? (
                     <>
-                      <Button size="sm" variant="outline" onClick={() => openEmailModal("edit")}>
-                        {isRejected || isSent ? "Xem / sửa email" : "Sửa email"}
-                      </Button>
-                      {canSendEmail && (
-                        <Button size="sm" onClick={() => openEmailModal("edit")} isLoading={isSendingEmail}>
-                          <Send size={14} className="mr-1.5" /> Gửi email nhà cung cấp
+                      {isPendingDelete ? (
+                        <Button
+                          variant="outline"
+                          disabled
+                          title="Không thể gửi email vì sản phẩm đang chờ xoá."
+                          className="flex-1 sm:flex-none opacity-50 cursor-not-allowed bg-rose-100 text-rose-800 border-rose-200"
+                        >
+                          Gửi email (Chờ xoá)
+                        </Button>
+                      ) : pr.supplier?.status === "INACTIVE" ? (
+                        <Button
+                          variant="primary"
+                          disabled
+                          title="Không thể gửi email vì nhà cung cấp đang bị tắt."
+                          className="flex-1 sm:flex-none opacity-50 cursor-not-allowed"
+                        >
+                          Gửi email (Đã tắt)
+                        </Button>
+                      ) : hasEmailError ? (
+                        <Button
+                          variant="primary"
+                          disabled
+                          title={emailErrorMessage}
+                          className="flex-1 sm:flex-none opacity-50 cursor-not-allowed bg-rose-100 text-rose-800 border-rose-200"
+                        >
+                          Gửi email (Lỗi Email)
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="primary"
+                          onClick={() => openEmailModal(canEditEmailDraft ? "edit" : "manual")}
+                          className="flex-1 sm:flex-none"
+                        >
+                          {canEditEmailDraft ? "Xem & Gửi email" : "Gửi email cho nhà cung cấp"}
                         </Button>
                       )}
                     </>
@@ -518,6 +715,15 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
                   Đã gửi email
                 </span>
+              )}
+              {hasEmailError && (
+                 <div className="flex items-start gap-2 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700 mt-2 w-full">
+                    <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <span className="block mb-1">{emailErrorMessage}</span>
+                      <Link to="/admin/suppliers" className="underline font-bold hover:text-rose-800">Cập nhật email nhà cung cấp tại đây</Link>
+                    </div>
+                 </div>
               )}
             </div>
 
@@ -552,17 +758,105 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
           </div>
         )}
 
-        {isPending && (
-          <div className="mt-4 flex justify-end gap-3.5 border-t border-slate-100 pt-6">
+        {(isPending || isApproved || isSent) && (
+          <div className="mt-4 flex flex-wrap justify-end gap-3.5 border-t border-slate-100 pt-6">
             <Button onClick={() => setShowRejectModal(true)} variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50">
-              <Ban size={14} className="mr-1.5" /> Từ chối đề xuất
+              <Ban size={14} className="mr-1.5" /> {isPending ? "Từ chối yêu cầu" : "Huỷ yêu cầu"}
             </Button>
-            <Button onClick={() => setShowConfirmApprove(true)} className="border-none bg-amber-800 text-white hover:bg-amber-900">
-              <CheckCircle size={14} className="mr-1.5" /> Duyệt yêu cầu
-            </Button>
+            {isPending && (
+              isPendingDelete ? (
+                <Button disabled className="border-none bg-slate-300 text-slate-500 cursor-not-allowed" title="Không thể duyệt yêu cầu vì sản phẩm đang chờ xoá.">
+                  <CheckCircle size={14} className="mr-1.5" /> Duyệt yêu cầu (Chờ xoá)
+                </Button>
+              ) : pr.supplier?.status === 'INACTIVE' ? (
+                <Button disabled className="border-none bg-slate-300 text-slate-500 cursor-not-allowed" title="Nhà cung cấp của yêu cầu này đang bị tắt. Vui lòng mở lại nhà cung cấp hoặc đổi sang nhà cung cấp khác trước khi duyệt.">
+                  <CheckCircle size={14} className="mr-1.5" /> Duyệt yêu cầu (Đã tắt)
+                </Button>
+              ) : (
+                <Button onClick={() => setShowConfirmApprove(true)} className="border-none bg-amber-800 text-white hover:bg-amber-900">
+                  <CheckCircle size={14} className="mr-1.5" /> Duyệt yêu cầu
+                </Button>
+              )
+            )}
           </div>
         )}
+
+
       </div>
+
+      {showConfirmReceive && (
+        <Modal isOpen={true} onClose={() => setShowConfirmReceive(false)} title="Xác nhận đã nhận hàng" size="md">
+          <form onSubmit={handleReceive} className="space-y-4">
+            {pr?.items?.map(item => {
+              const total = item.quantity || 0;
+              const received = item.quantityReceived || 0;
+              const remaining = total - received;
+              const invUnit = item.inventoryUnit ?? item.conversionTargetUnit ?? "Đơn vị";
+
+              return (
+                <div key={item.id} className="mb-4">
+                  <div className="bg-white p-3 rounded-lg border border-slate-200 text-sm mb-3">
+                    <div className="grid grid-cols-[130px_1fr] gap-y-2 items-center">
+                      <span className="text-slate-500">Sản phẩm:</span>
+                      <span className="font-medium">{item.productName || "Sản phẩm"}</span>
+                      
+                      <span className="text-slate-500">Nhà cung cấp:</span>
+                      <span className="font-medium">{pr?.supplier?.name}</span>
+                      
+                      <span className="text-slate-500">Yêu cầu nhập:</span>
+                      <span className="font-medium">{(pr?.purchaseQuantity ?? item.purchaseQuantity) || (pr?.suggestedQuantity ?? total)} {(pr?.purchaseUnit ?? item.purchaseUnit) || invUnit}</span>
+
+                      {Boolean(item.purchaseQuantity && item.purchaseUnit && item.inventoryUnit) && (
+                        <>
+                          <span className="text-slate-500">Quy cách:</span>
+                          <span className="font-medium">1 {item.purchaseUnit} = {item.conversionQuantity} {invUnit}</span>
+                        </>
+                      )}
+                      
+                      <span className="text-slate-500">Tổng cần nhập kho:</span>
+                      <span className="font-medium">{total} {invUnit}</span>
+
+                      <span className="text-slate-500">Đã nhận:</span>
+                      <span className="font-medium text-emerald-600">{received} {invUnit}</span>
+
+                      <span className="text-slate-500">Còn lại:</span>
+                      <span className="font-medium text-amber-600">{remaining} {invUnit}</span>
+                    </div>
+                  </div>
+
+                  {remaining > 0 ? (
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Số lượng thực nhận ({invUnit})</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max={remaining}
+                        value={receivedQuantities[item.id] === undefined ? "" : receivedQuantities[item.id]}
+                        onChange={(e) => setReceivedQuantities({ ...receivedQuantities, [item.id]: parseInt(e.target.value) || 0 })}
+                        className="block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-700/20"
+                        required
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-2 bg-emerald-50 text-emerald-700 text-sm rounded-lg border border-emerald-200">
+                      Sản phẩm này đã được nhận đủ.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+              <Button type="button" variant="outline" onClick={() => setShowConfirmReceive(false)}>
+                Hủy
+              </Button>
+              <Button type="submit" variant="primary" className="bg-emerald-600 hover:bg-emerald-700 text-white border-none" isLoading={isReceiving}>
+                Xác nhận nhận hàng
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       <ConfirmDialog
         isOpen={showConfirmApprove}
@@ -577,10 +871,10 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
       />
 
       {showRejectModal && (
-        <Modal isOpen={true} onClose={() => setShowRejectModal(false)} title="Lý do từ chối yêu cầu nhập hàng" size="sm">
+        <Modal isOpen={true} onClose={() => setShowRejectModal(false)} title={isPending ? "Lý do từ chối yêu cầu nhập hàng" : "Lý do huỷ yêu cầu nhập hàng"} size="sm">
           <form onSubmit={handleReject} className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Lý do từ chối</label>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">{isPending ? "Lý do từ chối" : "Lý do huỷ"}</label>
               <textarea
                 rows={3}
                 placeholder="Vd: Không cần nhập thêm vì còn hàng trong kho phụ..."
@@ -596,7 +890,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
                 Hủy
               </Button>
               <Button type="submit" variant="danger" isLoading={isRejecting}>
-                Xác nhận từ chối
+                {isPending ? "Xác nhận từ chối" : "Xác nhận huỷ"}
               </Button>
             </div>
           </form>
