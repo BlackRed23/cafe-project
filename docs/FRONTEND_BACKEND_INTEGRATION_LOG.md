@@ -1,5 +1,31 @@
 # Frontend Backend Integration Log
 
+## [2026-06-23] Chuẩn bị môi trường Deploy Render (Xử lý Hard-code Local URLs)
+
+**1. File đã scan:** Toàn bộ repository (`localhost`, `127.0.0.1`, `:5000`, `:5055`, `:5173`, `:3000`, `baseURL`, `API_URL`, `AGENT_URL`, `VITE_`).
+**2. File đã sửa:**
+- `apps/api/src/index.ts`
+- `apps/agent/src/server.ts`
+- `apps/web/src/api/client.ts`
+- `apps/api/src/modules/agent/agent.client.ts`
+**3. Local URL đã thay thế:**
+- Backend CORS: Thay array chứa `localhost:5173` bằng `process.env.FRONTEND_URL || 'http://localhost:5173'`
+- Agent bind host: Sửa từ `'127.0.0.1'` thành `"0.0.0.0"`, bind port nhận `process.env.PORT`
+- Frontend API Client: Sửa `VITE_API_URL` thành `VITE_API_BASE_URL`
+- Backend gọi Agent: Sửa `process.env.AGENT_SERVICE_URL` thành `process.env.AGENT_BASE_URL`
+**4. Env Render cần cấu hình:**
+- **Frontend:** `VITE_API_BASE_URL=https://<backend-render-url>/api`
+- **Backend API:** `DATABASE_URL=...`, `AGENT_BASE_URL=https://<agent-render-url>`, `FRONTEND_URL=https://<frontend-render-url>`
+- **Agent Service:** `AGENT_INTERNAL_TOKEN=...`, Render tự cấp `PORT`
+**5. Kết quả Build:**
+- `@cafe-project/api`: Pass
+- `@cafe-project/agent`: Pass
+- `@cafe-project/web`: Pass
+**6. Những chỗ cố tình giữ local fallback:**
+- Giữ các fallback string `http://localhost:5000/api`, `http://127.0.0.1:5055`, `http://localhost:5173` để dev local không cần thiết lập `.env` vẫn chạy được.
+- Không thay đổi `vite.config.ts` vì cấu hình target proxy chỉ áp dụng cho môi trường dev.
+- Không sửa file test/mock hoặc cấu hình DB local trong các `.env.example`.
+
 ## 1. Mục tiêu
 Đi chiếu và dựng bộ giao tiếp (contract) giữa Frontend và Backend cho luồng Cafe Agent. Sửa các endpoint, method, payload bị lệch, đảm bảo hai bên nói chung một ngôn ngữ. Không thực hiện refactor hay can thiệp sâu vào các logic độc lập của từng bên.
 

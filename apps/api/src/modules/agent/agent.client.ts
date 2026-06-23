@@ -16,7 +16,7 @@ type RecommendReorderInput = {
     force?: boolean;
 };
 
-const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://127.0.0.1:5055';
+const AGENT_SERVICE_URL = process.env.AGENT_BASE_URL || 'http://127.0.0.1:5055';
 const AGENT_INTERNAL_TOKEN = process.env.AGENT_INTERNAL_TOKEN || 'dev-agent-secret';
 const AGENT_SERVICE_TIMEOUT_MS = Number.parseInt(process.env.AGENT_SERVICE_TIMEOUT_MS || '5000', 10);
 
