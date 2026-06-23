@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useToast } from "../contexts/ToastContext";
 import { Input } from "../components/common/Input";
 import { Button } from "../components/common/Button";
 import { getErrorMessage } from "../api/client";
@@ -8,6 +9,7 @@ import { Coffee } from "lucide-react";
 
 export const RegisterPage: React.FC = () => {
   const { register } = useAuth();
+  const toast = useToast();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -61,8 +63,11 @@ export const RegisterPage: React.FC = () => {
 
     try {
       await register({ name: name.trim(), email: email.trim(), password: trimmedPassword, phone: phone.trim() });
+      toast.success("Đăng ký thành công.");
     } catch (err: any) {
-      setApiError(getErrorMessage(err));
+      const errorMessage = getErrorMessage(err);
+      setApiError(errorMessage);
+      toast.error("Đăng ký thất bại", errorMessage || "Vui lòng kiểm tra lại thông tin.");
     } finally {
       setIsLoading(false);
     }

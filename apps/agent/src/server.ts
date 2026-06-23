@@ -5,8 +5,8 @@ import { agentService } from './services/agent.service';
 
 dotenv.config();
 
-const HOST = process.env.AGENT_SERVICE_HOST || '127.0.0.1';
-const PORT = Number.parseInt(process.env.AGENT_SERVICE_PORT || '5055', 10);
+const AGENT_HOST = process.env.AGENT_HOST || process.env.HOST || '127.0.0.1';
+const AGENT_PORT = Number(process.env.AGENT_PORT || process.env.PORT || 5055);
 const INTERNAL_TOKEN = process.env.AGENT_INTERNAL_TOKEN || 'dev-agent-secret';
 
 const sendJson = (res: ServerResponse, statusCode: number, payload: unknown) => {
@@ -46,7 +46,7 @@ const requireInternalToken = (req: IncomingMessage, res: ServerResponse): boolea
 };
 
 const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
-    const url = new URL(req.url || '/', `http://${req.headers.host || `${HOST}:${PORT}`}`);
+    const url = new URL(req.url || '/', `http://${req.headers.host || `${AGENT_HOST}:${AGENT_PORT}`}`);
     const method = req.method || 'GET';
 
     try {
@@ -110,6 +110,6 @@ const server = http.createServer((req, res) => {
     });
 });
 
-server.listen(PORT, HOST, () => {
-    console.log(`[agent-service] listening on http://${HOST}:${PORT}`);
+server.listen(AGENT_PORT, AGENT_HOST, () => {
+    console.log(`[agent-service] listening on http://${AGENT_HOST}:${AGENT_PORT}`);
 });

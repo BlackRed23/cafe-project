@@ -79,7 +79,7 @@ export const CustomerLayout: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-[#faf6f0] text-slate-800">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[#150d0a]/95 backdrop-blur-md border-b border-amber-955/20 text-amber-50 shadow-md">
+      <header className="sticky top-0 z-40 bg-[#150d0a]/95 backdrop-blur-md text-amber-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
             {/* Logo */}
@@ -88,7 +88,7 @@ export const CustomerLayout: React.FC = () => {
                 <img className="w-20 h-20" src="./src/assets/logo-inventory1.png" alt="" />
               </div>
               <span className="font-bold text-xl tracking-tight text-white uppercase font-serif">
-                COFFEE <span className="text-[#c49b76]">SYSTEM</span>
+                COFFEE <span className="text-[#c49b76]">INV</span>
               </span>
             </Link>
 
@@ -348,12 +348,12 @@ export const CustomerLayout: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-12">
           {/* Column 1: About and Socials */}
           <div className="flex flex-col gap-5">
-            <Link to="/" className="flex items-center gap-2.5 w-fit">
-              <div className="p-2 bg-amber-700 text-white rounded-lg">
-                <Coffee size={20} />
+            <Link to="/" className="flex items-center gap-2.5 w-fit group">
+              <div className="p-1.5 bg-white-300 text-white group-hover:bg-white-600 transition-all rounded-lg">
+                <img className="h-10 w-10 object-contain" src="./src/assets/logo-inventory1.png" alt="Logo" />
               </div>
               <span className="font-bold text-xl text-white uppercase tracking-wider font-serif">
-                Cafe System
+                Cafe INV
               </span>
             </Link>
             <p className="text-[14.5px] text-amber-200/60 leading-relaxed font-light">
@@ -428,11 +428,8 @@ export const CustomerLayout: React.FC = () => {
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-16 pt-8 border-t border-amber-955/10 text-center text-[12px] text-amber-200/40 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>© {new Date().getFullYear()} Cafe System. All rights reserved.</p>
-          <p className="flex items-center gap-1.5">
-            Made with <Heart size={12} className="text-rose-500 fill-current" /> inspired by ThemeWagon Coffee
-          </p>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-16 pt-8 border-t border-amber-955/10 text-[12px] text-amber-200/40 flex items-center justify-center">
+          <p>© {new Date().getFullYear()} Cafe INV. Đã đăng ký bản quyền.</p>
         </div>
       </footer>
     </div>

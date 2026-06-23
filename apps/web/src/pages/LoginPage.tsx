@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useToast } from "../contexts/ToastContext";
 import { Input } from "../components/common/Input";
 import { Button } from "../components/common/Button";
 import { getErrorMessage } from "../api/client";
@@ -8,6 +9,7 @@ import { Coffee } from "lucide-react";
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState("");
@@ -38,7 +40,8 @@ export const LoginPage: React.FC = () => {
 
     try {
       await login({ email, password });
-      
+      toast.success("Đăng nhập thành công.");
+
       const returnUrl = location.state?.returnUrl;
       if (returnUrl) {
         navigate(returnUrl);
@@ -52,7 +55,9 @@ export const LoginPage: React.FC = () => {
         }
       }
     } catch (err: any) {
-      setApiError(getErrorMessage(err));
+      const errorMessage = getErrorMessage(err);
+      setApiError(errorMessage);
+      toast.error("Đăng nhập thất bại", errorMessage || "Vui lòng kiểm tra email hoặc mật khẩu.");
     } finally {
       setIsLoading(false);
     }
@@ -66,7 +71,7 @@ export const LoginPage: React.FC = () => {
           <Coffee size={28} />
         </div>
         <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Đăng nhập tài khoản</h2>
-        <p className="text-sm text-slate-400 mt-1">Chào mừng bạn quay lại với Cafe System</p>
+        <p className="text-sm text-slate-400 mt-1">Chào mừng bạn quay lại với Cafe INV</p>
       </div>
 
       {apiError && (
@@ -116,12 +121,12 @@ export const LoginPage: React.FC = () => {
         <div className="grid grid-cols-2 gap-3 text-xs text-slate-500">
           <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
             <span className="font-bold text-slate-700 block mb-0.5">Admin:</span>
-            <span>admin@cafe.local</span>
+            <span>admin@cafe.com</span>
             <span className="block text-[10px] text-slate-400 mt-0.5">Mật khẩu: 123456</span>
           </div>
           <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
             <span className="font-bold text-slate-700 block mb-0.5">Customer:</span>
-            <span>customer@cafe.local</span>
+            <span>customer@cafe.com</span>
             <span className="block text-[10px] text-slate-400 mt-0.5">Mật khẩu: 123456</span>
           </div>
         </div>

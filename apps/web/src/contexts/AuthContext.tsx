@@ -63,7 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.user.role === "ADMIN") {
           window.location.href = "/admin/dashboard";
         } else {
-          window.location.href = "/products";
+          window.location.href = "/";
         }
       }
     } catch (error) {
@@ -84,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data.user) {
         setUser(data.user);
         localStorage.setItem("user", JSON.stringify(data.user));
-        window.location.href = "/products";
+        window.location.href = "/";
       } else {
         window.location.href = "/login?registered=true";
       }

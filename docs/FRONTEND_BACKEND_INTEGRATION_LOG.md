@@ -3206,3 +3206,436 @@ Quét tồn kho manual có nguy cơ spam API, gây overload hệ thống. Đồn
 - Log nhận hàng trên giao diện giờ hiển thị đúng nội dung thực tế (VD: Bạn đã nhận đủ số lượng hàng cho yêu cầu...).
 - Không sửa đổi logic Purchase Request, Inventory, Agent scan hay schema/database.
 - Build web: PASS
+
+
+## Customer Navbar UI Fix
+
+### Mục tiêu
+- Đổi text logo từ COFFEE SYSTEM thành COFFEE INV.
+- Bỏ border trắng đang bao quanh navbar customer.
+
+### File đã kiểm tra
+- pps/web/src/layouts/CustomerLayout.tsx
+- pps/web/src/routes/AppRoutes.tsx
+
+### File đã sửa
+
+| File | Sửa gì | Lý do |
+| ---- | ------ | ----- |
+| pps/web/src/layouts/CustomerLayout.tsx | Đổi text SYSTEM thành INV, xóa các class order-b, order-amber-955/20, shadow-md khỏi thẻ <header>. | Để logo hiển thị đúng COFFEE INV và loại bỏ viền/border trắng bao quanh navbar. |
+
+### Kết quả
+- Logo text đã đổi thành COFFEE INV.
+- Border trắng navbar đã được bỏ.
+- Navbar vẫn giữ layout/menu/cart/user dropdown như cũ.
+- Không ảnh hưởng Admin Dashboard.
+
+### Không sửa
+- Không sửa backend.
+- Không sửa API.
+- Không sửa database/schema.
+- Không sửa logic login/logout/cart.
+- Không tạo file mới.
+
+
+## Customer Auth Notification UI Fix
+
+### Mục tiêu
+- Thêm notification/toast cho đăng nhập thành công/thất bại.
+- Thêm notification/toast cho đăng ký thành công/thất bại.
+
+### File đã kiểm tra
+- \pps/web/src/pages/LoginPage.tsx\n- \pps/web/src/pages/RegisterPage.tsx\n- \pps/web/src/contexts/AuthContext.tsx\n- \pps/web/src/contexts/ToastContext.tsx\n
+### File đã sửa
+
+| File | Sửa gì | Lý do |
+| ---- | ------ | ----- |
+| \ToastContext.tsx\ | Cập nhật \loatingToasts\ để lưu vào \sessionStorage\. | Đảm bảo toast không bị mất ngay lập tức khi component reload do \window.location.href\ trong logic auth. |
+| \LoginPage.tsx\ | Import và gọi \	oast.success\ / \	oast.error\ khi thực hiện \login()\. | Để hiện UI báo hiệu trạng thái đăng nhập cho user. |
+| \RegisterPage.tsx\ | Import và gọi \	oast.success\ / \	oast.error\ khi thực hiện egister()\. | Để hiện UI báo hiệu trạng thái đăng ký cho user. |
+
+### Kết quả
+- Login thành công có toast.
+- Login thất bại có toast lỗi.
+- Register thành công có toast.
+- Register thất bại có toast lỗi.
+- Không dùng alert.
+- Không đưa thông báo auth vào Header Notification Bell.
+- Không ảnh hưởng redirect/login/register logic.
+
+### Không sửa
+- Không sửa backend.
+- Không sửa API auth contract.
+- Không sửa database/schema.
+- Không sửa Admin Dashboard.
+- Không tạo file mới.
+
+
+## Customer Login Redirect Fix
+
+### Mục tiêu
+- Sửa redirect sau đăng nhập của customer từ `/products` về `/`.
+
+### File đã kiểm tra
+- `apps/web/src/contexts/AuthContext.tsx`
+- `apps/web/src/pages/LoginPage.tsx`
+
+### File đã sửa
+
+| File | Sửa gì | Lý do |
+| ---- | ------ | ----- |
+| `apps/web/src/contexts/AuthContext.tsx` | Đổi `window.location.href = "/products";` thành `window.location.href = "/";` trong hàm `login` và `register` cho non-ADMIN. | Để user role `CUSTOMER` được đưa thẳng về Trang chủ sau khi đăng nhập thay vì bị redirect đến trang sản phẩm. |
+
+### Kết quả
+- Customer login thành công chuyển về `/`.
+- Admin login vẫn chuyển vào admin dashboard.
+- Không sửa backend.
+- Không sửa API auth.
+- Không sửa database/schema.
+- Không tạo file mới.
+
+### Test
+- Customer login: PASS
+- Admin login: PASS
+- Login fail: PASS
+
+
+## Customer Layout Margin Consistency Fix
+
+### Mục tiêu
+- Đồng bộ margin trái/phải cho toàn bộ UI customer.
+- Navbar, hero và các section dùng chung container.
+- Không ảnh hưởng Admin Dashboard.
+
+### File đã kiểm tra
+- `apps/web/src/layouts/CustomerLayout.tsx`
+- `apps/web/src/pages/HomePage.tsx`
+- `apps/web/src/pages/ProductListPage.tsx`
+- `apps/web/src/pages/CartPage.tsx`
+- `apps/web/src/pages/CheckoutPage.tsx`
+- `apps/web/src/pages/MyOrdersPage.tsx`
+
+### File đã sửa
+
+| File | Sửa gì | Lý do |
+| ---- | ------ | ----- |
+| `HomePage.tsx` | Đưa thẻ div chứa nội dung Hero vào chung wrapper container `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full`. | Đảm bảo margin trái của chữ thẳng lề với logo trên navbar. |
+| `ProductListPage.tsx` | Wrap phần nội dung Hero vào `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full`. | Đồng bộ chung margin container. |
+| `CartPage.tsx` | Wrap phần nội dung Hero vào `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full`. | Đồng bộ chung margin container. |
+| `CheckoutPage.tsx` | Wrap phần nội dung Hero vào `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full`. | Đồng bộ chung margin container. |
+| `MyOrdersPage.tsx` | Wrap phần nội dung Hero vào `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full` và chỉnh sửa content width từ `max-w-4xl` thành `max-w-7xl`. | Đồng bộ chung hệ margin container. |
+
+### Kết quả
+- Navbar dùng cùng container với customer page.
+- Hero content thẳng lề với navbar.
+- Các section customer dùng lề trái/phải thống nhất.
+- Không còn border trắng navbar.
+- Không có horizontal scroll.
+- Responsive vẫn ổn.
+
+### Không sửa
+- Không sửa backend.
+- Không sửa API.
+- Không sửa database/schema.
+- Không sửa logic login/logout/cart/order.
+- Không sửa Admin Dashboard.
+- Không tạo file mới nếu không bắt buộc.
+
+
+## Customer Home Process Video Section UI Fix
+
+### Mục tiêu
+- Bo góc và làm đẹp phần video/media trong section quy trình vận hành.
+- Sửa nội dung chữ cho rõ nghiệp vụ Cafe INV và AI Agent tồn kho.
+
+### File đã kiểm tra
+- `apps/web/src/pages/HomePage.tsx`
+
+### File đã sửa
+
+| File | Sửa gì | Lý do |
+| ---- | ------ | ----- |
+| `HomePage.tsx` | Đổi class của video placeholder thành `rounded-3xl shadow-2xl overflow-hidden`. | Để có góc bo tròn đẹp mắt, tạo cảm giác card chuyên nghiệp hơn khung vuông cứng. |
+| `HomePage.tsx` | Đổi text hiển thị của quy trình. | Nội dung cũ nói về pha chế cà phê, đổi sang nội dung nghiệp vụ thực tế của Cafe INV là Quản lý tồn kho, Đặt hàng và AI Agent đề xuất nhập hàng. |
+| `HomePage.tsx` | Thêm icon `FileText` và mục "Theo dõi quy trình minh bạch". | Bổ sung thêm tính năng thứ 3 giúp section đầy đặn hơn và làm rõ quy trình quản lý minh bạch cho Admin. |
+
+### Kết quả
+- Media card bên trái đã có bo góc và shadow.
+- Nếu có video thật thì đã dùng video thật.
+- Nếu chưa có video thật thì giữ ảnh hiện tại và style lại.
+- Text bên phải đã đổi sang nội dung có ý nghĩa hơn.
+- Không sửa backend.
+- Không sửa admin.
+- Không tạo file mới nếu không bắt buộc.
+
+### Test
+- Desktop: PASS
+- Mobile: PASS
+- Console error: PASS
+
+
+## Customer Home Process Section Copy Fix
+
+### Mục tiêu
+- Sửa nội dung section quy trình/trải nghiệm trên trang chủ khách hàng.
+- Loại bỏ các từ ngữ nội bộ như Admin, AI Agent, nhập hàng, quét tồn kho.
+
+### File đã kiểm tra
+- `apps/web/src/pages/HomePage.tsx`
+
+### File đã sửa
+
+| File | Sửa gì | Lý do |
+| ---- | ------ | ----- |
+| `HomePage.tsx` | Đổi nội dung text ở phần Process/Story Section thành nội dung về trải nghiệm mua cà phê. | Đảm bảo trang khách hàng tập trung vào người mua, không hiển thị các thuật ngữ quản lý kho của hệ thống admin. |
+
+### Kết quả
+- Nội dung đã chuyển sang hướng trải nghiệm khách hàng.
+- Không còn nhắc nghiệp vụ admin/internal trong section customer.
+- Không sửa backend.
+- Không sửa API.
+- Không sửa database/schema.
+- Không tạo file mới.
+
+### Test
+- Trang chủ `/`: PASS
+- Mobile responsive: PASS
+
+
+## Customer Home Process Section Text Contrast Fix
+
+### Mục tiêu
+- Tăng độ rõ của các đoạn mô tả nhỏ trong section trang chủ khách hàng.
+- Sửa màu chữ bị mờ trên nền sáng.
+
+### File đã kiểm tra
+- `apps/web/src/pages/HomePage.tsx`
+
+### File đã sửa
+
+| File | Sửa gì | Lý do |
+| ---- | ------ | ----- |
+| `HomePage.tsx` | Đổi các class `text-slate-400` và `text-slate-500` thành `text-slate-600` trong các đoạn mô tả của phần Quy trình/Trải nghiệm. | Giúp chữ hiển thị đậm và rõ nét hơn trên nền sáng, dễ đọc nhưng vẫn giữ được sự tinh tế, không quá gắt như chữ màu đen hoàn toàn. |
+
+### Kết quả
+- Các đoạn mô tả nhỏ đã rõ hơn.
+- Không đổi layout.
+- Không đổi logic.
+- Không sửa backend/admin.
+- Không tạo file mới.
+
+### Test
+- Trang chủ `/`: PASS
+- Mobile responsive: PASS
+
+
+## Customer UI Vietnamese Translation Fix
+
+### Mục tiêu
+- Việt hoá toàn bộ text hiển thị cho Customer ở UI.
+- Đảm bảo không còn text tiếng Anh như "Live Coffee making process", "Checkout", v.v.
+- Giữ nguyên tên thương hiệu "Cafe INV", "Coffee INV".
+
+### Các file đã kiểm tra
+- `apps/web/src/pages/HomePage.tsx`
+- `apps/web/src/pages/LoginPage.tsx`
+- `apps/web/src/layouts/CustomerLayout.tsx`
+- `apps/web/src/pages/ProductListPage.tsx`
+- `apps/web/src/pages/ProductDetailPage.tsx`
+- `apps/web/src/pages/CartPage.tsx`
+- `apps/web/src/pages/CheckoutPage.tsx`
+- `apps/web/src/pages/RegisterPage.tsx`
+- `apps/web/src/pages/MyOrdersPage.tsx`
+- Các component common (`EmptyState.tsx`, `ProductCard.tsx`).
+
+### Các file đã sửa
+
+| File | Sửa gì | Lý do |
+| ---- | ------ | ----- |
+| `HomePage.tsx` | Đổi "What kind of Coffee we serve for you" thành "Khám phá hương vị cà phê tuyệt hảo". Đổi "Cafe System" thành "Cafe INV". | Đảm bảo 100% text tiếng Việt tự nhiên và đúng thương hiệu. |
+| `CustomerLayout.tsx` | Đổi "Cafe System" thành "Cafe INV". Đổi "All rights reserved" và "Made with ... inspired by ThemeWagon Coffee" sang tiếng Việt. | Đồng nhất thương hiệu và ngôn ngữ hiển thị chân trang. |
+| `LoginPage.tsx` | Đổi "Chào mừng bạn quay lại với Cafe System" thành "Chào mừng bạn quay lại với Cafe INV". | Giữ đúng tên thương hiệu thống nhất. |
+
+### Kết quả
+- Tất cả các trang customer đã được Việt hóa 100%.
+- Không sửa text kỹ thuật trong code/enum/API.
+- Tên thương hiệu `Cafe INV` / `Coffee INV` được đảm bảo.
+- Không sửa backend hay admin.
+- Không tạo file mới.
+
+### Test
+- Truy cập trang chủ, đăng nhập, giỏ hàng: PASS (Hiển thị đúng tiếng Việt)
+
+
+## Customer Home Product Preview Section Fix
+
+### Mục tiêu
+- Căn lề section sản phẩm trang chủ theo navbar/customer container.
+- Việt hoá tiêu đề section.
+- Giới hạn trang chủ tối đa 3 sản phẩm / 1 hàng.
+- Đổi nút `Mua` thành `Thêm vào giỏ`.
+
+### File đã kiểm tra
+- `apps/web/src/pages/HomePage.tsx`
+- `apps/web/src/components/product/ProductCard.tsx`
+
+### File đã sửa
+
+| File | Sửa gì | Lý do |
+| ---- | ------ | ----- |
+| `HomePage.tsx` | Sửa `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8` thành `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full`. | Đảm bảo container width đồng nhất và thẳng lề trái phải với Navbar. |
+| `HomePage.tsx` | Đổi tiếng Anh thành "Những dòng cà phê dành cho bạn" và cập nhật mô tả. Đổi "Xem toàn bộ menu" thành "Xem toàn bộ sản phẩm". | Đảm bảo Việt hoá tự nhiên toàn bộ text customer UI theo yêu cầu. |
+| `HomePage.tsx` | `data.slice(0, 4)` đổi thành `data.slice(0, 3)`. Grid `lg:grid-cols-4` đổi thành `lg:grid-cols-3`. | Yêu cầu hiển thị tối đa 3 sản phẩm trên 1 hàng. |
+| `ProductCard.tsx` | Đổi nội dung nút "Mua" thành "Thêm vào giỏ". | Cập nhật UI nút đồng bộ ở mọi nơi dùng component này cho Customer, không ảnh hưởng chức năng hay Admin. |
+
+### Kết quả
+- Section sản phẩm trang chủ đã thẳng lề với navbar.
+- Trang chủ chỉ hiển thị tối đa 3 sản phẩm.
+- Nút card đã đổi thành `Thêm vào giỏ`.
+- Text section đã được Việt hoá.
+- Không sửa backend.
+- Không sửa admin.
+- Không tạo file mới nếu không bắt buộc.
+
+### Test
+- Trang chủ `/`: PASS
+- Trang `/products`: PASS
+- Add to cart: PASS
+- Mobile responsive: PASS
+
+
+## Customer Products Page 3 Columns Grid Fix
+
+### Mục tiêu
+- Sửa trang `/products` hiển thị tối đa 3 sản phẩm / 1 hàng trên desktop.
+- Đồng bộ container/lề với navbar customer.
+
+### File đã kiểm tra
+- `apps/web/src/pages/ProductListPage.tsx`
+
+### File đã sửa
+
+| File | Sửa gì | Lý do |
+| ---- | ------ | ----- |
+| `ProductListPage.tsx` | Sửa class của grid từ `sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4` thành `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`. | Đảm bảo trang sản phẩm customer hiển thị đúng 3 cột tối đa trên desktop, 2 cột trên tablet, 1 cột trên mobile. Các item rộng vừa phải không bị ép quá nhỏ trên màn lớn. |
+
+### Kết quả
+- Trang `/products` hiển thị 3 cột trên desktop.
+- Tablet hiển thị 2 cột.
+- Mobile hiển thị 1 cột.
+- Lề trái/phải đồng bộ với navbar (đã wrap trong `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full`).
+- Không sửa backend.
+- Không sửa admin.
+- Không tạo file mới nếu không bắt buộc.
+
+### Test
+- `/products` desktop: PASS
+- `/products` tablet/mobile: PASS
+- Add to cart: PASS
+- Product detail link: PASS
+
+
+## Customer Gallery Section Container Alignment Fix
+
+### Mục tiêu
+- Căn section gallery/hình ảnh cửa hàng theo cùng container với navbar.
+- Đồng bộ lề trái/phải trên UI customer.
+
+### File đã kiểm tra
+- `apps/web/src/pages/HomePage.tsx`
+
+### File đã sửa
+
+| File | Sửa gì | Lý do |
+| ---- | ------ | ----- |
+| `HomePage.tsx` | Thêm class `w-full` vào thẻ `section` của Gallery. Đổi grid từ `grid-cols-2 md:grid-cols-4 gap-4` thành `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6`. Thêm `rounded-3xl` và `shadow-lg` cho thẻ bọc ảnh. | Đảm bảo Gallery section dàn full width container chuẩn giống Navbar. Nâng cấp hiển thị ảnh đẹp hơn với bo góc lớn và khoảng cách hợp lý. |
+
+### Kết quả
+- Gallery section đã thẳng lề với navbar.
+- Tiêu đề và grid ảnh dùng chung container.
+- Responsive desktop/tablet/mobile ổn.
+- Không sửa backend.
+- Không sửa admin.
+- Không tạo file mới nếu không bắt buộc.
+
+### Test
+- Trang chủ `/`: PASS
+- Desktop: PASS
+- Mobile responsive: PASS
+
+
+## Customer Footer Logo And Credit Text Fix
+
+### Mục tiêu
+- Đổi logo footer cạnh `Cafe INV` thành logo đang dùng trên navbar.
+- Xoá dòng credit ThemeWagon ở cuối footer.
+
+### File đã kiểm tra
+- `apps/web/src/layouts/CustomerLayout.tsx`
+
+### File đã sửa
+
+| File | Sửa gì | Lý do |
+| ---- | ------ | ----- |
+| `CustomerLayout.tsx` | Đổi thẻ bọc logo `<Coffee>` thành thẻ `<img>` sử dụng src `./src/assets/logo-inventory1.png` với kích thước `h-10 w-10`. | Đồng bộ logo nhận diện thương hiệu giữa footer và navbar. |
+| `CustomerLayout.tsx` | Xóa dòng text "Phát triển với ❤️ lấy cảm hứng từ ThemeWagon" và đổi class thẻ bọc thành `flex items-center justify-center`. | Xoá các text thừa, giữ lại thông tin đăng ký bản quyền cần thiết, căn giữa để footer nhìn gọn gàng và không trống lệch. |
+
+### Kết quả
+- Footer đã dùng cùng logo với navbar.
+- Dòng ThemeWagon đã được xoá.
+- Copyright vẫn được giữ.
+- Không sửa backend.
+- Không sửa admin.
+- Không tạo file mới nếu không bắt buộc.
+
+### Test
+- Footer desktop: PASS
+- Footer mobile: PASS
+- Console error: PASS
+
+## 50. Fix Frontend TS PaymentMethod Unused Imports And Agent Env Host Port
+
+### 50.1 Mục tiêu
+Sửa lỗi TypeScript frontend liên quan PaymentMethod, unused imports/variables và chuyển HOST/PORT của agent server sang biến môi trường.
+
+### 50.2 Lỗi đã xử lý
+- TS2367 PaymentMethod comparison
+- TS2353 payment map missing key
+- TS6133 unused imports/variables
+- Agent server hard-code host/port
+
+### 50.3 File đã sửa
+- apps/web/src/types/order.types.ts
+- apps/web/src/utils/payment.ts
+- apps/web/src/contexts/CartContext.tsx
+- apps/agent/src/server.ts
+
+### 50.4 PaymentMethod sau khi sửa
+- CASH
+- BANK_TRANSFER
+- VIET_QR
+
+### 50.5 Unused imports/variables đã xóa
+- Header.tsx (Không có lỗi unused theo yêu cầu, đã kiểm tra)
+- Sidebar.tsx (Không có lỗi unused theo yêu cầu, đã kiểm tra)
+- CartContext.tsx (Đã xóa CART_STORAGE_KEY)
+- ChangePasswordPage.tsx (Không có lỗi unused theo yêu cầu, đã kiểm tra)
+- CheckoutPage.tsx (Không có lỗi unused theo yêu cầu, đã kiểm tra)
+
+### 50.6 Agent server env config
+- AGENT_HOST
+- AGENT_PORT
+- fallback HOST/PORT 
+- default 127.0.0.1:5055
+
+### 50.7 Kết quả build/test
+- Web build pass (Không còn lỗi TS2367, TS2353, TS6133 ở các file đã nêu)
+- Agent server start pass
+
+### 50.8 Việc không sửa
+- Không sửa Order logic
+- Không sửa Inventory/reservedStock
+- Không sửa database/schema
+- Không chạy migration/db push
+- Không chạy npm install
+- Không tạo file log mới

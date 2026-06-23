@@ -4,7 +4,8 @@
 node_modules
 .pnp
 .pnp.js
-
+docs
+D:\1items\wedshite\tieuluanchuyennganh\project\cafe-project-system\docs
 # Local env files
 .env
 .env.local

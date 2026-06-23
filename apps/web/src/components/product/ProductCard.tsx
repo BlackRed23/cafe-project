@@ -82,7 +82,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart }
             className="flex-1 flex items-center justify-center gap-1.5 bg-amber-850 hover:bg-amber-950 text-white border-none rounded-xl"
           >
             <ShoppingCart size={13} />
-            Mua
+            Thêm vào giỏ
           </Button>
         </div>
       </div>

@@ -130,7 +130,18 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   });
 
-  const [floatingToasts, setFloatingToasts] = useState<Toast[]>([]);
+  const [floatingToasts, setFloatingToasts] = useState<Toast[]>(() => {
+    try {
+      const saved = sessionStorage.getItem("floating_toasts");
+      if (saved) {
+        sessionStorage.removeItem("floating_toasts");
+        return JSON.parse(saved);
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
 
   React.useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toasts));
@@ -141,7 +152,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const dismissFloating = useCallback((id: string) => {
-    setFloatingToasts((prev) => prev.filter((t) => t.id !== id));
+    setFloatingToasts((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      sessionStorage.setItem("floating_toasts", JSON.stringify(next));
+      return next;
+    });
   }, []);
 
   const addToast = useCallback(
@@ -149,7 +164,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
       const id = `${Date.now()}-${Math.random()}`;
       const t = { id, type, title, message, link };
       setToasts((prev) => [...prev.slice(-49), t]); // Keep up to 50 in history
-      setFloatingToasts((prev) => [...prev, t]); // Show as floating
+      setFloatingToasts((prev) => {
+        const next = [...prev, t];
+        sessionStorage.setItem("floating_toasts", JSON.stringify(next));
+        return next;
+      }); // Show as floating
     },
     []
   );

@@ -18,7 +18,6 @@ interface CartContextType {
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
-// const CART_STORAGE_KEY = "cart";
 
 const getInventoryQuantity = (product: Product): number | undefined => {
   const quantity = product.inventory?.quantity;
