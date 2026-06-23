@@ -3693,6 +3693,30 @@ Sửa lỗi TS6133 do import icon không sử dụng ở Customer UI.
 * Không chạy npm install.
 * Không tạo file log mới.
 
+## 54. Fix Render Backend 500 Product Mapper
+
+### 54.1 Lỗi production
+
+* Lỗi runtime `/api/products` trả về 500 trên Render.
+* Render log hiển thị `TypeError: Cannot read properties of undefined (reading 'product')`.
+
+### 54.2 Nguyên nhân
+
+* Mapper xử lý dữ liệu product (`toProductDto`) đọc sai trường hợp dữ liệu lồng nhau, hoặc đối tượng `product` có thể thiếu quan hệ `inventory`, `category`. Việc truy xuất thẳng `.product` từ một object wrapper bị undefined hoặc truy xuất thuộc tính con từ các quan hệ bị thiếu sẽ gây crash TypeError.
+
+### 54.3 File đã sửa
+
+* `apps/api/src/modules/product/product.service.ts`
+
+### 54.4 Chi tiết sửa chữa
+
+* Cập nhật mapper `toProductDto` với cú pháp optional chaining (`?.`) và fallback an toàn (`??`).
+* Thêm logic dự phòng `record?.product ?? record` để tự động unwrap nếu dữ liệu Prisma bị bọc bên trong một property `product`.
+* Bọc bảo vệ khi đọc ID của `category` và `inventory`, chống crash khi database trả về null/undefined ở các quan hệ này.
+
+### 54.5 Kết quả build
+
+* API build: PASS.
 ## 53. Fix Render API Base URL Missing Api Prefix And CORS
 
 ### 53.1 Lỗi production

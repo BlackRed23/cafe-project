@@ -32,35 +32,45 @@ export type ProductDto = {
     updatedAt: Date;
 };
 
-const toProductDto = (product: ProductRecord): ProductDto => ({
-    id: product.id,
-    name: product.name,
-    sku: product.sku,
-    description: product.description,
-    price: Number(product.price),
-    costPrice: Number(product.costPrice),
-    unit: product.unit,
-    imageUrl: product.imageUrl,
-    isActive: product.isActive,
-    categoryId: product.categoryId,
-    category: {
-        id: product.category.id,
-        name: product.category.name,
-        description: product.category.description
-    },
-    inventory: product.inventory
-        ? {
-              quantity: product.inventory.quantity,
-              minThreshold: product.inventory.minThreshold,
-              unit: product.inventory.unit
-          }
-        : null,
-    inventoryQuantity: product.inventory?.quantity ?? null,
-    deletedAt: (product as any).deletedAt ?? null,
-    pendingDeleteUntil: (product as any).pendingDeleteUntil ?? null,
-    createdAt: product.createdAt,
-    updatedAt: product.updatedAt
-});
+const toProductDto = (record: ProductRecord | any): ProductDto => {
+    // Ngăn lỗi "Cannot read properties of undefined (reading 'product')"
+    // Fallback nếu có ai truyền nhầm object { product: ... } thay vì product
+    const product = record?.product ?? record;
+
+    if (!product) {
+        return {} as ProductDto; // Fallback an toàn nếu undefined
+    }
+
+    return {
+        id: product.id,
+        name: product.name,
+        sku: product.sku,
+        description: product.description ?? null,
+        price: Number(product.price || 0),
+        costPrice: Number(product.costPrice || 0),
+        unit: product.unit || 'hộp',
+        imageUrl: product.imageUrl ?? null,
+        isActive: product.isActive ?? true,
+        categoryId: product.categoryId,
+        category: product.category ? {
+            id: product.category.id,
+            name: product.category.name,
+            description: product.category.description ?? null
+        } : { id: product.categoryId || '', name: 'Unknown', description: null },
+        inventory: product.inventory
+            ? {
+                  quantity: product.inventory.quantity,
+                  minThreshold: product.inventory.minThreshold,
+                  unit: product.inventory.unit
+              }
+            : null,
+        inventoryQuantity: product.inventory?.quantity ?? null,
+        deletedAt: product.deletedAt ?? null,
+        pendingDeleteUntil: product.pendingDeleteUntil ?? null,
+        createdAt: product.createdAt ?? new Date(),
+        updatedAt: product.updatedAt ?? new Date()
+    };
+};
 
 const normalizeOptionalString = (value: string | null | undefined): string | null | undefined => {
     if (value === undefined) return undefined;
