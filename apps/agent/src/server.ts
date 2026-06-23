@@ -5,8 +5,10 @@ import { agentService } from './services/agent.service';
 
 dotenv.config();
 
-const AGENT_HOST = process.env.AGENT_HOST || process.env.HOST || '127.0.0.1';
-const AGENT_PORT = Number(process.env.AGENT_PORT || process.env.PORT || 5055);
+
+const AGENT_HOST = process.env.AGENT_HOST || process.env.HOST || '127.0.0.1' || '0.0.0.0';
+const AGENT_PORT = Number.parseInt(process.env.AGENT_PORT || process.env.PORT || '5055', 10);
+
 const INTERNAL_TOKEN = process.env.AGENT_INTERNAL_TOKEN || 'dev-agent-secret';
 
 const sendJson = (res: ServerResponse, statusCode: number, payload: unknown) => {
