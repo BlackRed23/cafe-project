@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Link, Outlet, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
-import { ShoppingCart, LogOut, Coffee, ShieldAlert, Heart, Menu, X, Send, Key, ChevronDown, User, Package } from "lucide-react";
+import { ShoppingCart, LogOut, ShieldAlert, Menu, X, Send, Key, ChevronDown, User, Package } from "lucide-react";
 
 type NavItem = {
   label: string;

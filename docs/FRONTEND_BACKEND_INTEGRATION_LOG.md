@@ -3639,3 +3639,30 @@ Sửa lỗi TypeScript frontend liên quan PaymentMethod, unused imports/variabl
 - Không chạy migration/db push
 - Không chạy npm install
 - Không tạo file log mới
+
+## 51. Fix Customer UI Unused Icon Imports
+
+### 51.1 Mục tiêu
+Sửa lỗi TS6133 do import icon không sử dụng ở Customer UI.
+
+### 51.2 File đã sửa
+* apps/web/src/layouts/CustomerLayout.tsx
+* apps/web/src/pages/HomePage.tsx
+
+### 51.3 Import đã xóa
+* Coffee
+* Heart
+* Cpu
+* FileText
+
+### 51.4 Kết quả build
+* npm run build -w @cafe-project/web: PASS
+
+### 51.5 Việc không sửa
+* Không sửa backend.
+* Không sửa Order/Inventory/Agent/Purchase.
+* Không sửa logic Customer UI.
+* Không sửa database/schema.
+* Không chạy migration/db push.
+* Không chạy npm install.
+* Không tạo file log mới.

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { ArrowRight, ShoppingCart, ShoppingBag, Cpu, Play, ChevronRight, Sparkles, FileText } from "lucide-react";
+import { ArrowRight, ShoppingCart, ShoppingBag, Play, ChevronRight, Sparkles } from "lucide-react";
 import { productsApi } from "../api/products.api";
 import { useCart } from "../contexts/CartContext";
 import type { Product } from "../types/product.types";
