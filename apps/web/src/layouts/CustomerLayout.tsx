@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useNavigate, Navigate } from "react-router-d
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { ShoppingCart, LogOut, ShieldAlert, Menu, X, Send, Key, ChevronDown, User, Package } from "lucide-react";
+import logoInventory from "../assets/logo-inventory1.png";
 
 type NavItem = {
   label: string;
@@ -85,7 +86,7 @@ export const CustomerLayout: React.FC = () => {
             {/* Logo */}
             <Link to="/" className="flex items-center group">
               <div className="p-2.5 bg-white-300 text-white  group-hover:bg-white-600 transition-all ">
-                <img className="w-20 h-20" src="./src/assets/logo-inventory1.png" alt="" />
+                <img className="w-20 h-20" src={logoInventory} alt="" />
               </div>
               <span className="font-bold text-xl tracking-tight text-white uppercase font-serif">
                 COFFEE <span className="text-[#c49b76]">INV</span>
@@ -350,7 +351,7 @@ export const CustomerLayout: React.FC = () => {
           <div className="flex flex-col gap-5">
             <Link to="/" className="flex items-center gap-2.5 w-fit group">
               <div className="p-1.5 bg-white-300 text-white group-hover:bg-white-600 transition-all rounded-lg">
-                <img className="h-10 w-10 object-contain" src="./src/assets/logo-inventory1.png" alt="Logo" />
+                <img className="h-10 w-10 object-contain" src={logoInventory} alt="Logo" />
               </div>
               <span className="font-bold text-xl text-white uppercase tracking-wider font-serif">
                 Cafe INV

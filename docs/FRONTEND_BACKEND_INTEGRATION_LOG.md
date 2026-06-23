@@ -3692,3 +3692,45 @@ Sửa lỗi TS6133 do import icon không sử dụng ở Customer UI.
 * Không chạy migration/db push.
 * Không chạy npm install.
 * Không tạo file log mới.
+
+## 52. Fix Render Production CORS API Base URL And Logo Asset
+
+### 52.1 Lỗi production
+
+* Logo `logo-inventory1.png` bị 404.
+* CORS bị chặn vì backend chỉ allow `http://localhost:5173`.
+* Frontend production gọi API thiếu `/api` nếu backend mount route dưới `/api`.
+
+### 52.2 Nguyên nhân
+
+* CORS hard-code hoặc env không hỗ trợ multiple origin do cấu hình nhận trực tiếp string thay vì split mảng.
+* Frontend API base URL thiếu `/api` khi cấu hình biến môi trường trên Render, source code dùng đúng biến `VITE_API_BASE_URL` nhưng bị set sai nội dung ở server.
+* Logo asset ở path `apps/web/src/assets/logo-inventory1.png` nhưng layout và sidebar dùng chuỗi static `"./src/assets/logo-inventory1.png"` hoặc `"../src/assets/logo-inventory1.png"` khiến Vite build không map được asset, sinh ra 404.
+
+### 52.3 File đã sửa
+
+* `apps/api/src/index.ts`
+* `apps/web/src/layouts/CustomerLayout.tsx`
+* `apps/web/src/components/admin/Sidebar.tsx`
+
+### 52.4 Env cần cấu hình trên Render
+
+Backend:
+* `CORS_ORIGIN=http://localhost:5173,https://cafe-frontend-nmgm.onrender.com`
+
+Frontend:
+* `VITE_API_BASE_URL=https://cafe-api-9tbe.onrender.com/api`
+
+### 52.5 Kết quả build/test
+
+* Backend build: PASS
+* Frontend build: PASS
+* Network production sau deploy pass/fail: Cần test thực tế sau deploy, local build đã pass.
+
+### 52.6 Việc không sửa
+
+* Không sửa Order/Inventory/reservedStock.
+* Không sửa Agent logic.
+* Không sửa database/schema.
+* Không chạy migration/db push.
+* Không tạo file log mới.

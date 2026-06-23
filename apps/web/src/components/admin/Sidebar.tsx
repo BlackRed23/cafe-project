@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   Settings,
 } from "lucide-react";
+import logoInventory from "../../assets/logo-inventory1.png";
 
 interface SidebarProps {
   sidebarOpen: boolean;
@@ -91,7 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
           className="flex items-center  group"
         >
           <div className="p-2.5 bg-white-300 text-white  group-hover:bg-white-600 transition-all ">
-            <img className="w-20 h-20" src="../src/assets/logo-inventory1.png" alt="" />
+            <img className="w-20 h-20" src={logoInventory} alt="" />
           </div>
           <div>
             <span className="text-[14px] font-black text-white tracking-wide uppercase font-serif leading-none block">
