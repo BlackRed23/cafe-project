@@ -3994,3 +3994,11 @@ Frontend:
 
 - Các endpoint như `GET /api/products`, `POST /api/auth/register` sẽ hoạt động bình thường, không còn lỗi `500 - undefined`.
 - **Render Build Command**: Có thể đảm bảo sử dụng lệnh `npm run build` ở cấp thư mục gốc (monorepo root) để Turbo chạy build tuần tự cho cả `database` và `api`.
+
+
+## [2026-06-24] Sửa lỗi Render SPA Fallback 404 cho React Router
+- **Lỗi:** `/admin/dashboard` 404 trên Render (sau khi login frontend chuyển tới).
+- **Nguyên nhân:** Lỗi SPA fallback thiếu rewrite. Web server tĩnh trên Render không biết chuyển các route không có file thật về `index.html`.
+- **File đã thêm:** `apps/web/public/_redirects` chứa cấu hình `/* /index.html 200`.
+- **Kết quả build:** Chạy `npm run build -w @cafe-project/web` thành công, file `_redirects` đã được chép đúng vào thư mục `dist`.
+- **Đề xuất:** Deploy lại frontend lên Render, vấn đề 404 khi truy cập /admin/dashboard hoặc các route khác trực tiếp sẽ được giải quyết.
