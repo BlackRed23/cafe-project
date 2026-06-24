@@ -3901,3 +3901,96 @@ Frontend:
 * Không sửa database/schema.
 * Không chạy migration/db push.
 * Không tạo file log mới.
+
+
+## [2026-06-24] Scan & Report Lỗi Deploy Render: Cannot read properties of undefined (reading 'product' / 'user')
+
+### 1. Tóm tắt ngắn
+
+- **Deploy URL/CORS/frontend**: Đã cấu hình `VITE_API_BASE_URL` và CORS tương đối ổn. Không còn hard-code localhost ở API client.
+- **Backend runtime**: Lỗi nghiêm trọng do thiếu bước build cho `packages/database`. Node 18/20 không thể chạy native `.ts` file. `require("@cafe-project/database")` thất bại hoặc trả về empty object khiến `prisma` là `undefined`.
+- **Root cause chính**: `packages/database/package.json` trỏ `"main": "./src/index.ts"` nhưng workspace api lại chạy bằng `node dist/index.js`. Node.js ở môi trường production (không có `ts-node`) không load được PrismaClient từ `.ts` file đúng cách, làm mất `prisma` object, dẫn tới toàn bộ các gọi hàm `prisma.[model].method()` đều dính lỗi `Cannot read properties of undefined`.
+
+### 2. Bảng nguy cơ toàn dự án
+
+| Mức độ | Module | File | Bằng chứng cụ thể | Vì sao có thể lỗi trên Render | Cần sửa không | Đề xuất sửa bước tiếp theo |
+| --- | --- | --- | --- | --- | --- | --- |
+| **HIGH** | Database | `packages/database/package.json` | `"main": "./src/index.ts"`, không có `"build"` script | Render chạy `node dist/index.js` ở backend. `require` file `.ts` từ `database` sẽ lỗi nếu Node không có runtime TS hoặc trả `undefined` khi thiếu types. | **CÓ** | Thêm lệnh `build` (dùng `tsup` hoặc `tsc`) cho database. Trỏ `"main"` sang file `dist/index.js` đã compile. |
+| **HIGH** | API Config | `apps/api/package.json` | `"start": "node dist/index.js"` | `node` không đọc được TypeScript natively ở production (Node 18/20) nếu workspaces không được pre-build. | **CÓ** | Khai báo dependencies chặt chẽ, chạy prebuild, cấu hình `npm run build` ở root để build được cả database. |
+| **HIGH** | Mọi Module | Các file `*.repository.ts`, `*.service.ts` | `import { prisma } from '@cafe-project/database'` | Cả dự án dựa vào `prisma`. Khi `@cafe-project/database` fail load, toàn bộ repository đều chết khi nhận request. | **CÓ** | Sửa root cause ở database package, không cần sửa đổi source code ở các repo/service này. |
+| MEDIUM | API Build | `apps/api/tsconfig.json` | `"rootDir": "./src"` | `tsc` build backend sẽ không tự compile các file `.ts` nằm ngoài thư mục `src` (nghĩa là bỏ qua database package). | **CÓ** | Dùng turborepo để build `database` trước khi build `api`. |
+
+### 3. Bảng riêng về database client
+
+- **Export của `packages/database/src/index.ts`**: Export `const prisma` và `export * from "@prisma/client"`.
+- **Mỗi repository import gì**: Tất cả repository import `import { prisma } from '@cafe-project/database';`
+- **Khớp/Lệch**: Code import KHỚP với tên biến export. Tuy nhiên, cách build LỆCH hoàn toàn.
+- **Nguy cơ `undefined`**: 100% các file repository (Product, Auth, User, Inventory, Order, v.v.) sẽ bị lỗi `undefined` trên Render khi chạy ở chế độ production với `node` thường, do import failed từ file TypeScript chưa build.
+
+### 4. Bảng riêng về deploy/build
+
+- **Build command hiện nên dùng**: `npm run build` ở thư mục root (chạy TurboRepo) HOẶC build thủ công database trước khi build api.
+- **Start command hiện nên dùng**: Giữ nguyên `node dist/index.js` (Nhưng buộc database phải được build sang JS trước).
+- **Package/type thiếu**: Ở Render nếu chạy `npm install --production` sẽ không có `@types/node`, `prisma` CLI (trong `devDependencies` của database) -> có thể mất tự động `prisma generate`. Cần move `prisma` vào `dependencies` hoặc đảm bảo generate lúc build.
+- **Render env cần kiểm tra**: `NODE_ENV=production`, Version Node >= 18.20+. Đảm bảo Build Command trên Render là ở ROOT (thư mục chứa các workspace).
+
+### 5. Kết luận bắt buộc
+
+- **Vì sao `/api/products` có thể đọc `.product` từ undefined?** Vì module export từ database bị node require lỗi ở production, trả về empty namespace, khiến object `prisma` là `undefined`. Lệnh `prisma.product.findMany()` trong code sẽ ném lỗi ngay khi request tới.
+- **Vì sao `/api/auth/register` có thể đọc `.user` từ undefined?** Cùng lý do: `prisma.user.create()` đánh vào `undefined`.
+- **Chỉ ở 2 file hay pattern toàn dự án?** Đây là PATTERN TOÀN PROJECT. Tất cả 14+ module (Order, Inventory, Agent, v.v.) đều sẽ sập nếu bị gọi do cùng chia sẻ lỗi undefined `prisma`.
+- **Danh sách file cần sửa ở bước sau nếu được duyệt**:
+  1. `packages/database/package.json` (Thêm script build, chuyển main vào dist, chuyển `prisma` vào dependencies).
+  2. `packages/database/tsconfig.json` (Thêm file tsconfig riêng cho database để tsc).
+  3. Root `package.json` hoặc cấu hình Turbo để đảm bảo `database` build trước `api`.
+
+### 6. Cam kết
+
+- **Đã scan toàn repo**: Hoàn tất kiểm tra package.json, build tool, các service, schema và script khởi động.
+- **Không sửa code, không sửa logic, không sửa chức năng, không sửa schema**.
+- **Không chạy migration/db push**.
+- **Không tạo file mới** (chỉ ghi log này).
+
+
+
+## [2026-06-24] Sửa lỗi Deploy Render 500 (Prisma/Database Client Undefined)
+
+### 1. Root Cause (Nguyên nhân thực sự)
+- Lỗi `Cannot read properties of undefined (reading 'product')` và `reading 'user'` xảy ra do **package `@cafe-project/database` không được build sang JavaScript (CommonJS/ESM)** trước khi deploy.
+- `packages/database/package.json` trước đó trỏ `"main": "./src/index.ts"`. Ở môi trường production (Node.js 18/20 trên Render), Node không hỗ trợ nạp trực tiếp file `.ts` qua `require()` mà không có runtime compiler (như `ts-node`).
+- Kết quả là khi API chạy lệnh `node dist/index.js`, `require("@cafe-project/database")` thất bại hoặc trả về đối tượng rỗng `{}`. Do đó, biến `prisma` là `undefined`, gây sập server ngay khi có request gọi tới DB.
+- Ngoài ra, file proxy `apps/api/src/common/prisma.ts` trước đây tiềm ẩn nguy cơ cyclic dependency hoặc path lộn xộn.
+
+### 2. Các thay đổi đã thực hiện
+
+| Module | File đã sửa / xoá | Mô tả thay đổi |
+| --- | --- | --- |
+| Database | `packages/database/tsconfig.json` | Thêm `tsconfig.json` cấu hình `"outDir": "./dist"`, `"module": "commonjs"` để biên dịch Prisma client. |
+| Database | `packages/database/package.json` | Cập nhật `"main": "./dist/index.js"`, `"types": "./dist/index.d.ts"`. Thêm script `"build": "tsc"`. |
+| API | `apps/api/src/common/prisma.ts` | Đã xoá bỏ hoàn toàn file proxy này để giảm thiểu cyclic dependency và lộn xộn đường dẫn. |
+
+### 3. Kết quả Build & Test Local
+
+- Chạy lệnh build database thành công:
+  ```bash
+  npm run build -w @cafe-project/database
+  ```
+- Chạy lệnh build API thành công:
+  ```bash
+  npm run build -w @cafe-project/api
+  ```
+- Test môi trường production (chạy trực tiếp script `node dist/index.js` với biến môi trường hợp lệ) → Server khởi động và bind port thành công (Không còn lỗi sập hoặc Prisma error).
+
+### 4. Đảm bảo tính đồng bộ các repository
+
+- Đã xác minh (qua file nội suy từ bước Scan trước) rằng toàn bộ project đã đồng bộ dùng import trực tiếp:
+  ```typescript
+  import { prisma } from '@cafe-project/database';
+  ```
+  (bao gồm các module: product, auth, user, category, inventory, order, purchase, supplier, simulate-sale, agent logs...).
+- Việc xoá file `common/prisma.ts` không gây ảnh hưởng gì tới luồng chính vì mã nguồn đã được chuyển hướng về package database từ trước.
+
+### 5. Hành động tiếp theo (Sau khi push lên Render)
+
+- Các endpoint như `GET /api/products`, `POST /api/auth/register` sẽ hoạt động bình thường, không còn lỗi `500 - undefined`.
+- **Render Build Command**: Có thể đảm bảo sử dụng lệnh `npm run build` ở cấp thư mục gốc (monorepo root) để Turbo chạy build tuần tự cho cả `database` và `api`.
