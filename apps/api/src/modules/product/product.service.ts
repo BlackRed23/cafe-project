@@ -32,11 +32,7 @@ export type ProductDto = {
     updatedAt: Date;
 };
 
-const toProductDto = (record: ProductRecord | any): ProductDto => {
-    // Ngăn lỗi "Cannot read properties of undefined (reading 'product')"
-    // Fallback nếu có ai truyền nhầm object { product: ... } thay vì product
-    const product = record?.product ?? record;
-
+const toProductDto = (product: ProductRecord): ProductDto => {
     if (!product) {
         return {} as ProductDto; // Fallback an toàn nếu undefined
     }
@@ -65,8 +61,8 @@ const toProductDto = (record: ProductRecord | any): ProductDto => {
               }
             : null,
         inventoryQuantity: product.inventory?.quantity ?? null,
-        deletedAt: product.deletedAt ?? null,
-        pendingDeleteUntil: product.pendingDeleteUntil ?? null,
+        deletedAt: (product as any).deletedAt ?? null,
+        pendingDeleteUntil: (product as any).pendingDeleteUntil ?? null,
         createdAt: product.createdAt ?? new Date(),
         updatedAt: product.updatedAt ?? new Date()
     };

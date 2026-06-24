@@ -3693,6 +3693,40 @@ Sửa lỗi TS6133 do import icon không sử dụng ở Customer UI.
 * Không chạy npm install.
 * Không tạo file log mới.
 
+## 56. Fix Render Backend Build Error (Missing @types)
+
+### 56.1 Lỗi production
+
+* Lệnh `npm run build -w @cafe-project/api` fail trên Render ở bước `tsc`.
+* Lỗi: `TS7016: Could not find declaration file for module express/multer/bcrypt/jsonwebtoken` và các lỗi related to missing Node/Express typings (`Cannot find name process/Buffer`, `Object.entries does not exist`).
+
+### 56.2 Chi tiết sửa chữa
+
+* Đã install devDependencies bổ sung (`@types/node`, `@types/express`, `@types/multer`, `@types/bcrypt`, `@types/jsonwebtoken`).
+* Cập nhật `apps/api/tsconfig.json`: cấu hình `"target": "ES2020"` và bổ sung `"types": ["node"]` để hỗ trợ các class native.
+* Cập nhật `apps/api/src/modules/upload/upload.route.ts` để ép kiểu `multer` thành `RequestHandler` (thông qua `unknown`) nhằm tránh lỗi TS overload mismatch giữa các version type của express.
+
+### 56.3 Kết quả build
+
+* API build (`tsc`): PASS.
+
+## 55. Fix Render TypeScript Build Error For Product Mapper
+
+### 55.1 Lỗi production
+
+* Sau khi sửa mapper `/api/products` để tránh lỗi undefined `record.product`, Deploy trên Render gặp lỗi ở bước `tsc`.
+* Nguyên nhân do TypeScript ở chế độ strict mode báo lỗi khi cố gắng access `.product` từ `ProductRecord` (vì type này không định nghĩa field `product`, nó là entity trực tiếp). Việc lạm dụng `any` hoặc wrapper giả lập gây ra type mismatch và lỗi compiler TypeScript khi build production.
+
+### 55.2 Chi tiết sửa chữa
+
+* Đã sửa lại `toProductDto` trong `apps/api/src/modules/product/product.service.ts` để map trực tiếp từ parameter `product` (kiểu `ProductRecord`) thay vì lấy từ fallback `record?.product ?? record`.
+* Xóa bỏ fallback `record?.product` gây ra lỗi build TS khi record thuộc type strict.
+* Giữ nguyên cấu hình fallback an toàn đúng chuẩn TypeScript cho các relation `product.category` và `product.inventory` để không crash nếu DB trả về object thiếu quan hệ khi chạy thực tế (nguyên nhân gây 500 runtime).
+
+### 55.3 Kết quả build
+
+* API build (`tsc`): PASS.
+
 ## 54. Fix Render Backend 500 Product Mapper
 
 ### 54.1 Lỗi production
