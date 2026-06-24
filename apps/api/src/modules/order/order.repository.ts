@@ -1,5 +1,5 @@
 import { InventoryTransactionType, OrderStatus, type Prisma } from '@cafe-project/database';
-import { prisma } from '../../common/prisma';
+import { prisma } from '@cafe-project/database';
 import type { CreateOrderInput, OrderFiltersInput } from './order.validator';
 import { detectShippingZone, calculateShippingFee } from './shipping.service';
 import { scanInventoryViaAgentService } from '../agent/agent.client';

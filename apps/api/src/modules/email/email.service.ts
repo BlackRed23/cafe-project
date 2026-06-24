@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import { PurchaseRequestStatus } from '@cafe-project/database';
-import { prisma } from '../../common/prisma';
+import { prisma } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
 import { createAgentLogViaAgentService } from '../agent/agent.client';
 import { buildPurchaseRequestEmailDraft } from '../purchase/purchase.service';

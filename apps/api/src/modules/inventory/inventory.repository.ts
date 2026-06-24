@@ -1,5 +1,5 @@
 import { InventoryTransactionType, type Category, type Inventory, type InventoryTransaction, type Prisma, type Product, type User } from '@cafe-project/database';
-import { prisma } from '../../common/prisma';
+import { prisma } from '@cafe-project/database';
 
 type ProductWithCategory = Product & {
     category: Category;

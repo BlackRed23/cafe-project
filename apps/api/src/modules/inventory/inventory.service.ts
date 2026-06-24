@@ -1,5 +1,5 @@
 import { HttpError } from '../../common/http-error';
-import { prisma } from '../../common/prisma';
+import { prisma } from '@cafe-project/database';
 import { inventoryRepository, type InventoryRecord, type InventoryTransactionRecord } from './inventory.repository';
 import type { AdjustInventoryInput, ImportInventoryInput, UpdateThresholdInput } from './inventory.validator';
 import { InventoryTransactionType } from '@cafe-project/database';

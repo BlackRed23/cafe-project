@@ -1,4 +1,4 @@
-import { prisma } from '../../common/prisma';
+import { prisma } from '@cafe-project/database';
 import { PurchaseRequestStatus, OrderStatus } from '@cafe-project/database';
 
 export const dashboardService = {

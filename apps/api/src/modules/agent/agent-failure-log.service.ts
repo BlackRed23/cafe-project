@@ -1,4 +1,4 @@
-import { prisma } from '../../common/prisma';
+import { prisma } from '@cafe-project/database';
 
 type AgentFailureInput = {
     triggerType?: string;

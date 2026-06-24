@@ -1,5 +1,5 @@
 ﻿import { PaymentStatus, type Prisma } from '@cafe-project/database';
-import { prisma } from '../../common/prisma';
+import { prisma } from '@cafe-project/database';
 
 const paymentInclude = {
     order: { include: { user: { select: { id: true, name: true, email: true } } } }

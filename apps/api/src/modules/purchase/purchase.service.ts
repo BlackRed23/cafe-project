@@ -3,7 +3,7 @@ import { HttpError } from '../../common/http-error';
 import { ACTIVE_PURCHASE_REQUEST_MESSAGE, purchaseRepository, type PurchaseRequestRecord } from './purchase.repository';
 import type { CreatePurchaseRequestInput, PurchaseRequestFiltersInput, ReceivePurchaseRequestInput, RejectPurchaseRequestInput } from './purchase.validator';
 import { scanInventoryViaAgentService } from '../agent/agent.client';
-import { prisma } from '../../common/prisma';
+import { prisma } from '@cafe-project/database';
 const totalForItem = (quantity: number, unitPrice: number | null): number => quantity * (unitPrice ?? 0);
 
 const purchaseConversionForItem = (request: PurchaseRequestRecord, item: PurchaseRequestRecord['items'][number]) => {

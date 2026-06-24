@@ -16,7 +16,7 @@ import dashboardRoutes from './modules/dashboard/dashboard.route';
 import uploadRoutes from './modules/upload/upload.route';
 import { env } from './common/env';
 import { errorHandler } from './common/error-handler';
-import { prisma } from './common/prisma';
+import { prisma } from '@cafe-project/database';
 import { sendError, sendSuccess } from './common/response';
 import { scheduleJobs } from './modules/cron/cron.service';
 

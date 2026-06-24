@@ -3693,6 +3693,25 @@ Sửa lỗi TS6133 do import icon không sử dụng ở Customer UI.
 * Không chạy npm install.
 * Không tạo file log mới.
 
+## 59. Fix Render Backend 500 API Products & Auth Register (Circular Dependency Proxy)
+
+### 59.1 Bối cảnh
+* Lỗi production: Backend Render trả mã 500 tại endpoint `GET /api/products` và `POST /api/auth/register`.
+* Log Render báo lỗi cụ thể: `TypeError: Cannot read properties of undefined (reading 'product') at Object.findMany (.../product.repository.js:11:32)`.
+* Sau khi kiểm tra, `prisma` bị `undefined` tại runtime mặc dù lệnh khởi tạo PrismaClient và compile Typescript (`tsc`) chạy qua thành công. Điều này dẫn đến sự cố sập tương tự ở `Auth Register` vì Prisma client được load sau khi các controllers đã yêu cầu.
+
+### 59.2 Nguyên nhân gốc rễ (Root Cause)
+* Lỗi do sự cố CommonJS cyclic dependency (phụ thuộc vòng) trên Render khi các repositories gọi `import { prisma } from '../../common/prisma'`. Ở chế độ `npm run start` sau khi build `tsc` trên một số môi trường Linux Nodejs nhất định, proxy export qua `common/prisma` bị cache thành một empty object (`{}`) trong lúc khởi tạo, làm biến `prisma` trả về `undefined`.
+
+### 59.3 Chi tiết sửa chữa
+* Loại bỏ triệt để trung gian proxy `common/prisma` đang làm sai lệch bộ nạp cache module. 
+* Đồng bộ 100% tất cả 16 files repositories, services (bao gồm `product.repository.ts`, `auth.repository.ts`, `category.repository.ts`, `user.service.ts`, `order.repository.ts`, v.v.) sang đúng dạng import trực tiếp từ instance đã được cache sẵn:
+  `import { prisma } from '@cafe-project/database';`
+
+### 59.4 Kết quả build
+* Kết quả API build lệnh `npm run build -w @cafe-project/api`: PASS. Không có lỗi Typescript nào bị bắt.
+* File `index.js` sau khi chạy thử cục bộ `node dist/index.js` có thể truy vấn `prisma` mượt mà, không còn lỗi `undefined` cho tất cả các modules. Sẵn sàng deploy lại.
+
 ## 58. Revert Import Prisma Database Client (Product Repository)
 
 ### 58.1 Bối cảnh

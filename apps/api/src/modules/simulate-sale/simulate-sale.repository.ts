@@ -1,5 +1,5 @@
 import { InventoryTransactionType, type Prisma } from '@cafe-project/database';
-import { prisma } from '../../common/prisma';
+import { prisma } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
 
 const inventoryInclude = { product: true } satisfies Prisma.InventoryInclude;

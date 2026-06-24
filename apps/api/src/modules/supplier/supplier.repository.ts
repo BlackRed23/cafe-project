@@ -1,5 +1,5 @@
 import type { Prisma } from '@cafe-project/database';
-import { prisma } from '../../common/prisma';
+import { prisma } from '@cafe-project/database';
 
 const supplierInclude = { products: { include: { product: true } } } satisfies Prisma.SupplierInclude;
 const supplierProductInclude = { supplier: true, product: true } satisfies Prisma.SupplierProductInclude;

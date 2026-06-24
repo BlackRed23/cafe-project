@@ -1,5 +1,5 @@
 ﻿import type { SystemSetting } from '@cafe-project/database';
-import { prisma } from '../../common/prisma';
+import { prisma } from '@cafe-project/database';
 
 export type SystemSettingRecord = SystemSetting;
 

@@ -1,5 +1,5 @@
 import { InventoryTransactionType, PurchaseRequestStatus, type Prisma } from '@cafe-project/database';
-import { prisma } from '../../common/prisma';
+import { prisma } from '@cafe-project/database';
 import type { CreatePurchaseRequestInput, PurchaseRequestFiltersInput, ReceivePurchaseRequestInput } from './purchase.validator';
 
 const purchaseInclude = {
