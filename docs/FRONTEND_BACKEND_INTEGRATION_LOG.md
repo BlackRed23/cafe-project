@@ -3693,6 +3693,43 @@ Sửa lỗi TS6133 do import icon không sử dụng ở Customer UI.
 * Không chạy npm install.
 * Không tạo file log mới.
 
+## 58. Revert Import Prisma Database Client (Product Repository)
+
+### 58.1 Bối cảnh
+
+* Người dùng yêu cầu `product.repository.ts` phải đồng bộ hoàn toàn cú pháp import với các repository đang chạy ổn định (`category`, `order`, `user`).
+* Trước đó đã thử sử dụng import trực tiếp nhưng được yêu cầu rollback lại theo cấu trúc chung của toàn source backend.
+
+### 58.2 Chi tiết sửa chữa
+
+* Revert file `apps/api/src/modules/product/product.repository.ts`.
+* Sử dụng cú pháp import proxy chung của dự án: `import { prisma } from '../../common/prisma';` thay vì import trực tiếp từ `@cafe-project/database`.
+* Tách biệt import Type (`Prisma`, `Product`) và import Value (`prisma`) theo chuẩn của các repo khác.
+
+### 58.3 Kết quả build
+
+* API build (`tsc`): PASS. Đảm bảo cấu trúc import nhất quán.
+
+## 57. Fix Render Backend 500 API Products (Circular Dependency / Import Mismatch)
+
+### 57.1 Lỗi production
+
+* Endpoint `GET /api/products` báo lỗi runtime 500 trên Render: `TypeError: Cannot read properties of undefined (reading 'product') at Object.findMany (.../dist/modules/product/product.repository.js:11:32)`.
+* Lỗi do object `prisma` bị `undefined` tại runtime, dẫn đến việc gọi `prisma.product.findMany` throw TypeError, chứ không phải do mapper xử lý data.
+
+### 57.2 Nguyên nhân
+
+* File `product.repository.ts` import prisma thông qua proxy local `../../common/prisma`. Do thứ tự khởi tạo module (module initialization order) trong Node.js khi build bằng `tsc`, việc này đã gây ra lỗi undefined ngầm ở một số module được load sớm (như product route).
+
+### 57.3 Chi tiết sửa chữa
+
+* Cập nhật file `apps/api/src/modules/product/product.repository.ts`.
+* Gộp chung tất cả type import và value import để lấy trực tiếp instance `prisma` từ package gốc: `import { prisma, type Category, type Inventory, type Prisma, type Product } from '@cafe-project/database';` thay vì load qua proxy `common/prisma` nhằm đảm bảo khởi tạo an toàn.
+
+### 57.4 Kết quả build
+
+* API build (`tsc`): PASS.
+
 ## 56. Fix Render Backend Build Error (Missing @types)
 
 ### 56.1 Lỗi production
