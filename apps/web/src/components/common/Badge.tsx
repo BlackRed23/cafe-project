@@ -26,7 +26,12 @@ export const Badge: React.FC<BadgeProps> = ({ status, className = "" }) => {
 
     // Inventory
     OK: "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30",
+    IN_STOCK: "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30",
     WARNING: "bg-orange-50 text-orange-850 border-orange-250 dark:bg-orange-950/20 dark:text-orange-400 dark:border-orange-900/30",
+    WARNING_STOCK: "bg-orange-50 text-orange-850 border-orange-250 dark:bg-orange-950/20 dark:text-orange-400 dark:border-orange-900/30",
+    AT_THRESHOLD: "bg-amber-50 text-amber-800 border-amber-250 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30",
+    LOW_STOCK: "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/30",
+    OUT_OF_STOCK: "bg-red-100 text-red-900 border-red-300 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900/50",
     NEED_RESTOCK: "bg-red-50 text-red-800 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/30",
 
     // Purchase Request

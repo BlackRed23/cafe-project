@@ -17,7 +17,8 @@ const inventoryInclude = {
                 orderBy: [{ isPreferred: 'desc' }, { price: 'asc' }, { leadTimeDays: 'asc' }]
             }
         }
-    }
+    },
+    batches: true
 } satisfies Prisma.InventoryInclude;
 
 const logInclude = {
@@ -69,6 +70,17 @@ const safeJsonParse = (value: unknown): any => {
         return JSON.parse(value);
     } catch {
         return null;
+    }
+};
+
+export const serializeAgentLogField = (value: unknown): string | null => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "string") return value;
+
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
     }
 };
 
@@ -186,8 +198,8 @@ export const agentRepository = {
             select: { quantity: true }
         });
 
-        const totalSold7d = items7d.reduce((sum, item) => sum + item.quantity, 0);
-        const totalSold30d = items30d.reduce((sum, item) => sum + item.quantity, 0);
+        const totalSold7d = items7d.reduce((sum: number, item: { quantity: number }) => sum + item.quantity, 0);
+        const totalSold30d = items30d.reduce((sum: number, item: { quantity: number }) => sum + item.quantity, 0);
 
         return {
             totalSold7d,
@@ -220,10 +232,16 @@ export const agentRepository = {
         supplierProduct: AgentInventoryRecord['product']['supplierProducts'][number],
         quantity: number,
         reasoning: string,
-        userId: string,
+        userId?: string,
         emailDraft?: string
     ) {
-        return prisma.$transaction(async (tx) => {
+        if (!userId) {
+            const admin = await this.findFirstAdmin();
+            if (!admin) throw new Error('No admin user found to associate with AI Purchase Request');
+            userId = admin.id;
+        }
+
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const converted = convertRecommendedQuantity(inventory, supplierProduct, quantity);
             const finalReasoning = `${reasoning.trim()}\n\n${converted.note}`;
 
@@ -242,7 +260,7 @@ export const agentRepository = {
                     requestNumber: `AI-PR-${Date.now()}-${inventory.productId.slice(-4)}`,
                     status: PurchaseRequestStatus.PENDING,
                     supplierId: supplierProduct.supplierId,
-                    requestedBy: userId,
+                    requestedBy: userId as string,
                     aiGenerated: true,
                     notes: finalReasoning,
                     emailContent: emailDraft,
@@ -271,7 +289,7 @@ export const agentRepository = {
         emailDraft?: string | null;
         userId: string;
     }) {
-        return prisma.$transaction(async (tx) => {
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const inventory = await tx.inventory.findUnique({
                 where: { productId: data.productId }
             });
@@ -354,9 +372,10 @@ Sản phẩm này chưa có quy cách nhập hàng theo nhà cung cấp, nên s�
     },
 
     async createLog(data: Prisma.AgentLogCreateInput) {
-        const sanitizedData = {
+        const sanitizedData: Prisma.AgentLogCreateInput = {
             ...data,
-            output: typeof data.output === 'string' ? fixAgentLogDisplayOutputJson(data.output) : data.output,
+            input: serializeAgentLogField(data.input),
+            output: typeof data.output === 'string' ? fixAgentLogDisplayOutputJson(data.output) : serializeAgentLogField(data.output),
             reasoning: typeof data.reasoning === 'string' ? fixVietnameseMojibakeText(data.reasoning) : data.reasoning,
             error_message: typeof data.error_message === 'string' ? fixVietnameseMojibakeText(data.error_message) : data.error_message
         };
@@ -375,9 +394,13 @@ Sản phẩm này chưa có quy cách nhập hàng theo nhà cung cấp, nên s�
     },
 
     async updateLog(id: string, data: Prisma.AgentLogUpdateInput) {
+        const sanitizedData: Prisma.AgentLogUpdateInput = { ...data };
+        if (data.input !== undefined) sanitizedData.input = serializeAgentLogField(data.input);
+        if (data.output !== undefined) sanitizedData.output = typeof data.output === 'string' ? fixAgentLogDisplayOutputJson(data.output) : serializeAgentLogField(data.output);
+
         return prisma.agentLog.update({
             where: { id },
-            data,
+            data: sanitizedData,
             include: logInclude
         });
     },
@@ -393,6 +416,6 @@ Sản phẩm này chưa có quy cách nhập hàng theo nhà cung cấp, nên s�
             where: { isActive: true },
             select: { id: true }
         });
-        return products.map((product) => product.id);
+        return products.map((product: { id: string }) => product.id);
     }
 };

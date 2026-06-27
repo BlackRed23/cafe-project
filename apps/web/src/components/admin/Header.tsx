@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Menu, Bell, RefreshCw, X, AlertCircle, Info, CheckCircle, AlertTriangle, LogOut, User, Key, ChevronDown } from "lucide-react";
+import { Menu, X, AlertCircle, Info, CheckCircle, LogOut, User, Key, ChevronDown } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLocation, Link } from "react-router-dom";
-import { agentLogsApi } from "../../api/agentLogs.api";
-import type { AgentLog } from "../../types/agentLog.types";
+import { NotificationPanel } from "./NotificationPanel";
 
 type ToastType = "success" | "error" | "warning" | "info";
 interface Toast {
@@ -35,61 +34,22 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
   const { user, logout } = useAuth();
   const location = useLocation();
 
-  const [showNotifications, setShowNotifications] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [notifications, setNotifications] = useState<AgentLog[]>([]);
-  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
-  const [hasUnread, setHasUnread] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   
   const [toasts, setToasts] = useState<Toast[]>([]);
-  
-  const [loadError, setLoadError] = useState(false);
-
-  const loadNotifications = async () => {
-    setIsLoadingNotifications(true);
-    setLoadError(false);
-    try {
-      const logs = await agentLogsApi.getAgentLogs();
-      const recentLogs = logs.slice(0, 8);
-      setNotifications(recentLogs);
-      
-      const hasErrors = recentLogs.some(log => log.status === "FAILED" || log.error || log.errorMessage || log.error_message);
-      setHasUnread(hasErrors || recentLogs.length > 0);
-    } catch (err) {
-      setLoadError(true);
-    } finally {
-      setIsLoadingNotifications(false);
-    }
-  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowNotifications(false);
-      }
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setUserMenuOpen(false);
       }
     };
-    if (showNotifications || userMenuOpen) {
+    if (userMenuOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showNotifications, userMenuOpen]);
-
-  useEffect(() => {
-    loadNotifications();
-  }, []);
-
-  const handleToggleNotifications = () => {
-    if (!showNotifications) {
-      loadNotifications();
-      setHasUnread(false);
-    }
-    setShowNotifications(!showNotifications);
-  };
+  }, [userMenuOpen]);
 
   let breadcrumbs = BREADCRUMB_MAP[location.pathname];
   if (!breadcrumbs) {
@@ -124,13 +84,22 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
             {breadcrumbs.map((crumb, idx) => (
               <span key={idx} className="flex items-center gap-1.5">
                 {idx > 0 && <span className="text-sm text-slate-300">/</span>}
-                <span className={`text-sm ${
-                  idx === breadcrumbs.length - 1
-                    ? "font-bold text-slate-800"
-                    : "font-medium text-slate-400"
-                }`}>
-                  {crumb}
-                </span>
+                {crumb === "Admin" && idx === 0 ? (
+                  <Link
+                    to="/admin/dashboard"
+                    className="text-sm font-medium text-slate-400 hover:text-amber-800 hover:underline transition-colors"
+                  >
+                    {crumb}
+                  </Link>
+                ) : (
+                  <span className={`text-sm ${
+                    idx === breadcrumbs.length - 1
+                      ? "font-bold text-slate-800"
+                      : "font-medium text-slate-400"
+                  }`}>
+                    {crumb}
+                  </span>
+                )}
               </span>
             ))}
           </nav>
@@ -143,83 +112,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
 
 
           {/* Notification */}
-          <div className="relative" ref={dropdownRef}>
-            <button 
-              onClick={handleToggleNotifications}
-              className={`relative w-9 h-9 flex items-center justify-center rounded-xl transition-all ${showNotifications ? 'bg-slate-200 text-slate-800' : 'text-slate-500 bg-slate-100 hover:bg-slate-200 hover:text-slate-800'}`}
-            >
-              <Bell size={17} />
-              {hasUnread && <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-amber-500 border border-white" />}
-            </button>
-
-            {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 overflow-hidden flex flex-col z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-                  <h3 className="font-bold text-slate-800 text-sm">Thông báo hệ thống</h3>
-                  <button onClick={() => loadNotifications()} className="p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors" title="Làm mới">
-                    <RefreshCw size={14} className={isLoadingNotifications ? "animate-spin" : ""} />
-                  </button>
-                </div>
-                
-                <div className="max-h-[360px] overflow-y-auto">
-                  {isLoadingNotifications && notifications.length === 0 ? (
-                    <div className="p-6 text-center text-sm text-slate-400">Đang tải thông báo...</div>
-                  ) : loadError ? (
-                    <div className="p-6 text-center text-sm text-rose-500">Không thể tải thông báo hệ thống.</div>
-                  ) : notifications.length === 0 ? (
-                    <div className="p-6 text-center text-sm text-slate-400">Chưa có thông báo hệ thống.</div>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {notifications.map((log) => {
-                        const isError = log.status === "FAILED" || log.error || log.errorMessage || log.error_message;
-                        const isWarning = log.status === "SKIPPED";
-                        const isSuccess = log.status === "SUCCESS";
-                        
-                        let message = log.description || log.message || log.reasoning || log.errorMessage || log.error_message || log.error;
-                        if (!message && log.output) {
-                          try {
-                            const parsed = typeof log.output === "string" ? JSON.parse(log.output) : log.output;
-                            message = parsed?.description || parsed?.reason || parsed?.message || JSON.stringify(parsed);
-                          } catch {
-                            message = typeof log.output === "string" ? log.output : "Hệ thống đã ghi nhận.";
-                          }
-                        }
-                        
-                        return (
-                          <div key={log.id} className="p-3.5 hover:bg-slate-50 transition-colors flex gap-3 items-start">
-                            <div className={`mt-0.5 shrink-0 ${isError ? "text-rose-500" : isWarning ? "text-amber-500" : isSuccess ? "text-emerald-500" : "text-sky-500"}`}>
-                              {isError ? <AlertCircle size={16} /> : isWarning ? <AlertTriangle size={16} /> : isSuccess ? <CheckCircle size={16} /> : <Info size={16} />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-2 mb-1">
-                                <span className="text-xs font-semibold text-slate-700 truncate">{log.action || "System Action"}</span>
-                                <span className="text-[10px] text-slate-400 whitespace-nowrap">
-                                  {log.createdAt || log.created_at ? new Date(log.createdAt || log.created_at || "").toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : ""}
-                                </span>
-                              </div>
-                              <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed" title={message || ""}>
-                                {message || "Hệ thống đã xử lý."}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-                
-                <div className="p-2 border-t border-slate-100 bg-slate-50">
-                  <Link 
-                    to="/admin/agent-logs" 
-                    onClick={() => setShowNotifications(false)}
-                    className="block w-full text-center px-4 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100/50 rounded-lg transition-colors"
-                  >
-                    Xem tất cả nhật ký Agent
-                  </Link>
-                </div>
-              </div>
-            )}
-          </div>
+          <NotificationPanel />
 
           <div className="h-7 w-px bg-slate-200 mx-0.5 hidden sm:block" />
 

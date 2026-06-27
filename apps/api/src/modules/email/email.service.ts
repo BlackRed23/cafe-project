@@ -4,16 +4,18 @@ import { prisma } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
 import { createAgentLogViaAgentService } from '../agent/agent.client';
 import { buildPurchaseRequestEmailDraft } from '../purchase/purchase.service';
+import { getOptionalSettingValue } from '../system-setting/system-setting.service';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const emailService = {
-    getSmtpConfig() {
+    async getSmtpConfig() {
         const host = process.env.SMTP_HOST;
         const port = Number(process.env.SMTP_PORT) || 587;
         const user = process.env.SMTP_USER;
         const pass = process.env.SMTP_PASS;
-        const from = process.env.SMTP_FROM || `"Cafe AI System" <${user}>`;
+        const storeName = await getOptionalSettingValue('store.name') || 'Cafe Admin';
+        const from = process.env.SMTP_FROM || `"${storeName}" <${user}>`;
 
         if (!host || !user || !pass) {
             throw new HttpError(
@@ -55,11 +57,11 @@ export const emailService = {
 
         const supplierEmail = request.supplier.email || '';
         const isValidEmail = EMAIL_REGEX.test(supplierEmail);
-        const emailDraft = buildPurchaseRequestEmailDraft(request as any);
+        const emailDraft = await buildPurchaseRequestEmailDraft(request as any);
 
         let smtpConfigured = true;
         try {
-            this.getSmtpConfig();
+            await this.getSmtpConfig();
         } catch {
             smtpConfigured = false;
         }
@@ -98,7 +100,7 @@ export const emailService = {
             throw new HttpError(400, 'Only approved purchase requests can be emailed.');
         }
 
-        const isPendingDelete = request.items.some(item => item.product.pendingDeleteUntil);
+        const isPendingDelete = request.items.some((item: any) => item.product.pendingDeleteUntil);
         if (isPendingDelete) {
             await createAgentLogViaAgentService({
                 action: 'SEND_SUPPLIER_EMAIL_BLOCKED',
@@ -156,7 +158,7 @@ export const emailService = {
                         { price: 'asc' }
                     ]
                 });
-                suggestedSuppliers = altSupplierProducts.map(sp => ({
+                suggestedSuppliers = altSupplierProducts.map((sp: any) => ({
                     supplierId: sp.supplierId,
                     supplierName: sp.supplier.name,
                     isPreferred: sp.isPreferred,
@@ -201,7 +203,7 @@ export const emailService = {
         }
 
         try {
-            const smtp = this.getSmtpConfig();
+            const smtp = await this.getSmtpConfig();
 
             const transporter = nodemailer.createTransport({
                 host: smtp.host,

@@ -10,7 +10,12 @@ const statusMap: Record<string, string> = {
   SENT: "Đã gửi mail",
   RECEIVED: "Đã nhận",
   REJECTED: "Đã từ chối",
-  WARNING: "Cảnh báo",
+  WARNING: "Cảnh báo ngưỡng",
+  WARNING_STOCK: "Cảnh báo ngưỡng",
+  AT_THRESHOLD: "Chạm ngưỡng",
+  LOW_STOCK: "Cần nhập hàng",
+  OUT_OF_STOCK: "Hết hàng",
+  IN_STOCK: "Bình thường",
   NEED_RESTOCK: "Cần nhập hàng",
   OK: "Bình thường",
 };

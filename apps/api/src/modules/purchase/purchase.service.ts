@@ -1,8 +1,22 @@
 import { PurchaseRequestStatus } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
+import { inventoryRepository } from '../inventory/inventory.repository';
+
+const serializeAgentLogField = (value: unknown): string | null => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "string") return value;
+
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
+};
+
 import { ACTIVE_PURCHASE_REQUEST_MESSAGE, purchaseRepository, type PurchaseRequestRecord } from './purchase.repository';
 import type { CreatePurchaseRequestInput, PurchaseRequestFiltersInput, ReceivePurchaseRequestInput, RejectPurchaseRequestInput } from './purchase.validator';
 import { scanInventoryViaAgentService } from '../agent/agent.client';
+import { getOptionalSettingValue } from '../system-setting/system-setting.service';
 import { prisma } from '@cafe-project/database';
 const totalForItem = (quantity: number, unitPrice: number | null): number => quantity * (unitPrice ?? 0);
 
@@ -44,7 +58,6 @@ const emailStatusForRequest = (request: PurchaseRequestRecord): string => {
 };
 
 const formatQuantity = (quantity: number, unit?: string | null): string => `${quantity}${unit ? ` ${unit}` : ''}`;
-
 const unsafeSupplierEmailTextPatterns = [
     'ndfs',
     'San pham',
@@ -55,11 +68,6 @@ const unsafeSupplierEmailTextPatterns = [
     'khong',
     'chu ky nhap hang',
     'reorderPlanningPeriod',
-    'Ã',
-    'Ä',
-    'áº',
-    'á»',
-    'Æ',
     'Tồn kho hiện tại',
     'Ngưỡng tối thiểu',
     'Dưới ngưỡng',
@@ -93,7 +101,7 @@ const buildSupplierEmailItemLine = (request: PurchaseRequestRecord, item: Purcha
     return `- ${productName}: ${formatQuantity(item.quantity, inventoryUnit)}`;
 };
 
-const buildSupplierEmailSubject = (request: PurchaseRequestRecord): string => {
+const buildSupplierEmailSubject = async (request: PurchaseRequestRecord): Promise<string> => {
     if (request.items.length === 1) {
         const item = request.items[0];
         const conversion = purchaseConversionForItem(request, item);
@@ -106,7 +114,8 @@ const buildSupplierEmailSubject = (request: PurchaseRequestRecord): string => {
         return `Yêu cầu báo giá/đặt hàng ${item.product.name} - ${quantityDisplay}`;
     }
 
-    return 'Yêu cầu báo giá/đặt hàng sản phẩm cho Cafe Admin';
+    const storeName = await getOptionalSettingValue('store.name') || 'Cafe Admin';
+    return `Yêu cầu báo giá/đặt hàng sản phẩm cho ${storeName}`;
 };
 
 export const buildPurchaseRequestAgentExplanation = (request: PurchaseRequestRecord): string => {
@@ -144,14 +153,25 @@ Sản phẩm này chưa có quy cách nhập hàng theo nhà cung cấp, nên s�
     return explanations.join('\n\n');
 };
 
-export const buildPurchaseRequestEmailDraft = (request: PurchaseRequestRecord) => {
+export const buildPurchaseRequestEmailDraft = async (request: PurchaseRequestRecord) => {
     const supplierName = request.supplier.name || 'nhà cung cấp';
-    const subject = buildSupplierEmailSubject(request);
+    const subject = await buildSupplierEmailSubject(request);
     const itemsList = request.items.map((item) => buildSupplierEmailItemLine(request, item)).join('\n');
+
+    const storeName = await getOptionalSettingValue('store.name') || 'Cafe Admin';
+    const storeEmail = await getOptionalSettingValue('store.email');
+    const storePhone = await getOptionalSettingValue('store.phone');
+    
+    let contactInfo = '';
+    if (storeEmail || storePhone) {
+        contactInfo = `\n\nThông tin liên hệ:\n`;
+        if (storeEmail) contactInfo += `- Email: ${storeEmail}\n`;
+        if (storePhone) contactInfo += `- SĐT: ${storePhone}`;
+    }
 
     const generatedBody = `Kính gửi ${supplierName},
 
-Cafe Admin đang có nhu cầu đặt hàng/báo giá cho các sản phẩm sau:
+${storeName} đang có nhu cầu đặt hàng/báo giá cho các sản phẩm sau:
 
 ${itemsList}
 
@@ -164,17 +184,17 @@ Vui lòng hỗ trợ xác nhận:
 Nếu có thay đổi về quy cách đóng gói, số lượng tối thiểu hoặc thời gian giao hàng, vui lòng phản hồi lại để chúng tôi xác nhận trước khi đặt hàng chính thức.
 
 Trân trọng,
-Cafe Admin`;
+${storeName}${contactInfo}`;
 
     return {
         to: request.supplier.email || '',
         subject,
-        body: isSupplierEmailContentUsable(request.emailContent) ? request.emailContent.trim() : generatedBody,
+        body: isSupplierEmailContentUsable(request.emailContent) ? request.emailContent.trim() : generatedBody.trim(),
         status: emailStatusForRequest(request)
     };
 };
 
-const toDto = (request: PurchaseRequestRecord) => ({
+const toDto = async (request: PurchaseRequestRecord) => ({
     id: request.id,
     requestNumber: request.requestNumber,
     status: request.status,
@@ -193,7 +213,7 @@ const toDto = (request: PurchaseRequestRecord) => ({
     retryCount: request.retryCount,
     lastEmailError: request.lastEmailError,
     receivedAt: request.receivedAt,
-    emailDraft: buildPurchaseRequestEmailDraft(request),
+    emailDraft: await buildPurchaseRequestEmailDraft(request),
     items: request.items.map((item) => {
         const conversion = purchaseConversionForItem(request, item);
 
@@ -236,11 +256,12 @@ const requestNumber = (): string => `PR-${Date.now()}`;
 
 export const purchaseService = {
     async list(filters: PurchaseRequestFiltersInput) {
-        return (await purchaseRepository.findMany(filters)).map(toDto);
+        const requests = await purchaseRepository.findMany(filters);
+        return Promise.all(requests.map(toDto));
     },
 
     async get(id: string) {
-        return toDto(await ensureRequest(id));
+        return await toDto(await ensureRequest(id));
     },
 
     async create(input: CreatePurchaseRequestInput, userId: string) {
@@ -251,7 +272,7 @@ export const purchaseService = {
             }
         }
         try {
-            return toDto(await purchaseRepository.create(input, userId, requestNumber()));
+            return await toDto(await purchaseRepository.create(input, userId, requestNumber()));
         } catch (error) {
             throw new HttpError(400, error instanceof Error ? error.message : 'Unable to create purchase request.');
         }
@@ -270,8 +291,8 @@ export const purchaseService = {
                     reasoning: 'Không thể duyệt yêu cầu vì sản phẩm đang chờ xoá.',
                     reference_type: 'PurchaseRequest',
                     reference_id: id,
-                    input: JSON.stringify({ purchaseRequestId: id }),
-                    output: JSON.stringify({ 
+                    input: serializeAgentLogField({ purchaseRequestId: id }),
+                    output: serializeAgentLogField({ 
                         reason: 'PRODUCT_PENDING_DELETE', 
                         message: 'Không thể duyệt yêu cầu vì sản phẩm đang chờ xoá.' 
                     }),
@@ -289,8 +310,8 @@ export const purchaseService = {
                     reasoning: 'Không thể duyệt yêu cầu vì nhà cung cấp đang bị tắt.',
                     reference_type: 'PurchaseRequest',
                     reference_id: id,
-                    input: JSON.stringify({ purchaseRequestId: id }),
-                    output: JSON.stringify({ 
+                    input: serializeAgentLogField({ purchaseRequestId: id }),
+                    output: serializeAgentLogField({ 
                         reason: 'PURCHASE_REQUEST_SUPPLIER_INACTIVE', 
                         message: 'Không thể duyệt yêu cầu vì nhà cung cấp đang bị tắt.' 
                     }),
@@ -300,7 +321,7 @@ export const purchaseService = {
             throw new HttpError(400, 'Không thể duyệt yêu cầu vì nhà cung cấp đang bị tắt.');
         }
 
-        return toDto(await purchaseRepository.updateStatus(id, {
+        return await toDto(await purchaseRepository.updateStatus(id, {
             status: PurchaseRequestStatus.APPROVED,
             approver: { connect: { id: userId } },
             approvedAt: new Date()
@@ -322,8 +343,8 @@ export const purchaseService = {
                     reasoning: 'Huỷ yêu cầu do sản phẩm đang chờ xoá.',
                     reference_type: 'PurchaseRequest',
                     reference_id: id,
-                    input: JSON.stringify({ purchaseRequestId: id }),
-                    output: JSON.stringify({ 
+                    input: serializeAgentLogField({ purchaseRequestId: id }),
+                    output: serializeAgentLogField({ 
                         reason: 'PRODUCT_PENDING_DELETE', 
                         message: 'Huỷ/Từ chối yêu cầu thành công.' 
                     }),
@@ -332,13 +353,13 @@ export const purchaseService = {
             });
         }
 
-        return toDto(await purchaseRepository.updateStatus(id, { status: PurchaseRequestStatus.REJECTED, notes: input.reason }));
+        return await toDto(await purchaseRepository.updateStatus(id, { status: PurchaseRequestStatus.REJECTED, notes: input.reason }));
     },
 
     async markSent(id: string) {
         const request = await ensureRequest(id);
         ensureStatus(request, PurchaseRequestStatus.APPROVED, 'Only approved requests can be marked sent.');
-        return toDto(await purchaseRepository.updateStatus(id, { status: PurchaseRequestStatus.SENT, emailSentAt: new Date() }));
+        return await toDto(await purchaseRepository.updateStatus(id, { status: PurchaseRequestStatus.SENT, emailSentAt: new Date() }));
     },
 
     async receive(id: string, input: ReceivePurchaseRequestInput, userId: string) {
@@ -353,8 +374,8 @@ export const purchaseService = {
                     reasoning: 'Không thể nhận hàng vì sản phẩm đang chờ xoá.',
                     reference_type: 'PurchaseRequest',
                     reference_id: id,
-                    input: JSON.stringify({ purchaseRequestId: id }),
-                    output: JSON.stringify({ 
+                    input: serializeAgentLogField({ purchaseRequestId: id }),
+                    output: serializeAgentLogField({ 
                         reason: 'PRODUCT_PENDING_DELETE', 
                         message: 'Không thể nhận hàng vì sản phẩm đang chờ xoá. Vui lòng khôi phục sản phẩm trước khi nhận hàng.' 
                     }),
@@ -388,16 +409,17 @@ export const purchaseService = {
 
             const isPartial = received.status !== PurchaseRequestStatus.RECEIVED && received.status !== PurchaseRequestStatus.COMPLETED;
             
+            const productNames = received.items.map(item => item.product.name).join(', ');
             await prisma.agentLog.create({
                 data: {
                     action: 'RECEIVE_PURCHASE_REQUEST',
                     result: 'SUCCESS',
-                    reasoning: 'Admin đã nhận hàng từ hệ thống.',
+                    reasoning: `Đã nhận hàng. Tồn kho sản phẩm ${productNames} đã được cộng.`,
                     reference_type: 'PurchaseRequest',
                     reference_id: id,
                     creator: userId ? { connect: { id: userId } } : undefined,
-                    input: JSON.stringify({ items: input.items, note: input.note }),
-                    output: JSON.stringify({
+                    input: serializeAgentLogField({ items: input.items, note: input.note }),
+                    output: serializeAgentLogField({
                         isPartial,
                         notification: {
                             title: isPartial ? "Đã nhận một phần" : "Đã nhận hàng",
@@ -420,7 +442,7 @@ export const purchaseService = {
             }, userId).catch((error) => {
                 console.error('[AI_AGENT] Failed to scan inventory after purchase receive', error);
             });
-            return { purchaseRequest: toDto(received), isStockSafe };
+            return { purchaseRequest: await toDto(received), isStockSafe };
         } catch (error) {
             throw new HttpError(400, error instanceof Error ? error.message : 'Unable to receive purchase request.');
         }
@@ -429,12 +451,12 @@ export const purchaseService = {
     async complete(id: string) {
         const request = await ensureRequest(id);
         ensureStatus(request, PurchaseRequestStatus.RECEIVED, 'Cannot complete before request is received.');
-        return toDto(await purchaseRepository.updateStatus(id, { status: PurchaseRequestStatus.COMPLETED }));
+        return await toDto(await purchaseRepository.updateStatus(id, { status: PurchaseRequestStatus.COMPLETED }));
     },
 
     async delete(id: string) {
         const request = await ensureRequest(id);
         ensureNotCompleted(request);
-        return toDto(await purchaseRepository.delete(id));
+        return await toDto(await purchaseRepository.delete(id));
     }
 };

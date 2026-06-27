@@ -1,5 +1,6 @@
 import { InventoryTransactionType, type Category, type Inventory, type InventoryTransaction, type Prisma, type Product, type User } from '@cafe-project/database';
 import { prisma } from '@cafe-project/database';
+import { getOptionalSettingValue } from '../system-setting/system-setting.service';
 
 type ProductWithCategory = Product & {
     category: Category;
@@ -18,6 +19,11 @@ const inventoryInclude = {
     product: {
         include: {
             category: true
+        }
+    },
+    batches: {
+        orderBy: {
+            expirationDate: 'asc'
         }
     }
 } satisfies Prisma.InventoryInclude;
@@ -52,11 +58,15 @@ export const inventoryRepository = {
             return;
         }
 
+        const defaultMinThresholdSetting = await getOptionalSettingValue('inventory.defaultMinThreshold');
+        const defaultMinThreshold = parseInt(defaultMinThresholdSetting || '10', 10);
+        const minThreshold = isNaN(defaultMinThreshold) ? 10 : defaultMinThreshold;
+
         await prisma.inventory.createMany({
-            data: productsWithoutInventory.map((product) => ({
+            data: productsWithoutInventory.map((product: any) => ({
                 productId: product.id,
                 quantity: 0,
-                minThreshold: 10,
+                minThreshold,
                 unit: product.unit || 'hộp'
             })),
             skipDuplicates: true
@@ -98,8 +108,8 @@ export const inventoryRepository = {
         });
     },
 
-    async importStock(inventory: InventoryRecord, quantity: number, note: string | null, userId: string): Promise<InventoryRecord> {
-        return prisma.$transaction(async (tx) => {
+    async importStock(inventory: InventoryRecord, quantity: number, note: string | null, userId: string, batchCode?: string, expirationDate?: string): Promise<InventoryRecord> {
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.inventory.update({
                 where: { id: inventory.id },
                 data: {
@@ -107,13 +117,28 @@ export const inventoryRepository = {
                 }
             });
 
+            let batchId = null;
+            if (expirationDate) {
+                const finalBatchCode = batchCode?.trim() || `${inventory.productId.slice(0, 8)}-${Date.now()}`;
+                const batch = await tx.inventoryBatch.create({
+                    data: {
+                        inventoryId: inventory.id,
+                        batchCode: finalBatchCode,
+                        quantity,
+                        expirationDate: new Date(expirationDate)
+                    }
+                });
+                batchId = batch.id;
+            }
+
             await tx.inventoryTransaction.create({
                 data: {
                     productId: inventory.productId,
                     userId,
                     type: InventoryTransactionType.IMPORT,
                     quantity,
-                    reason: note
+                    reason: note,
+                    batchId
                 }
             });
 
@@ -133,7 +158,7 @@ export const inventoryRepository = {
     async adjustStock(inventory: InventoryRecord, quantity: number, note: string | null, userId: string): Promise<InventoryRecord> {
         const newQuantity = inventory.quantity + quantity;
 
-        return prisma.$transaction(async (tx) => {
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.inventory.update({
                 where: { id: inventory.id },
                 data: {

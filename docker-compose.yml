@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cafe_postgres
+    environment:
+      POSTGRES_USER: cafedb
+      POSTGRES_PASSWORD: cafedb_password
+      POSTGRES_DB: cafedb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  agent:
+    image: cafe-agent:local
+    build:
+      context: .
+      dockerfile: apps/agent/Dockerfile
+    container_name: cafe_agent
+    environment:
+      - DATABASE_URL=postgresql://cafedb:cafedb_password@postgres:5432/cafedb
+      - PORT=5055
+      - AGENT_INTERNAL_TOKEN=dev-agent-secret
+      - GEMINI_API_KEY=dummy_key_for_local_demo
+      - NODE_ENV=development
+    ports:
+      - "5055:5055"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  api:
+    image: cafe-api:local
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: cafe_api
+    environment:
+      - DATABASE_URL=postgresql://cafedb:cafedb_password@postgres:5432/cafedb
+      - PORT=5000
+      - AGENT_BASE_URL=http://agent:5055
+      - FRONTEND_URL=http://localhost:8080
+      - CORS_ORIGIN=http://localhost:8080,http://localhost:5173
+      - JWT_SECRET=local_demo_jwt_secret
+      - NODE_ENV=development
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+      - agent
+    restart: unless-stopped
+
+  web:
+    image: cafe-web:local
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:5000/api
+    container_name: cafe_web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:

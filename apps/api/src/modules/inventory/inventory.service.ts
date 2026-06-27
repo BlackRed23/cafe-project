@@ -3,7 +3,7 @@ import { prisma } from '@cafe-project/database';
 import { inventoryRepository, type InventoryRecord, type InventoryTransactionRecord } from './inventory.repository';
 import type { AdjustInventoryInput, ImportInventoryInput, UpdateThresholdInput } from './inventory.validator';
 import { InventoryTransactionType } from '@cafe-project/database';
-import { scanInventoryViaAgentService } from '../agent/agent.client';
+import { scanInventoryViaAgentService, createAgentLogViaAgentService } from '../agent/agent.client';
 export type InventoryStatus = 'OUT_OF_STOCK' | 'LOW_STOCK' | 'IN_STOCK';
 
 type ThresholdSuggestionOptions = {
@@ -37,6 +37,14 @@ export type InventoryDto = {
     status: InventoryStatus;
     createdAt: Date;
     updatedAt: Date;
+    safetyStock?: number;
+    leadTimeDemand?: number;
+    recommendedThreshold?: number;
+    hasOpenPurchaseRequest?: boolean;
+    openPurchaseRequestId?: string;
+    openPurchaseRequestCode?: string;
+    openPurchaseRequestStatus?: string;
+    batches?: any[];
 };
 
 export type InventoryTransactionDto = {
@@ -92,7 +100,8 @@ const toInventoryDto = (inventory: InventoryRecord): InventoryDto => ({
     unit: inventory.unit,
     status: getStatus(inventory.quantity - inventory.reservedStock, inventory.minThreshold),
     createdAt: inventory.createdAt,
-    updatedAt: inventory.updatedAt
+    updatedAt: inventory.updatedAt,
+    batches: (inventory as any).batches ?? []
 });
 
 const toTransactionDto = (transaction: InventoryTransactionRecord): InventoryTransactionDto => ({
@@ -192,7 +201,87 @@ export const getInventories = async (): Promise<InventoryDto[]> => {
     await inventoryRepository.createMissingForActiveProducts();
     const inventories = await inventoryRepository.findMany();
 
-    return inventories.map(toInventoryDto);
+    const openPRs = await prisma.purchaseRequestItem.findMany({
+        where: {
+            request: {
+                status: {
+                    in: ['PENDING', 'APPROVED', 'SENT']
+                }
+            }
+        },
+        include: {
+            request: true
+        }
+    });
+
+    const openPRMap = new Map();
+    for (const prItem of openPRs) {
+        if (!openPRMap.has(prItem.inventoryId)) {
+            openPRMap.set(prItem.inventoryId, prItem.request);
+        }
+    }
+
+    const productIds = inventories.map(inv => inv.productId);
+    const salesWindowDays = 30;
+    const bufferDays = 2;
+    const delayBufferDays = 2;
+    const salesWindowStart = new Date();
+    salesWindowStart.setDate(salesWindowStart.getDate() - salesWindowDays);
+
+    const salesGroups = await prisma.inventoryTransaction.groupBy({
+        by: ['productId'],
+        where: {
+            productId: { in: productIds },
+            type: { in: [InventoryTransactionType.ORDER, InventoryTransactionType.SIMULATE_SALE] },
+            createdAt: { gte: salesWindowStart }
+        },
+        _sum: { quantity: true }
+    });
+
+    const salesMap = new Map<string, number>(salesGroups.map((g: any) => [g.productId, Math.abs(g._sum.quantity ?? 0)]));
+
+    const supplierProducts = await prisma.supplierProduct.findMany({
+        where: {
+            productId: { in: productIds },
+            supplier: { status: 'ACTIVE', deletedAt: null }
+        },
+        orderBy: [{ isPreferred: 'desc' }, { leadTimeDays: 'asc' }, { price: 'asc' }]
+    });
+
+    const supplierMap = new Map<string, any>();
+    for (const sp of supplierProducts) {
+        if (!supplierMap.has(sp.productId)) {
+            supplierMap.set(sp.productId, sp);
+        }
+    }
+
+    return inventories.map(inv => {
+        const dto = toInventoryDto(inv);
+        const openPR = openPRMap.get(inv.id);
+        
+        const totalSalesInWindow = Number(salesMap.get(inv.productId) ?? 0);
+        const avgDailySales = totalSalesInWindow / salesWindowDays;
+        const baseDailySales = avgDailySales > 0 ? avgDailySales : 1;
+        
+        const primarySupplierProduct = supplierMap.get(inv.productId);
+        const leadTimeDays = primarySupplierProduct?.leadTimeDays || 3;
+        const effectiveLeadTimeDays = leadTimeDays + delayBufferDays;
+
+        const leadTimeDemand = Math.ceil(baseDailySales * effectiveLeadTimeDays);
+        const safetyStock = Math.max(1, Math.ceil(baseDailySales * bufferDays));
+        const recommendedThreshold = Math.ceil(leadTimeDemand + safetyStock);
+
+        return {
+            ...dto,
+            hasOpenPurchaseRequest: !!openPR,
+            openPurchaseRequestId: openPR?.id,
+            openPurchaseRequestCode: openPR?.requestNumber,
+            openPurchaseRequestStatus: openPR?.status,
+            safetyStock,
+            leadTimeDemand,
+            recommendedThreshold
+        };
+    });
 };
 
 export const getInventoryById = async (id: string): Promise<InventoryDto> => {
@@ -249,11 +338,30 @@ export const importInventory = async (input: ImportInventoryInput, userId: strin
         throw new HttpError(400, 'Số lượng phải lớn hơn 0.');
     }
 
-    const updatedInventory = await inventoryRepository.importStock(inventory, importQuantity, appendConversionNote(normalizeNote(input.note), conversionNote), userId);
+    const updatedInventory = await inventoryRepository.importStock(inventory, importQuantity, appendConversionNote(normalizeNote(input.note), conversionNote), userId, input.batchCode, input.expirationDate);
     const dto = toInventoryDto(updatedInventory);
     const availableStockAfter = dto.quantity - dto.reservedStock;
     const isLow = availableStockAfter < dto.minThreshold;
     const isWarning = availableStockAfter === dto.minThreshold;
+
+    createAgentLogViaAgentService({
+        action: 'INVENTORY_IMPORTED',
+        result: 'SUCCESS',
+        reasoning: `Đã nhập kho sản phẩm ${dto.productName}. Tồn kho đã được cập nhật.`,
+        input: {
+            productId: inventory.productId,
+            productName: dto.productName,
+            quantityBefore: stockBefore,
+            quantityAfter: dto.quantity,
+            availableStock: availableStockAfter,
+            minThreshold: dto.minThreshold,
+            triggerType: 'MANUAL_IMPORT'
+        },
+        output: {
+            description: `Đã nhập kho sản phẩm ${dto.productName}. Tồn kho đã được cập nhật.`
+        },
+        creator: userId ? { connect: { id: userId } } : undefined
+    }).catch(console.error);
 
     scanInventoryViaAgentService({
         productIds: [inventory.productId],
@@ -309,6 +417,25 @@ export const adjustInventory = async (input: AdjustInventoryInput, userId: strin
     const isLow = availableStockAfter < dto.minThreshold;
     const isWarning = availableStockAfter === dto.minThreshold;
 
+    createAgentLogViaAgentService({
+        action: 'INVENTORY_ADJUSTED',
+        result: 'SUCCESS',
+        reasoning: `Đã điều chỉnh tồn kho sản phẩm ${dto.productName}.`,
+        input: {
+            productId: inventory.productId,
+            productName: dto.productName,
+            quantityBefore: inventory.quantity,
+            quantityAfter: dto.quantity,
+            availableStock: availableStockAfter,
+            minThreshold: dto.minThreshold,
+            triggerType: 'MANUAL_ADJUSTMENT'
+        },
+        output: {
+            description: `Đã điều chỉnh tồn kho sản phẩm ${dto.productName}.`
+        },
+        creator: userId ? { connect: { id: userId } } : undefined
+    }).catch(console.error);
+
     if (availableStockAfter <= dto.minThreshold || input.quantity < 0) {
         scanInventoryViaAgentService({
             productIds: [inventory.productId],
@@ -359,20 +486,16 @@ export const updateInventoryThreshold = async (input: UpdateThresholdInput): Pro
     };
 };
 
-export const getInventoryThresholdSuggestion = async (inventoryId: string, options: ThresholdSuggestionOptions = {}) => {
+export const getInventoryThresholdSuggestion = async (inventoryId: string) => {
     const inventory = await ensureInventoryExists(inventoryId);
-    const salesWindowDays = normalizePositiveInteger(options.salesWindowDays, 30);
-    const bufferDays = normalizePositiveInteger(options.bufferDays, 2);
-    const planningPeriod = options.planningPeriod || 'WEEKLY';
-    let planningDays = 7;
-    if (planningPeriod === 'MONTHLY') planningDays = 30;
-    else if (planningPeriod === 'CUSTOM') planningDays = normalizePositiveInteger(options.planningDays, 14);
+    const salesWindowDays = 30;
+    const bufferDays = 2;
+    const delayBufferDays = 2;
 
     const supplierProducts = await getSupplierProductsForSuggestion(inventory.productId);
     const primarySupplierProduct = supplierProducts[0] ?? null;
 
     const leadTimeDays = primarySupplierProduct?.leadTimeDays || 3;
-    const delayBufferDays = normalizePositiveInteger(options.delayBufferDays, 2);
     const effectiveLeadTimeDays = leadTimeDays + delayBufferDays;
 
     const salesWindowStart = new Date();
@@ -391,11 +514,10 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string, optio
     const avgDailySales = totalSalesInWindow / salesWindowDays;
     const baseDailySales = avgDailySales > 0 ? avgDailySales : 1;
     
-    const defaultSafetyStock = 10;
     const leadTimeDemand = Math.ceil(baseDailySales * effectiveLeadTimeDays);
-    const safetyStock = Math.max(defaultSafetyStock, Math.ceil(baseDailySales * bufferDays));
+    const safetyStock = Math.max(1, Math.ceil(baseDailySales * bufferDays));
     
-    const recommendedThreshold = leadTimeDemand + safetyStock;
+    const recommendedThreshold = Math.ceil(leadTimeDemand + safetyStock);
 
     const warnings = getThresholdWarnings(inventory.minThreshold, leadTimeDemand, recommendedThreshold);
 
@@ -405,10 +527,6 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string, optio
             message: 'Sản phẩm chưa gắn nhà cung cấp, hệ thống đang dùng thời gian nhập hàng mặc định 3 ngày.'
         });
     }
-
-    let periodText = 'hằng tuần';
-    if (planningPeriod === 'MONTHLY') periodText = 'hằng tháng';
-    else if (planningPeriod === 'CUSTOM') periodText = `tùy chỉnh ${planningDays} ngày`;
 
     const unit = inventory.unit || 'đơn vị';
     const explanation = avgDailySales > 0
@@ -420,8 +538,6 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string, optio
         productId: inventory.productId,
         productName: inventory.product.name,
         inventoryUnit: unit,
-        planningPeriod,
-        planningDays,
         explanation,
         currentStock: inventory.quantity,
         stock: inventory.quantity,

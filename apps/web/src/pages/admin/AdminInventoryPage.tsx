@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { inventoryApi } from "../../api/inventory.api";
 import { suppliersApi } from "../../api/suppliers.api";
 import { agentLogsApi } from "../../api/agentLogs.api";
 import type { Inventory } from "../../types/inventory.types";
 import type { SupplierProduct } from "../../types/supplier.types";
 import type { AgentLog } from "../../types/agentLog.types";
-import { Badge } from "../../components/common/Badge";
+import { purchaseRequestsApi } from "../../api/purchaseRequests.api";
 import { Button } from "../../components/common/Button";
 import { Loading } from "../../components/common/Loading";
 import { EmptyState } from "../../components/common/EmptyState";
@@ -19,6 +19,7 @@ import { getErrorMessage } from "../../api/client";
 type InventoryTab = "ALL" | "LOW_STOCK" | "WARNING";
 
 export const AdminInventoryPage: React.FC = () => {
+  const navigate = useNavigate();
   const [inventories, setInventories] = useState<Inventory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,17 +28,20 @@ export const AdminInventoryPage: React.FC = () => {
   const [activeInventoryTab, setActiveInventoryTab] = useState<InventoryTab>("ALL");
 
   const [selectedInventory, setSelectedInventory] = useState<Inventory | null>(null);
-  const [modalType, setModalType] = useState<"import" | "adjust" | "threshold" | null>(null);
+  const [modalType, setModalType] = useState<"import" | "adjust" | "threshold" | "create_pr" | null>(null);
+  const [prQuantity, setPrQuantity] = useState<number>(0);
+  const [prSupplierId, setPrSupplierId] = useState<string>("");
   const [inputValue, setInputValue] = useState<number>(0);
   const [inputNote, setInputNote] = useState("");
+  const [batchCode, setBatchCode] = useState("");
+  const [expirationDate, setExpirationDate] = useState("");
   const [importMode, setImportMode] = useState<"internal" | "supplier">("internal");
   const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
   const [modalLoading, setModalLoading] = useState(false);
   const [thresholdSuggestion, setThresholdSuggestion] = useState<any>(null);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isScanningInventory, setIsScanningInventory] = useState(false);
-  const [planningPeriod, setPlanningPeriod] = useState<"WEEKLY" | "MONTHLY" | "CUSTOM">("WEEKLY");
-  const [planningDays, setPlanningDays] = useState<number>(14);
+
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" | "warning" } | null>(null);
 
   const [scanResultModalOpen, setScanResultModalOpen] = useState(false);
@@ -63,6 +67,7 @@ export const AdminInventoryPage: React.FC = () => {
   const handleScanInventory = async () => {
     setIsScanningInventory(true);
     setScanResultModalOpen(false);
+    showToast("AI Agent đang quét tồn kho...", "info");
     try {
       const res = await agentLogsApi.scanInventory({ triggerType: "MANUAL_ADMIN_SCAN" });
 
@@ -97,30 +102,32 @@ export const AdminInventoryPage: React.FC = () => {
       const shouldOpenModal = createdCount > 0 || duplicateCount > 0 || noSupplierCount > 0 || failedCount > 0 || (!!res.agentWarning && results.length > 0);
 
       if (res.agentWarning) {
-        showToast("Không kết nối được AI Agent service. Vui lòng kiểm tra Nhật ký Agent.", "warning");
+        showToast("Không kết nối được AI Agent service.", "warning");
         if (shouldOpenModal) setScanResultModalOpen(true);
       } else if (createdCount > 0) {
-        showToast(`AI Agent đã tạo ${createdCount} yêu cầu nhập hàng.`, "success");
+        showToast("AI Agent đã tạo yêu cầu nhập hàng.", "success");
         setScanResultModalOpen(true);
       } else if (noSupplierCount > 0) {
-        showToast("AI Agent đã quét xong. Có sản phẩm thiếu nhà cung cấp hợp lệ.", "warning");
+        showToast("AI Agent không thể tạo yêu cầu vì thiếu nhà cung cấp.", "warning");
         setScanResultModalOpen(true);
       } else if (duplicateCount > 0) {
-        showToast("AI Agent đã quét xong. Một số sản phẩm đã có yêu cầu nhập hàng đang xử lý.", "info");
+        showToast("Sản phẩm đã có yêu cầu nhập hàng đang xử lý.", "info");
         setScanResultModalOpen(true);
       } else if (stockOkCount > 0 && results.length > 0 && !shouldOpenModal) {
-        showToast("AI Agent đã quét xong, tồn kho đang ổn định.", "success");
+        showToast("AI Agent đã kiểm tra xong, tồn kho vẫn an toàn.", "success");
       } else if (!shouldOpenModal) {
-        showToast("AI Agent đã quét xong, chưa có yêu cầu nhập hàng mới.", "success");
+        showToast("AI Agent đã kiểm tra xong, tồn kho vẫn an toàn.", "success");
       } else {
         setScanResultModalOpen(true);
       }
 
       await fetchInventories();
     } catch (err: any) {
-      showToast("Không kết nối được AI Agent service. Vui lòng kiểm tra Nhật ký Agent.", "error");
+      showToast("AI Agent quét tồn kho thất bại. Vui lòng kiểm tra Nhật ký Agent.", "error");
     } finally {
       setIsScanningInventory(false);
+      window.dispatchEvent(new CustomEvent("refresh-notifications"));
+      window.dispatchEvent(new CustomEvent("agent-logs-updated"));
     }
   };
 
@@ -148,11 +155,48 @@ export const AdminInventoryPage: React.FC = () => {
     fetchSupplierProducts();
   }, []);
 
-  const getInventoryStatus = (availableStock: number, threshold?: number): "OK" | "WARNING" | "NEED_RESTOCK" => {
+  const getInventoryStatus = (availableStock: number, threshold?: number, recommendedThreshold?: number): "OUT_OF_STOCK" | "LOW_STOCK" | "AT_THRESHOLD" | "WARNING" | "IN_STOCK" | "OK" | "NEED_RESTOCK" => {
     const min = threshold || 0;
-    if (availableStock < min) return "NEED_RESTOCK";
-    if (availableStock === min) return "WARNING";
-    return "OK";
+
+    if (availableStock <= 0) return "OUT_OF_STOCK";
+    if (availableStock < min) return "LOW_STOCK";
+    if (availableStock === min) return "AT_THRESHOLD";
+    if (recommendedThreshold && availableStock <= recommendedThreshold) return "WARNING";
+    return "IN_STOCK";
+  };
+
+  const getInventoryStatusView = (inventory: Inventory) => {
+    const availableStock = Number(
+      inventory.availableStock ?? inventory.quantity ?? 0
+    );
+
+    const minThreshold = Number(inventory.minThreshold ?? inventory.min_threshold ?? 0);
+
+    if (availableStock <= 0) {
+      return {
+        label: "Hết hàng",
+        className: "border-red-200 bg-red-50 text-red-700",
+      };
+    }
+
+    if (availableStock < minThreshold) {
+      return {
+        label: "Cần nhập hàng",
+        className: "border-rose-200 bg-rose-50 text-rose-700",
+      };
+    }
+
+    if (availableStock === minThreshold) {
+      return {
+        label: "Chạm ngưỡng",
+        className: "border-amber-200 bg-amber-50 text-amber-700",
+      };
+    }
+
+    return {
+      label: "Bình thường",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    };
   };
 
   const getThresholdWarning = () => {
@@ -182,18 +226,31 @@ export const AdminInventoryPage: React.FC = () => {
     return null;
   };
 
-  const handleOpenModal = async (inv: Inventory, type: "import" | "adjust" | "threshold") => {
+  const handleOpenModal = async (inv: Inventory, type: "import" | "adjust" | "threshold" | "create_pr") => {
     setSelectedInventory(inv);
     setModalType(type);
     setInputValue(type === "threshold" ? (inv.minThreshold ?? inv.min_threshold ?? 0) : type === "adjust" ? inv.quantity : 0);
     setInputNote("");
+    
+    if (type === "create_pr") {
+      const sps = supplierProducts.filter(sp => sp.productId === inv.productId);
+      if (sps.length > 0) {
+        setPrSupplierId(sps[0].supplierId);
+      } else {
+        setPrSupplierId("");
+      }
+      
+      const available = inv.availableStock ?? inv.quantity;
+      const minThreshold = inv.minThreshold ?? inv.min_threshold ?? 0;
+      const moq = sps[0]?.minOrderQuantity ?? 1;
+      const suggestedQuantity = Math.max(minThreshold - available, moq);
+      setPrQuantity(suggestedQuantity);
+    }
     if (type === "threshold") {
       setIsSuggesting(true);
       setThresholdSuggestion(null);
-      setPlanningPeriod("WEEKLY");
-      setPlanningDays(14);
       try {
-        const suggestion = await inventoryApi.getThresholdSuggestion((inv as any).inventoryId ?? inv.id, { planningPeriod: "WEEKLY", planningDays: 14 });
+        const suggestion = await inventoryApi.getThresholdSuggestion((inv as any).inventoryId ?? inv.id);
         setThresholdSuggestion(suggestion);
       } catch (err) {
         console.error("Failed to load suggestion");
@@ -203,27 +260,17 @@ export const AdminInventoryPage: React.FC = () => {
     }
   };
 
-  const fetchSuggestion = async (period: "WEEKLY" | "MONTHLY" | "CUSTOM", days: number) => {
-    if (!selectedInventory) return;
-    setIsSuggesting(true);
-    try {
-      const suggestion = await inventoryApi.getThresholdSuggestion((selectedInventory as any).inventoryId ?? selectedInventory.id, {
-        planningPeriod: period,
-        planningDays: days,
-      });
-      setThresholdSuggestion(suggestion);
-    } catch (err) {
-      console.error("Failed to load suggestion");
-    } finally {
-      setIsSuggesting(false);
-    }
-  };
+
 
   const handleCloseModal = () => {
     setSelectedInventory(null);
     setModalType(null);
     setInputValue(0);
     setInputNote("");
+    setBatchCode("");
+    setExpirationDate("");
+    setPrQuantity(0);
+    setPrSupplierId("");
     setImportMode("internal");
     setThresholdSuggestion(null);
   };
@@ -263,6 +310,49 @@ export const AdminInventoryPage: React.FC = () => {
       return;
     }
 
+    if (modalType === "create_pr") {
+      if (!prSupplierId) {
+        showToast("Vui lòng chọn nhà cung cấp", "error");
+        return;
+      }
+      if (prQuantity <= 0) {
+        showToast("Số lượng đề xuất phải lớn hơn 0", "error");
+        return;
+      }
+      setModalLoading(true);
+      showToast("Đang tạo yêu cầu nhập hàng...", "info");
+      try {
+        const response = await purchaseRequestsApi.createPurchaseRequest({
+          supplierId: prSupplierId,
+          notes: inputNote.trim() || undefined,
+          items: [{
+            inventoryId: (selectedInventory as any).inventoryId ?? selectedInventory.id,
+            quantity: prQuantity
+          }]
+        });
+        
+        const createdRequest = (response as any)?.purchaseRequest || (response as any)?.data?.purchaseRequest || response;
+        const createdRequestId = createdRequest?.id;
+
+        if (createdRequestId) {
+          showToast("Tạo yêu cầu nhập hàng thành công. Đang chuyển đến chi tiết yêu cầu...", "success");
+          handleCloseModal();
+          navigate(`/admin/purchase-requests/${createdRequestId}`);
+        } else {
+          showToast("Tạo yêu cầu nhập hàng thành công.", "success");
+          handleCloseModal();
+          await fetchInventories();
+          navigate("/admin/purchase-requests");
+        }
+        window.dispatchEvent(new CustomEvent("refresh-notifications"));
+      } catch (err: any) {
+        showToast(getErrorMessage(err) || "Không thể tạo yêu cầu nhập hàng, vui lòng thử lại.", "error");
+      } finally {
+        setModalLoading(false);
+      }
+      return;
+    }
+
     setModalLoading(true);
 
     try {
@@ -283,10 +373,18 @@ export const AdminInventoryPage: React.FC = () => {
           return;
         }
 
+        if (!expirationDate) {
+          showToast("Vui lòng nhập ngày hết hạn", "error");
+          setModalLoading(false);
+          return;
+        }
+
         const res = await inventoryApi.importInventory({
           productId: selectedInventory.productId,
           quantity: finalQuantity,
           note: inputNote.trim() || undefined,
+          batchCode: batchCode.trim() || undefined,
+          expirationDate,
         });
         const minThreshold = res.minThreshold ?? res.min_threshold ?? 0;
         const warning = res.warnings?.[0]?.message;
@@ -335,6 +433,7 @@ export const AdminInventoryPage: React.FC = () => {
       }
       await fetchInventories();
       handleCloseModal();
+      window.dispatchEvent(new CustomEvent("refresh-notifications"));
     } catch (err: any) {
       const msg = getErrorMessage(err);
       if (modalType === "import") {
@@ -360,14 +459,14 @@ export const AdminInventoryPage: React.FC = () => {
   const filteredInventories = inventories.filter((inv) => {
     const matchesSearch = (inv.product?.name || "").toLowerCase().includes(search.toLowerCase());
     const threshold = inv.minThreshold ?? inv.min_threshold ?? 0;
-
     const available = inv.availableStock ?? inv.quantity;
+    const status = getInventoryStatus(available, threshold);
 
     if (activeInventoryTab === "LOW_STOCK") {
-      return matchesSearch && available < threshold;
+      return matchesSearch && (status === "OUT_OF_STOCK" || status === "LOW_STOCK");
     }
     if (activeInventoryTab === "WARNING") {
-      return matchesSearch && available === threshold;
+      return matchesSearch && (status === "AT_THRESHOLD" || status === "WARNING");
     }
     return matchesSearch;
   });
@@ -376,12 +475,15 @@ export const AdminInventoryPage: React.FC = () => {
   const lowCount = inventories.filter((inv) => {
     const threshold = inv.minThreshold ?? inv.min_threshold ?? 0;
     const available = inv.availableStock ?? inv.quantity;
-    return available < threshold;
+    const status = getInventoryStatus(available, threshold);
+    return status === "OUT_OF_STOCK" || status === "LOW_STOCK";
   }).length;
+  
   const warnCount = inventories.filter((inv) => {
     const threshold = inv.minThreshold ?? inv.min_threshold ?? 0;
     const available = inv.availableStock ?? inv.quantity;
-    return available === threshold;
+    const status = getInventoryStatus(available, threshold);
+    return status === "AT_THRESHOLD" || status === "WARNING";
   }).length;
 
   const columns = [
@@ -391,7 +493,7 @@ export const AdminInventoryPage: React.FC = () => {
         const threshold = inv.minThreshold ?? inv.min_threshold ?? 0;
         const available = inv.availableStock ?? inv.quantity;
         const status = getInventoryStatus(available, threshold);
-        const isLow = status === "NEED_RESTOCK";
+        const isLow = status === "OUT_OF_STOCK" || status === "LOW_STOCK";
         return (
           <div className="flex items-center gap-2.5">
             {isLow && <AlertCircle className="text-rose-500 flex-shrink-0 animate-pulse" size={15} />}
@@ -414,7 +516,7 @@ export const AdminInventoryPage: React.FC = () => {
             <span className={`font-bold ${isLow ? "text-rose-600" : "text-emerald-700"} text-[15px]`}>
               {available}{" "}
               <span className="text-xs text-slate-500 font-normal">
-                khả dụng ({inv.product?.unit || "đơn vị"})
+                khả dụng ({inv.product?.unit || inv.unit || "đơn vị"})
               </span>
             </span>
             <span className="text-xs text-slate-500 mt-1 font-medium bg-slate-100 px-1.5 py-0.5 rounded w-fit">
@@ -433,44 +535,97 @@ export const AdminInventoryPage: React.FC = () => {
       ),
     },
     {
+      header: "Hàng an toàn",
+      render: (inv: Inventory) => (
+        <span 
+          className="font-medium text-slate-500 text-sm cursor-help" 
+          title="Hàng an toàn = lượng dự phòng để tránh thiếu hàng trong thời gian chờ nhập."
+        >
+          {inv.safetyStock !== undefined && inv.safetyStock !== null ? inv.safetyStock : "—"}
+        </span>
+      ),
+    },
+    {
       header: "Trạng thái",
       render: (inv: Inventory) => {
-        const threshold = inv.minThreshold ?? inv.min_threshold ?? 0;
-        const available = inv.availableStock ?? inv.quantity;
-        return <Badge status={getInventoryStatus(available, threshold)} />;
+        const statusView = getInventoryStatusView(inv);
+        return (
+          <span
+            className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-semibold ${statusView.className}`}
+          >
+            {statusView.label}
+          </span>
+        );
       },
     },
     {
       header: "Thao tác",
       className: "text-right",
-      render: (inv: Inventory) => (
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            onClick={() => handleOpenModal(inv, "import")}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-1 text-xs hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50"
-          >
-            <PlusCircle size={13} /> Nhập kho
-          </Button>
-          <Button
-            onClick={() => handleOpenModal(inv, "adjust")}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-1 text-xs hover:border-amber-400 hover:text-amber-800 hover:bg-amber-50"
-          >
-            <Sliders size={13} /> Điều chỉnh
-          </Button>
-          <Button
-            onClick={() => handleOpenModal(inv, "threshold")}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-1 text-xs"
-          >
-            <Settings size={13} /> Ngưỡng
-          </Button>
-        </div>
-      ),
+      render: (inv: Inventory) => {
+        const threshold = inv.minThreshold ?? inv.min_threshold ?? 0;
+        const available = inv.availableStock ?? inv.quantity;
+        const safetyStock = inv.safetyStock ?? 0;
+        const warningThreshold = threshold + safetyStock;
+        
+        const shouldShowPRBtn = available <= warningThreshold;
+        const hasSupplier = supplierProducts.some(sp => sp.productId === inv.productId);
+
+        const actionBtnClass = "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors whitespace-nowrap";
+
+        return (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/admin/inventory/${inv.id}`);
+              }}
+              className={`${actionBtnClass} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
+            >
+              Chi tiết
+            </button>
+            {shouldShowPRBtn && !inv.hasOpenPurchaseRequest && (
+              hasSupplier ? (
+                <button
+                  onClick={() => handleOpenModal(inv, "create_pr")}
+                  className={`${actionBtnClass} border-amber-600 bg-amber-600 text-white hover:bg-amber-700`}
+                >
+                  <PlusCircle size={13} /> Tạo YC nhập
+                </button>
+              ) : (
+                <span className={`${actionBtnClass} bg-slate-100 text-slate-600 border-slate-200`}>
+                  Thiếu NCC
+                </span>
+              )
+            )}
+            {inv.hasOpenPurchaseRequest && (
+              <Link
+                to={`/admin/purchase-requests/${inv.openPurchaseRequestId}`}
+                className={`${actionBtnClass} border-amber-200 bg-amber-50 text-amber-700`}
+              >
+                Đã có yêu cầu
+              </Link>
+            )}
+            <button
+              onClick={() => handleOpenModal(inv, "import")}
+              className={`${actionBtnClass} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
+            >
+              <PlusCircle size={13} /> Nhập kho
+            </button>
+            <button
+              onClick={() => handleOpenModal(inv, "adjust")}
+              className={`${actionBtnClass} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
+            >
+              <Sliders size={13} /> Điều chỉnh
+            </button>
+            <button
+              onClick={() => handleOpenModal(inv, "threshold")}
+              className={`${actionBtnClass} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
+            >
+              <Settings size={13} /> Ngưỡng
+            </button>
+          </div>
+        );
+      },
     },
   ];
 
@@ -565,7 +720,9 @@ export const AdminInventoryPage: React.FC = () => {
                 ? `Nhập thêm kho: ${selectedInventory.product?.name}`
                 : modalType === "adjust"
                   ? `Điều chỉnh số lượng: ${selectedInventory.product?.name}`
-                  : `Cập nhật ngưỡng tối thiểu: ${selectedInventory.product?.name}`
+                  : modalType === "threshold"
+                    ? `Cập nhật ngưỡng tối thiểu: ${selectedInventory.product?.name}`
+                    : `Tạo yêu cầu nhập hàng: ${selectedInventory.product?.name}`
             }
             size={modalType === "threshold" ? "md" : "sm"}
           >
@@ -577,37 +734,10 @@ export const AdminInventoryPage: React.FC = () => {
                       <Loading message="Đang tính toán..." />
                     </div>
                   )}
-                  <div className="space-y-2 pb-3 border-b border-slate-200">
-                    <label className="block font-semibold text-slate-900">Chu kỳ tính ngưỡng đề xuất</label>
-                    <div className="flex gap-2">
-                      {(['WEEKLY', 'MONTHLY', 'CUSTOM'] as const).map(period => (
-                        <button
-                          key={period}
-                          type="button"
-                          onClick={() => {
-                            setPlanningPeriod(period);
-                            fetchSuggestion(period, planningDays);
-                          }}
-                          className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${planningPeriod === period ? 'bg-amber-100 border-amber-300 text-amber-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                        >
-                          {period === 'WEEKLY' ? 'Theo tuần' : period === 'MONTHLY' ? 'Theo tháng' : 'Tùy chỉnh'}
-                        </button>
-                      ))}
-                    </div>
-
-                    {planningPeriod === 'CUSTOM' && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="text-xs font-medium text-slate-600">Số ngày dự trữ:</span>
-                        <input
-                          type="number"
-                          min="1"
-                          value={planningDays}
-                          onChange={(e) => setPlanningDays(parseInt(e.target.value) || 1)}
-                          onBlur={() => fetchSuggestion('CUSTOM', planningDays)}
-                          className="w-20 px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:border-amber-500"
-                        />
-                      </div>
-                    )}
+                  <div className="pb-3 border-b border-slate-200">
+                    <p className="text-xs text-slate-500 italic">
+                      Hệ thống tự tính dựa trên lịch sử bán gần đây và thời gian chờ nhập hàng.
+                    </p>
                   </div>
                   <div className="flex justify-between items-center bg-white p-2 rounded border border-slate-100">
                     <span className="text-slate-500">Tồn kho thật:</span>
@@ -679,7 +809,52 @@ export const AdminInventoryPage: React.FC = () => {
                 </div>
               )}
 
+              {modalType === "create_pr" && (
+                <div className="space-y-4">
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-sm">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-slate-500">Tồn kho khả dụng:</span>
+                      <span className="font-semibold text-slate-800">{selectedInventory.availableStock ?? selectedInventory.quantity}</span>
+                    </div>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-slate-500">Ngưỡng tối thiểu:</span>
+                      <span className="font-semibold text-slate-800">{selectedInventory.minThreshold ?? selectedInventory.min_threshold ?? 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">Hàng an toàn:</span>
+                      <span className="font-semibold text-slate-800">{selectedInventory.safetyStock ?? "—"}</span>
+                    </div>
+                  </div>
 
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Nhà cung cấp</label>
+                    <select
+                      value={prSupplierId}
+                      onChange={(e) => setPrSupplierId(e.target.value)}
+                      className="block w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      required
+                    >
+                      <option value="">-- Chọn nhà cung cấp --</option>
+                      {supplierProducts.filter(sp => sp.productId === selectedInventory.productId).map(sp => (
+                        <option key={sp.supplierId} value={sp.supplierId}>
+                          {sp.supplier?.name || "Nhà cung cấp"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <Input
+                      label={`Số lượng đề xuất nhập hàng (${selectedInventory.unit || selectedInventory.product?.unit || "đơn vị"})`}
+                      type="number"
+                      value={prQuantity || ""}
+                      onChange={(e) => setPrQuantity(parseInt(e.target.value) || 0)}
+                      required
+                      min={1}
+                    />
+                  </div>
+                </div>
+              )}
 
               {modalType === "import" ? (() => {
                 const supplierProduct = supplierProducts.find(sp => sp.productId === selectedInventory.productId);
@@ -756,9 +931,26 @@ export const AdminInventoryPage: React.FC = () => {
                         </p>
                       )}
                     </div>
+
+                    <div>
+                      <Input
+                        label="Mã lô (Tùy chọn, để trống sẽ tự sinh)"
+                        value={batchCode}
+                        onChange={(e) => setBatchCode(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Input
+                        label="Ngày hết hạn"
+                        type="date"
+                        value={expirationDate}
+                        onChange={(e) => setExpirationDate(e.target.value)}
+                        required
+                      />
+                    </div>
                   </div>
                 );
-              })() : (
+              })() : modalType !== "create_pr" && (
                 <div>
                   <Input
                     label={
@@ -802,8 +994,8 @@ export const AdminInventoryPage: React.FC = () => {
                 <Button type="button" variant="outline" onClick={handleCloseModal}>
                   Hủy
                 </Button>
-                <Button type="submit" isLoading={modalLoading}>
-                  Xác nhận
+                <Button type="submit" isLoading={modalLoading} className={modalType === "create_pr" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}>
+                  {modalType === "create_pr" ? "Xác nhận tạo yêu cầu" : "Xác nhận"}
                 </Button>
               </div>
             </form>

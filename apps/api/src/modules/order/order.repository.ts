@@ -33,14 +33,14 @@ export const orderRepository = {
     },
 
     async create(userId: string, input: CreateOrderInput): Promise<OrderRecord> {
-        return prisma.$transaction(async (tx) => {
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const productIds = input.items.map((item) => item.productId);
             const products = await tx.product.findMany({
                 where: { id: { in: productIds }, isActive: true },
                 include: { inventory: true }
             });
 
-            const productById = new Map(products.map((product) => [product.id, product]));
+            const productById = new Map(products.map((product: any) => [product.id, product]));
             let totalAmount = 0;
 
             for (const item of input.items) {
@@ -122,7 +122,9 @@ export const orderRepository = {
     },
 
     async updateStatus(order: OrderRecord, nextStatus: OrderStatus, userId: string): Promise<OrderRecord> {
-        return prisma.$transaction(async (tx) => {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const shouldFinalizeStock = !order.stockDeductedAt && nextStatus === OrderStatus.COMPLETED;
             const shouldReleaseReserved =
                 !order.stockDeductedAt &&
@@ -150,15 +152,39 @@ export const orderRepository = {
                         throw new Error('Không đủ số lượng hàng đang giữ để cập nhật đơn hàng.');
                     }
 
-                    await tx.inventoryTransaction.create({
-                        data: {
-                            productId: item.productId,
-                            userId,
-                            type: InventoryTransactionType.ORDER,
-                            quantity: -item.quantity,
-                            reason: `Trừ kho thật cho đơn ${order.id}`
-                        }
+                    const batches = await tx.inventoryBatch.findMany({
+                        where: { inventoryId: inventory.id, quantity: { gt: 0 }, expirationDate: { gte: startOfToday } },
+                        orderBy: { expirationDate: 'asc' }
                     });
+
+                    const totalSellable = batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
+                    if (totalSellable < item.quantity) {
+                        throw new Error(`Không đủ lô hàng còn hạn để xuất. Yêu cầu: ${item.quantity}, Có thể xuất: ${totalSellable}.`);
+                    }
+
+                    let remainingToDeduct = item.quantity;
+
+                    for (const batch of batches) {
+                        if (remainingToDeduct <= 0) break;
+                        const deduction = Math.min(batch.quantity, remainingToDeduct);
+                        await tx.inventoryBatch.update({
+                            where: { id: batch.id },
+                            data: { quantity: { decrement: deduction } }
+                        });
+                        
+                        await tx.inventoryTransaction.create({
+                            data: {
+                                productId: item.productId,
+                                userId,
+                                type: InventoryTransactionType.ORDER,
+                                quantity: -deduction,
+                                reason: `Trừ kho thật cho đơn ${order.id}`,
+                                batchId: batch.id
+                            }
+                        });
+                        
+                        remainingToDeduct -= deduction;
+                    }
                 }
 
                 const productIds = order.items.map(item => item.productId);

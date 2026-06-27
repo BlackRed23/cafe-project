@@ -19,9 +19,9 @@ enum PaymentMethod {
 }
 
 model Order {
-  id          String      @id @default(cuid())
-  userId      String
-  user        User        @relation(fields: [userId], references: [id])
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
   status          OrderStatus @default(PENDING)
   totalAmount     Decimal     @default(0) @db.Decimal(12, 2)
   shippingFee     Decimal     @default(0) @db.Decimal(12, 2)

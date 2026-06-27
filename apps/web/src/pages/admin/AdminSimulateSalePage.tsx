@@ -20,6 +20,12 @@ export const AdminSimulateSalePage: React.FC = () => {
   const [selectedProductId, setSelectedProductId] = useState("");
   const [multiMode, setMultiMode] = useState(false);
   const [items, setItems] = useState<Array<{ productId: string; quantity: number }>>([]);
+  // inputMode: "MANUAL" = 1 sản phẩm thủ công, "MULTI" = nhiều sản phẩm thủ công, "RANDOM" = random preview
+  const [inputMode, setInputMode] = useState<'MANUAL' | 'MULTI' | 'RANDOM'>('MANUAL');
+  const [randomProductCount, setRandomProductCount] = useState(3);
+  const [randomMinQty, setRandomMinQty] = useState(1);
+  const [randomMaxQty, setRandomMaxQty] = useState(10);
+  const [randomPreviewReady, setRandomPreviewReady] = useState(false);
   const [simulationMode, setSimulationMode] = useState<"ONE_DAY" | "WEEK" | "MONTH" | "CUSTOM_RANGE">("ONE_DAY");
   const [dailySimulatedQuantity, setDailySimulatedQuantity] = useState(5);
   const [startDate, setStartDate] = useState("");
@@ -440,6 +446,72 @@ export const AdminSimulateSalePage: React.FC = () => {
     }
   };
 
+
+  // ---- Random Mode: generate preview items[] ----
+  const handleGenerateRandom = () => {
+    // Validate inputs
+    if (!randomProductCount || randomProductCount < 1) {
+      toast.error('Số sản phẩm không hợp lệ', 'Vui lòng nhập số sản phẩm cần random (tối thiểu 1).');
+      return;
+    }
+    if (!randomMinQty || randomMinQty < 1 || !randomMaxQty || randomMaxQty < 1) {
+      toast.error('Số lượng random không hợp lệ', 'Số lượng tối thiểu và tối đa phải lớn hơn 0.');
+      return;
+    }
+    if (randomMinQty > randomMaxQty) {
+      toast.error('Số lượng không hợp lệ', 'Số lượng tối thiểu không được lớn hơn số lượng tối đa.');
+      return;
+    }
+
+    // Build pool of valid products
+    const validPool = products
+      .filter((p) => p.isActive !== false)
+      .map((p) => {
+        const inv = inventories.find((i) => i.productId === p.id);
+        if (!inv) return null;
+        const available = inv.availableStock ?? ((inv.quantity ?? 0) - (inv.reservedStock ?? inv.reserved_stock ?? 0));
+        if (available <= 0) return null;
+        return { product: p, available };
+      })
+      .filter(Boolean) as { product: Product; available: number }[];
+
+    if (validPool.length === 0) {
+      toast.error('Không có sản phẩm khả dụng', 'Không có sản phẩm nào có tồn kho khả dụng để random.');
+      return;
+    }
+
+    // Shuffle
+    const shuffled = [...validPool].sort(() => Math.random() - 0.5);
+    const selected = shuffled.slice(0, Math.min(randomProductCount, shuffled.length));
+    const actualCount = selected.length;
+
+    // Generate random quantities
+    const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+    const randomItems = selected.map(({ product, available }) => {
+      const effectiveMax = Math.min(randomMaxQty, available);
+      const effectiveMin = Math.min(randomMinQty, effectiveMax);
+      const qty = randomInt(effectiveMin, effectiveMax);
+      return { productId: product.id, quantity: qty };
+    });
+
+    // Apply to items list and switch to MULTI mode so the table shows
+    setItems(randomItems);
+    setMultiMode(true);
+    setRandomPreviewReady(true);
+
+    if (actualCount < randomProductCount) {
+      toast.warning(
+        'Không đủ sản phẩm hợp lệ',
+        `Chỉ random được ${actualCount} sản phẩm do số lượng tồn khả dụng không đủ. Vui lòng kiểm tra preview trước khi Apply.`
+      );
+    } else {
+      toast.info(
+        'Đã tạo danh sách mô phỏng random',
+        `Đã tạo ${actualCount} sản phẩm ngẫu nhiên. Chưa trừ kho — vui lòng kiểm tra và chỉnh sửa trước khi Apply Simulation.`
+      );
+    }
+  };
+
   if (isLoading) {
     return <Loading message="Đang tải cấu hình bán giả lập..." />;
   }
@@ -459,70 +531,229 @@ export const AdminSimulateSalePage: React.FC = () => {
             <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
               <Play size={20} className="text-amber-800" /> Mô phỏng bán
             </h3>
-            {/* Mode Switch */}
-             <div className="flex items-center mb-4">
-               <label className="mr-2 font-medium text-sm">Chế độ đa sản phẩm</label>
-               <input type="checkbox" checked={multiMode} onChange={(e) => setMultiMode(e.target.checked)} />
-             </div>
-             {multiMode ? (
-               <div className="space-y-4">
-                 {items.map((item, idx) => (
-                   <div key={idx} className="grid grid-cols-3 gap-2 items-end">
-                     <select
-                       value={item.productId}
-                       onChange={(e) => {
-                         const newItems = [...items];
-                         newItems[idx].productId = e.target.value;
-                         setItems(newItems);
-                       }}
-                       className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm"
-                     >
-                       <option value="">-- Chọn sản phẩm --</option>
-                       {products.map((p) => (
-                         <option key={p.id} value={p.id}>
-                           {p.name}
-                         </option>
-                       ))}
-                     </select>
-                     <input
-                       type="number"
-                       min={1}
-                       value={item.quantity || ''}
-                       onChange={(e) => {
-                         const val = parseInt(e.target.value) || 0;
-                         const newItems = [...items];
-                         newItems[idx].quantity = val;
-                         setItems(newItems);
-                       }}
-                       placeholder="Số lượng"
-                       className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm"
-                     />
-                     <button type="button" onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-600">Xóa</button>
-                   </div>
-                 ))}
-                 <button type="button" onClick={() => setItems([...items, { productId: '', quantity: 0 }])} className="px-3 py-1 bg-amber-600 text-white rounded">
-                   Thêm sản phẩm
-                 </button>
-               </div>
-             ) : (
-               <div>
-                 <label className="block text-sm font-medium text-slate-750 mb-1.5 font-semibold">Chọn sản phẩm</label>
-                 <select
-                   value={selectedProductId}
-                   onChange={(e) => {
-                     setSelectedProductId(e.target.value);
-                   }}
-                   className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
-                 >
-                   <option value="">-- Chọn sản phẩm cần mô phỏng --</option>
-                   {products.map((p) => (
-                     <option key={p.id} value={p.id}>
-                       {p.name}
-                     </option>
-                   ))}
-                 </select>
-               </div>
-             )}
+            {/* ===== Mode Selector Tabs ===== */}
+            <div className="mt-4 mb-2">
+              <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">Chế độ mô phỏng</p>
+              <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInputMode('MANUAL');
+                    setMultiMode(false);
+                    setRandomPreviewReady(false);
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
+                    inputMode === 'MANUAL'
+                      ? 'bg-white text-slate-800 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Thủ công
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInputMode('MULTI');
+                    setMultiMode(true);
+                    setRandomPreviewReady(false);
+                    if (items.length === 0) setItems([{ productId: '', quantity: 0 }]);
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
+                    inputMode === 'MULTI'
+                      ? 'bg-white text-slate-800 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Đa sản phẩm
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInputMode('RANDOM');
+                    setMultiMode(true);
+                    setRandomPreviewReady(false);
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition-all ${
+                    inputMode === 'RANDOM'
+                      ? 'bg-white text-amber-800 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Random
+                </button>
+              </div>
+            </div>
+
+            {/* ===== MANUAL mode: single product select ===== */}
+            {inputMode === 'MANUAL' && (
+              <div>
+                <label className="block text-sm font-medium text-slate-750 mb-1.5 font-semibold">Chọn sản phẩm</label>
+                <select
+                  value={selectedProductId}
+                  onChange={(e) => { setSelectedProductId(e.target.value); }}
+                  className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
+                >
+                  <option value="">-- Chọn sản phẩm cần mô phỏng --</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* ===== RANDOM mode: config inputs + generate button ===== */}
+            {inputMode === 'RANDOM' && (
+              <div className="space-y-4">
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <p className="text-xs font-semibold text-amber-800 mb-3">
+                    Cấu hình Random
+                  </p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Số sản phẩm</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={products.length}
+                        value={randomProductCount}
+                        onChange={(e) => setRandomProductCount(parseInt(e.target.value) || 1)}
+                        className="block w-full px-3 py-2 rounded-lg border border-amber-200 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">SL tối thiểu</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={randomMinQty}
+                        onChange={(e) => setRandomMinQty(parseInt(e.target.value) || 1)}
+                        className="block w-full px-3 py-2 rounded-lg border border-amber-200 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">SL tối đa</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={randomMaxQty}
+                        onChange={(e) => setRandomMaxQty(parseInt(e.target.value) || 1)}
+                        className="block w-full px-3 py-2 rounded-lg border border-amber-200 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGenerateRandom}
+                    className="mt-3 w-full py-2.5 px-4 bg-amber-700 hover:bg-amber-800 active:bg-amber-900 text-white text-sm font-semibold rounded-lg transition-colors"
+                  >
+                    Tạo danh sách random
+                  </button>
+                </div>
+
+                {randomPreviewReady && items.length > 0 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium flex items-center gap-2">
+                    <Info size={14} className="shrink-0 text-amber-600" />
+                    Danh sách random chỉ là preview, chưa trừ kho. Bấm Apply Simulation để mô phỏng bán.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ===== MULTI / RANDOM: shared item list table ===== */}
+            {(inputMode === 'MULTI' || (inputMode === 'RANDOM' && randomPreviewReady)) && items.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs font-semibold text-slate-600">
+                    {inputMode === 'RANDOM' ? `Danh sách random (${items.length} sản phẩm)` : `Danh sách sản phẩm (${items.length})`}
+                  </p>
+                  {inputMode === 'MULTI' && (
+                    <button
+                      type="button"
+                      onClick={() => setItems([...items, { productId: '', quantity: 0 }])}
+                      className="text-xs px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors"
+                    >
+                      + Thêm dòng
+                    </button>
+                  )}
+                </div>
+                {/* Header row */}
+                <div className="grid grid-cols-[1fr_100px_44px] gap-2 px-1">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase">Sản phẩm</span>
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase text-center">Số lượng</span>
+                  <span />
+                </div>
+                {items.map((item, idx) => {
+                  const inv = inventories.find(i => i.productId === item.productId);
+                  const available = inv ? (inv.availableStock ?? ((inv.quantity ?? 0) - (inv.reservedStock ?? inv.reserved_stock ?? 0))) : 0;
+                  const isOverStock = item.quantity > available && available > 0;
+                  return (
+                    <div key={idx} className="grid grid-cols-[1fr_100px_44px] gap-2 items-center">
+                      <select
+                        value={item.productId}
+                        onChange={(e) => {
+                          const newItems = [...items];
+                          newItems[idx] = { ...newItems[idx], productId: e.target.value };
+                          setItems(newItems);
+                        }}
+                        className="block w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
+                      >
+                        <option value="">-- Chọn --</option>
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.quantity || ''}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            const newItems = [...items];
+                            newItems[idx] = { ...newItems[idx], quantity: val };
+                            setItems(newItems);
+                          }}
+                          placeholder="SL"
+                          className={`block w-full px-2 py-2 rounded-lg border text-sm text-center outline-none focus:ring-2 ${
+                            isOverStock
+                              ? 'border-rose-400 bg-rose-50 focus:ring-rose-200'
+                              : 'border-slate-300 focus:ring-amber-700/20 focus:border-amber-700'
+                          }`}
+                        />
+                        {item.productId && available > 0 && (
+                          <span className="absolute -bottom-4 left-0 text-[9px] text-slate-400">max {available}</span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setItems(items.filter((_, i) => i !== idx))}
+                        className="w-9 h-9 flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors text-sm font-bold"
+                        title="Xóa dòng"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+                {inputMode === 'MULTI' && (
+                  <button
+                    type="button"
+                    onClick={() => setItems([...items, { productId: '', quantity: 0 }])}
+                    className="mt-1 w-full py-2 border-2 border-dashed border-slate-300 text-slate-500 text-sm rounded-lg hover:border-amber-400 hover:text-amber-700 transition-colors"
+                  >
+                    + Thêm sản phẩm
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Placeholder when RANDOM but not generated yet */}
+            {inputMode === 'RANDOM' && !randomPreviewReady && (
+              <div className="flex flex-col items-center justify-center py-8 border-2 border-dashed border-amber-200 rounded-xl bg-amber-50">
+                <p className="text-sm text-amber-800 font-medium">Nhập cấu hình và bấm <strong>Tạo danh sách random</strong></p>
+                <p className="text-xs text-amber-600 mt-1">Danh sách sẽ hiển thị để kiểm tra trước khi Apply</p>
+              </div>
+            )}
             <p className="text-xs text-slate-500 mt-2 leading-relaxed">
               Chọn sản phẩm và nhập số lượng để mô phỏng bán hàng. Hệ thống sẽ dùng logic mô phỏng hiện có và kích hoạt AI Agent sau khi tồn kho thay đổi.
             </p>
@@ -660,9 +891,10 @@ export const AdminSimulateSalePage: React.FC = () => {
                     onClick={() => setShowConfirm(true)}
                     className="px-6 py-3"
                     disabled={
-                      (multiMode && items.some(i => !i.productId || i.quantity <= 0)) ||
-                      (!multiMode && (!selectedProductId || localSimulatedDemand <= 0 || localSimulatedDemand > availableStock))
-                      || isSimulating
+                      isSimulating ||
+                      (inputMode === 'MANUAL' && (!selectedProductId || localSimulatedDemand <= 0 || localSimulatedDemand > availableStock)) ||
+                      ((inputMode === 'MULTI' || inputMode === 'RANDOM') && (items.length === 0 || items.some(i => !i.productId || i.quantity <= 0))) ||
+                      (inputMode === 'RANDOM' && !randomPreviewReady)
                     }
                   >
                     Apply Simulation
@@ -986,9 +1218,10 @@ export const AdminSimulateSalePage: React.FC = () => {
         onClose={() => setShowConfirm(false)}
         onConfirm={handleSimulate}
         title="Xác nhận Apply Simulation"
-        message={multiMode
-          ? `Bạn muốn thực hiện Apply Simulation cho ${items.filter(i => i.productId?.trim() && i.quantity > 0).length} sản phẩm? Giao dịch này sẽ cập nhật kho thực tế và kích hoạt AI Agent kiểm định.`
-          : `Bạn muốn thực hiện Apply Simulation mô phỏng bán ${localSimulatedDemand} ${unit} cho sản phẩm ${selectedProduct?.name}? Giao dịch này sẽ cập nhật kho thực tế và kích hoạt AI Agent kiểm định.`
+        message={
+          (inputMode === 'MULTI' || inputMode === 'RANDOM')
+            ? `Bạn muốn thực hiện Apply Simulation cho ${items.filter(i => i.productId?.trim() && i.quantity > 0).length} sản phẩm${inputMode === 'RANDOM' ? ' (chế độ random)' : ''}? Giao dịch này sẽ cập nhật kho thực tế và kích hoạt AI Agent kiểm định.`
+            : `Bạn muốn thực hiện Apply Simulation mô phỏng bán ${localSimulatedDemand} ${unit} cho sản phẩm ${selectedProduct?.name}? Giao dịch này sẽ cập nhật kho thực tế và kích hoạt AI Agent kiểm định.`
         }
         confirmText="Apply Simulation"
         cancelText="Hủy"

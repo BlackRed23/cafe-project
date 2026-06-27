@@ -83,7 +83,7 @@ const requestJson = <T>(method: 'GET' | 'POST', path: string, body?: unknown, qu
         req.end();
     });
 
-export const scanInventoryViaAgentService = async (input: ScanInventoryInput, userId: string) => {
+export const scanInventoryViaAgentService = async (input: ScanInventoryInput, userId?: string) => {
     try {
         return await requestJson<any>('POST', '/internal/agent/scan-inventory', { input, userId });
     } catch (error) {

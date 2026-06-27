@@ -276,18 +276,16 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
           <button
             key={opt.value}
             onClick={() => setStatusFilter(opt.value)}
-            className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-all duration-200 ${
-              statusFilter === opt.value
+            className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-all duration-200 ${statusFilter === opt.value
                 ? "bg-amber-800 text-white shadow-sm"
                 : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-            }`}
+              }`}
           >
             {opt.label}
             {opt.value === "PENDING" && pendingCount > 0 && (
               <span
-                className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                  statusFilter === "PENDING" ? "bg-white/30 text-white" : "bg-amber-100 text-amber-800"
-                }`}
+                className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${statusFilter === "PENDING" ? "bg-white/30 text-white" : "bg-amber-100 text-amber-800"
+                  }`}
               >
                 {pendingCount}
               </span>
@@ -313,13 +311,12 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
 
       {toast && (
         <div
-          className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${
-            toast.type === "success"
+          className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${toast.type === "success"
               ? "border border-emerald-200 bg-emerald-100 text-emerald-800"
               : toast.type === "error"
-              ? "border border-rose-200 bg-rose-100 text-rose-800"
-              : "border border-blue-200 bg-blue-100 text-blue-800"
-          }`}
+                ? "border border-rose-200 bg-rose-100 text-rose-800"
+                : "border border-blue-200 bg-blue-100 text-blue-800"
+            }`}
         >
           {toast.message}
         </div>

@@ -23,6 +23,7 @@ export interface AgentLog {
   productName?: string;
   inventoryId?: string;
   purchaseRequestId?: string;
+  purchaseRequestCode?: string;
   referenceType?: string;
   referenceId?: string;
   referenceProductId?: string;

@@ -1,4 +1,4 @@
-﻿import type { Response } from 'express';
+import type { Response } from 'express';
 import { sendSuccess } from '../../common/response';
 import type { AuthenticatedRequest } from '../auth/auth.middleware';
 import { getAllSettings, getSettingByKey, upsertSetting } from './system-setting.service';
@@ -17,5 +17,7 @@ export const findSystemSetting = async (req: AuthenticatedRequest, res: Response
 export const patchSystemSetting = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const { value } = req.body as UpdateSystemSettingInput;
     const setting = await upsertSetting(req.params.key, value);
+    
     sendSuccess(res, 200, 'Cập nhật cấu hình hệ thống thành công.', { setting });
 };
+

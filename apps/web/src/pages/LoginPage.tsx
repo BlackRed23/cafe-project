@@ -113,24 +113,7 @@ export const LoginPage: React.FC = () => {
         </Link>
       </p>
 
-      {/* Demo credentials banner */}
-      <div className="mt-8 pt-6 border-t border-slate-100">
-        <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2.5">
-          Tài khoản dùng thử (Demo)
-        </h4>
-        <div className="grid grid-cols-2 gap-3 text-xs text-slate-500">
-          <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-            <span className="font-bold text-slate-700 block mb-0.5">Admin:</span>
-            <span>admin@cafe.com</span>
-            <span className="block text-[10px] text-slate-400 mt-0.5">Mật khẩu: 123456</span>
-          </div>
-          <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-            <span className="font-bold text-slate-700 block mb-0.5">Customer:</span>
-            <span>customer@cafe.com</span>
-            <span className="block text-[10px] text-slate-400 mt-0.5">Mật khẩu: 123456</span>
-          </div>
-        </div>
-      </div>
+
     </div>
   );
 };

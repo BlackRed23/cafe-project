@@ -49,7 +49,7 @@ const main = async () => {
     }
 
     // 4. Start scheduled cron jobs
-    initInventoryScanJob();
+    await initInventoryScanJob();
 };
 
 main().catch((err) => {

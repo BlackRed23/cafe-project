@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "../components/admin/Sidebar";
 import { Header } from "../components/admin/Header";
+import { systemSettingsApi } from "../api/systemSettings.api";
 
 const TITLE_MAP: Record<string, string> = {
   "/admin/dashboard": "Dashboard",
@@ -29,6 +30,32 @@ export const AdminLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const currentTitle = getTitle(location.pathname);
+  const [storeName, setStoreName] = useState("Cafe Admin");
+
+  useEffect(() => {
+    let mounted = true;
+    systemSettingsApi.getSetting('store.name').then(setting => {
+      if (mounted && setting && setting.value) {
+        setStoreName(setting.value);
+      }
+    }).catch(() => {
+      if (mounted) setStoreName("Cafe Admin");
+    });
+
+    const handleSettingsUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ key: string; value: string }>;
+      if (customEvent.detail?.key === "store.name") {
+        setStoreName(customEvent.detail.value || "Cafe Admin");
+      }
+    };
+
+    window.addEventListener("system-settings-updated", handleSettingsUpdated);
+
+    return () => {
+      mounted = false;
+      window.removeEventListener("system-settings-updated", handleSettingsUpdated);
+    };
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
@@ -62,7 +89,7 @@ export const AdminLayout: React.FC = () => {
         {/* Mini footer */}
         <footer className="px-8 py-3 border-t border-slate-200 bg-white">
           <p className="text-[11px] text-slate-400 text-center">
-            © {new Date().getFullYear()} Cafe AI System — Quản lý cửa hàng thông minh
+            © {new Date().getFullYear()} {storeName} — Quản lý cửa hàng thông minh
           </p>
         </footer>
       </div>

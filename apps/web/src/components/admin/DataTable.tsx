@@ -40,10 +40,34 @@ export function DataTable<T extends { id: string | number }>({
   const paginatedData = data.slice(startIndex, endIndex);
 
   const getPageNumbers = () => {
-    const pages = [];
-    for (let i = 1; i <= totalPages; i++) {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+      return pages;
+    }
+
+    pages.push(1);
+    if (currentPage > 3) pages.push("...");
+
+    let start = Math.max(2, currentPage - 1);
+    let end = Math.min(totalPages - 1, currentPage + 1);
+
+    if (currentPage <= 3) {
+      end = 4;
+    }
+    if (currentPage >= totalPages - 2) {
+      start = totalPages - 3;
+    }
+
+    for (let i = start; i <= end; i++) {
       pages.push(i);
     }
+
+    if (currentPage < totalPages - 2) pages.push("...");
+    pages.push(totalPages);
+
     return pages;
   };
 
@@ -122,8 +146,8 @@ export function DataTable<T extends { id: string | number }>({
 
       {/* Pagination Footer */}
       {!isLoading && totalItems > 0 && (
-        <div className="px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/30">
-          <div className="text-[14px] text-slate-500">
+        <div className="px-6 py-4 border-t border-slate-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-slate-50/30 overflow-hidden">
+          <div className="whitespace-nowrap text-sm text-slate-600">
             Hiển thị từ <span className="font-semibold text-slate-800">{totalItems === 0 ? 0 : startIndex + 1}</span> đến{" "}
             <span className="font-semibold text-slate-800">{endIndex}</span> trong tổng số{" "}
             <span className="font-semibold text-slate-800">{totalItems}</span> kết quả
@@ -142,13 +166,20 @@ export function DataTable<T extends { id: string | number }>({
               </button>
 
               {/* Page numbers */}
-              <div className="flex items-center gap-1">
-                {getPageNumbers().map((page) => {
+              <div className="flex items-center gap-1 flex-wrap justify-center">
+                {getPageNumbers().map((page, index) => {
                   const isCurrent = page === currentPage;
+                  if (page === "...") {
+                    return (
+                      <span key={`dots-${index}`} className="px-1 text-slate-400">
+                        ...
+                      </span>
+                    );
+                  }
                   return (
                     <button
                       key={page}
-                      onClick={() => setCurrentPage(page)}
+                      onClick={() => setCurrentPage(page as number)}
                       className={`min-w-8 h-8 px-2 rounded-lg text-[14px] font-semibold transition-all ${
                         isCurrent
                           ? "bg-amber-800 text-white shadow-sm"

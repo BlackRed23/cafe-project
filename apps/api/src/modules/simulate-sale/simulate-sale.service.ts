@@ -1,7 +1,7 @@
 import { HttpError } from '../../common/http-error';
 import { simulateSaleRepository } from './simulate-sale.repository';
 import type { SimulateSaleInput } from './simulate-sale.validator';
-import { scanInventoryViaAgentService } from '../agent/agent.client';
+import { scanInventoryViaAgentService, createAgentLogViaAgentService } from '../agent/agent.client';
 
 const randomInt = (min: number, max: number): number => Math.floor(Math.random() * (max - min + 1)) + min;
 
@@ -68,6 +68,24 @@ export const simulateSaleService = {
                 sourceId: affected.transactionId,
                 userId
             });
+            createAgentLogViaAgentService({
+                action: 'SIMULATE_SALE_COMPLETED',
+                result: 'SUCCESS',
+                reasoning: `Mô phỏng bán hoàn tất. Tồn kho sản phẩm ${affected.productName} đã trừ ${affected.decreasedQuantity}. AI Agent đã kiểm tra.`,
+                input: {
+                    productId: affected.productId,
+                    productName: affected.productName,
+                    quantityBefore: affected.stockBefore,
+                    quantityAfter: affected.stockAfter,
+                    quantityDecreased: affected.decreasedQuantity,
+                    triggerType: 'SIMULATE_SALE'
+                },
+                output: {
+                    description: `Mô phỏng bán hoàn tất. AI Agent đã kiểm tra tồn kho.`
+                },
+                creator: userId ? { connect: { id: userId } } : undefined
+            }).catch(console.error);
+
             allAgentResults.push(...scan.results);
             allCreatedPurchaseRequests.push(...scan.createdPurchaseRequests);
             if (scan.agentWarning) anyWarning = scan.agentWarning;
@@ -134,6 +152,24 @@ export const simulateSaleService = {
                 userId
             });
 
+            createAgentLogViaAgentService({
+                action: 'SIMULATE_SALE_COMPLETED',
+                result: 'SUCCESS',
+                reasoning: `Mô phỏng bán hoàn tất. Tồn kho sản phẩm ${affectedProduct.productName} đã trừ ${affectedProduct.decreasedQuantity}. AI Agent đã kiểm tra.`,
+                input: {
+                    productId: affectedProduct.productId,
+                    productName: affectedProduct.productName,
+                    quantityBefore: affectedProduct.stockBefore,
+                    quantityAfter: affectedProduct.stockAfter,
+                    quantityDecreased: affectedProduct.decreasedQuantity,
+                    triggerType: 'SIMULATE_SALE'
+                },
+                output: {
+                    description: `Mô phỏng bán hoàn tất. AI Agent đã kiểm tra tồn kho.`
+                },
+                creator: userId ? { connect: { id: userId } } : undefined
+            }).catch(console.error);
+
             return {
                 affectedProduct,
                 affectedProducts: [affectedProduct],
@@ -161,11 +197,32 @@ export const simulateSaleService = {
         const selected = shuffled.slice(0, Math.min(productCount, shuffled.length));
         const plans = selected.map((inventory) => ({ inventory, decrease: randomInt(minDecrease, maxDecrease) }));
         const affectedProducts = await simulateSaleRepository.applySale(plans, input.note ?? null, userId);
-        const productIds = affectedProducts.map((item) => item.productId);
+        const productIds = affectedProducts.map((item: any) => item.productId);
         const scan = await runAgentScan({
             productIds,
             userId
         });
+
+        for (const affected of affectedProducts) {
+            createAgentLogViaAgentService({
+                action: 'SIMULATE_SALE_COMPLETED',
+                result: 'SUCCESS',
+                reasoning: `Mô phỏng bán hoàn tất. Tồn kho sản phẩm ${affected.productName} đã trừ ${affected.decreasedQuantity}. AI Agent đã kiểm tra.`,
+                input: {
+                    productId: affected.productId,
+                    productName: affected.productName,
+                    quantityBefore: affected.stockBefore,
+                    quantityAfter: affected.stockAfter,
+                    quantityDecreased: affected.decreasedQuantity,
+                    triggerType: 'SIMULATE_SALE'
+                },
+                output: {
+                    description: `Mô phỏng bán hoàn tất. AI Agent đã kiểm tra tồn kho.`
+                },
+                creator: userId ? { connect: { id: userId } } : undefined
+            }).catch(console.error);
+        }
+
         return { affectedProducts, createdPurchaseRequests: scan.createdPurchaseRequests, agentLogs: scan.results, agentResults: scan.results, agentWarning: scan.agentWarning, scanSessionId: scan.scanSessionId };
     },
 
@@ -174,7 +231,26 @@ export const simulateSaleService = {
             throw new HttpError(400, 'Simulation transaction id is required.');
         }
 
-        return simulateSaleRepository.restoreSale(transactionId.trim(), userId);
+        const restored = await simulateSaleRepository.restoreSale(transactionId.trim(), userId);
+        createAgentLogViaAgentService({
+            action: 'SIMULATE_SALE_REVERTED',
+            result: 'SUCCESS',
+            reasoning: `Đã khôi phục mô phỏng bán sản phẩm ${restored.productName}. Tồn kho cộng lại ${restored.decreasedQuantity}.`,
+            input: {
+                productId: restored.productId,
+                productName: restored.productName,
+                quantityBefore: restored.stockBeforeRestore,
+                quantityAfter: restored.restoredStock,
+                quantityAdded: restored.decreasedQuantity,
+                triggerType: 'SIMULATE_SALE_REVERTED'
+            },
+            output: {
+                description: `Đã khôi phục mô phỏng bán sản phẩm ${restored.productName}. Tồn kho cộng lại ${restored.decreasedQuantity}.`
+            },
+            creator: userId ? { connect: { id: userId } } : undefined
+        }).catch(console.error);
+        
+        return restored;
     },
 
     async pendingRestore(userId: string) {

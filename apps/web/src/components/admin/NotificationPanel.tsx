@@ -15,8 +15,7 @@ import { agentLogsApi } from "../../api/agentLogs.api";
 import { inventoryApi } from "../../api/inventory.api";
 import { ordersApi } from "../../api/orders.api";
 import { purchaseRequestsApi } from "../../api/purchaseRequests.api";
-import { useToastState } from "../../contexts/ToastContext";
-import type { AgentLog, AgentLogNotification } from "../../types/agentLog.types";
+import type { AgentLog } from "../../types/agentLog.types";
 import type { Inventory } from "../../types/inventory.types";
 import type { Order } from "../../types/order.types";
 import type { PurchaseRequest } from "../../types/purchaseRequest.types";
@@ -28,12 +27,11 @@ interface Notification {
   description: string;
   link?: string;
   time?: string;
+  actionUrl?: string;
+  actionLabel?: string;
 }
 
 const STORAGE_KEY = "admin_read_notifications";
-const IMPORTANT_AGENT_SUCCESS = new Set(["CREATED_PURCHASE_REQUEST", "RECOMMENDED", "SUCCESS"]);
-const HIDDEN_AGENT_RESULTS = new Set(["STOCK_OK", "ABOVE_THRESHOLD"]);
-const AGENT_NOTIFICATION_TYPES = new Set(["success", "info", "warning", "error"]);
 
 const timeOf = (value?: string) =>
   value
@@ -46,126 +44,132 @@ const timeOf = (value?: string) =>
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 
-const getAgentOutputNotification = (log: AgentLog): AgentLogNotification | null => {
-  const output = asRecord(log.output);
-  const notification = asRecord(output?.notification);
-  if (!notification) return null;
-
-  const type = typeof notification.type === "string" ? notification.type : "";
-  const title = typeof notification.title === "string" ? notification.title : "";
-  const description = typeof notification.description === "string" ? notification.description : "";
-
-  if (!AGENT_NOTIFICATION_TYPES.has(type) || !title || !description) return null;
-
-  return {
-    type: type as AgentLogNotification["type"],
-    title,
-    description,
-    actionLabel: typeof notification.actionLabel === "string" ? notification.actionLabel : undefined,
-    actionUrl: typeof notification.actionUrl === "string" ? notification.actionUrl : undefined,
-  };
-};
-
 function buildAgentNotification(log: AgentLog): Notification | null {
   const status = (log.status || "").toUpperCase();
   const result = (log.result || "").toUpperCase();
   const reason = (log.reason || "").toUpperCase();
+  const action = (log.action || "").toUpperCase();
   const time = timeOf(log.createdAt || log.created_at);
 
-  if (HIDDEN_AGENT_RESULTS.has(result) || HIDDEN_AGENT_RESULTS.has(reason)) {
+  const output = asRecord(log.output) || {};
+  const input = asRecord(log.input) || {};
+
+  if (reason === "STOCK_OK" || reason === "ABOVE_THRESHOLD" || result === "STOCK_OK") {
+    return null;
+  }
+  if (action === "SCAN_INVENTORY_SESSION") {
+    const sessionTriggerType = output.triggerType || input.triggerType;
+    if (sessionTriggerType === "SCHEDULED_CRON_SCAN" && status === "SUCCESS") {
+      const needsActionCount = (Number(output.warningCount) || 0) + (Number(output.lowStockCount) || 0) + (Number(output.outOfStockCount) || 0) + (Number(output.errorCount) || 0);
+      const scanSessionId = output.scanSessionId || input.scanSessionId || '';
+      return {
+        id: `agent-notification-${log.id}`,
+        type: "info",
+        title: "AI Agent đã quét tồn kho",
+        description: `AI Agent đã tự động quét tồn kho lúc ${time}. Có ${needsActionCount} sản phẩm cần xử lý.`,
+        actionUrl: `/admin/agent-logs?triggerType=SCHEDULED_CRON_SCAN&scanSessionId=${scanSessionId}`,
+        actionLabel: "Xem nhật ký",
+        time,
+      };
+    }
+    return null;
+  }
+  if (action === "INVENTORY_ADJUSTED" || result === "INVENTORY_IMPORTED" || result === "INVENTORY_ADJUSTED") {
     return null;
   }
 
-  const notification = getAgentOutputNotification(log);
-  if (notification) {
-    return {
-      id: `agent-notification-${log.id}`,
-      type: notification.type,
-      title: notification.title,
-      description: notification.description,
-      link: notification.actionUrl || "/admin/agent-logs",
-      time,
-    };
+  const pName = log.productName || "sản phẩm";
+
+  if (action === "INVENTORY_IMPORTED") {
+    const available = Number(input.availableStock);
+    const min = Number(input.minThreshold);
+    if (!isNaN(available) && !isNaN(min) && available < min) {
+      return {
+        id: `agent-notification-${log.id}`,
+        type: "warning",
+        title: "Tồn kho vẫn thấp sau khi nhập hàng",
+        description: `Sản phẩm "${pName}" vẫn dưới ngưỡng tồn kho sau khi nhập hàng.`,
+        actionUrl: log.productId ? `/admin/inventory?productId=${log.productId}` : undefined,
+        actionLabel: log.productId ? "Xem kho" : undefined,
+        time: `Nhập kho · ${time}`,
+      };
+    }
+    return null;
+  }
+  
+  const descFallback = typeof output?.notification === 'object' && output?.notification && 'description' in output.notification && typeof output.notification.description === 'string'
+    ? output.notification.description
+    : typeof output?.description === 'string' ? output.description
+    : typeof output?.message === 'string' ? output.message
+    : log.description || log.message || log.reasoning || log.errorMessage || log.error_message || log.error || "AI Agent đã ghi nhận một sự kiện xử lý.";
+
+  let type: Notification["type"] = "info";
+  let title = "Thông báo AI Agent";
+  
+  const mappedTitle = typeof output?.notification === 'object' && output?.notification && 'title' in output.notification && typeof output.notification.title === 'string'
+    ? output.notification.title : undefined;
+
+  if (mappedTitle) {
+    title = mappedTitle;
+  } else if (status === "RUNNING") {
+    title = "AI Agent đang quét tồn kho...";
+    type = "info";
+  } else if (status === "SUCCESS" && action === "SCAN_INVENTORY") {
+    title = "AI Agent đã quét xong tồn kho.";
+    type = "agent_success";
+  } else if (status === "FAILED" || result === "FAILED" || result === "ERROR" || result === "AGENT_SCAN_FAILED") {
+    title = "AI Agent service không khả dụng";
+    type = "agent_error";
+  } else if (reason === "LOW_STOCK" || reason === "OUT_OF_STOCK" || result === "LOW_STOCK" || result === "OUT_OF_STOCK") {
+    title = `Sản phẩm "${pName}" cần nhập hàng.`;
+    type = "warning";
+  } else if (reason === "ACTIVE_PR_EXISTS" || result === "SKIPPED_DUPLICATE") {
+    title = `Đã có yêu cầu nhập hàng chờ bạn xác nhận`;
+    type = "info";
+  } else if (reason === "NO_SUPPLIER" || reason === "NO_SUPPLIERS_MAPPED" || result === "NO_SUPPLIER" || reason === "SUPPLIERS_INACTIVE" || reason === "SUPPLIER_INACTIVE" || result === "SUPPLIERS_INACTIVE") {
+    title = "Thiếu nhà cung cấp";
+    type = "warning";
+  } else if (result === "CREATED_PURCHASE_REQUEST" || reason === "PURCHASE_REQUEST_CREATED") {
+    const pCode = log.purchaseRequestCode || "";
+    title = `AI Agent đã tạo yêu cầu nhập hàng ${pCode}`.trim() + ".";
+    type = "agent_success";
+  } else if (status === "SUCCESS") {
+    title = "AI Agent đã xử lý thành công";
+    type = "agent_success";
   }
 
-  if (status === "FAILED" || result === "FAILED" || result === "ERROR") {
-    return {
-      id: `agent-failed-${log.id}`,
-      type: "agent_error",
-      title: "Agent xử lý thất bại",
-      description: log.description || log.message || log.errorMessage || log.error || log.error_message || "Agent gặp lỗi khi xử lý.",
-      link: "/admin/agent-logs",
-      time,
-    };
+  let actionUrl: string | undefined;
+  let actionLabel: string | undefined;
+  if (log.purchaseRequestId) {
+    actionUrl = `/admin/purchase-requests/${log.purchaseRequestId}`;
+    actionLabel = "Xem yêu cầu";
+  } else if (log.productId) {
+    actionUrl = `/admin/inventory?productId=${log.productId}`;
+    actionLabel = "Xem sản phẩm";
   }
 
-  if (reason === "NO_SUPPLIER" || reason === "NO_SUPPLIERS_MAPPED" || result === "NO_SUPPLIER") {
-    return {
-      id: `agent-no-supplier-${log.id}`,
-      type: "warning",
-      title: "Thiếu nhà cung cấp",
-      description: "Sản phẩm chưa được liên kết với nhà cung cấp nên Agent không thể tạo yêu cầu nhập hàng.",
-      link: "/admin/agent-logs",
-      time,
-    };
+  let finalDescription = descFallback;
+  if (!finalDescription || finalDescription === "AI Agent đã ghi nhận một sự kiện xử lý." || finalDescription.includes("SKIPPED_DUPLICATE") || finalDescription.includes("NO_SUPPLIER")) {
+    if (reason === "ACTIVE_PR_EXISTS" || result === "SKIPPED_DUPLICATE") {
+      finalDescription = `Sản phẩm "${pName}" đã có yêu cầu nhập hàng đang chờ xử lý, AI Agent không tạo trùng.`;
+    } else if (reason === "NO_SUPPLIER" || reason === "NO_SUPPLIERS_MAPPED" || result === "NO_SUPPLIER" || reason === "SUPPLIERS_INACTIVE" || reason === "SUPPLIER_INACTIVE" || result === "SUPPLIERS_INACTIVE") {
+      finalDescription = `Sản phẩm "${pName}" chưa có nhà cung cấp hoạt động, vui lòng gán nhà cung cấp trước khi tạo yêu cầu nhập hàng.`;
+    } else if (status === "FAILED" || result === "FAILED" || result === "ERROR") {
+      finalDescription = `Không kết nối được AI Agent service. Vui lòng kiểm tra tiến trình apps/agent.`;
+    } else if (result === "CREATED_PURCHASE_REQUEST") {
+      finalDescription = `Sản phẩm "${pName}" dưới ngưỡng tồn kho, AI Agent đã tự động tạo yêu cầu nhập hàng.`;
+    }
   }
 
-  if (reason === "ACTIVE_PR_EXISTS" || result === "SKIPPED_DUPLICATE") {
-    return {
-      id: `agent-duplicate-${log.id}`,
-      type: "info",
-      title: "Đã có yêu cầu nhập hàng",
-      description: "Sản phẩm đã có yêu cầu nhập hàng đang chờ xử lý nên Agent không tạo thêm.",
-      link: "/admin/agent-logs",
-      time,
-    };
-  }
-
-  if (reason === "AI_DISABLED" || result === "SKIPPED_DISABLED") {
-    return {
-      id: `agent-disabled-${log.id}`,
-      type: "info",
-      title: "AI Agent đang tắt",
-      description: "AI Agent đang bị tắt trong cài đặt hệ thống.",
-      link: "/admin/agent-logs",
-      time,
-    };
-  }
-
-  if (result === "CREATED_PURCHASE_REQUEST") {
-    return {
-      id: `agent-pr-${log.id}`,
-      type: "agent_success",
-      title: "Đã tạo yêu cầu nhập hàng",
-      description: "AI Agent đã tạo yêu cầu nhập hàng thành công.",
-      link: log.purchaseRequestId ? `/admin/purchase-requests/${log.purchaseRequestId}` : "/admin/purchase-requests",
-      time,
-    };
-  }
-
-  if (status === "SUCCESS" && IMPORTANT_AGENT_SUCCESS.has(result)) {
-    return {
-      id: `agent-success-${log.id}`,
-      type: "agent_success",
-      title: result === "SUCCESS" ? "Email đã gửi" : "Agent xử lý thành công",
-      description: log.description || log.message || "AI Agent đã xử lý thành công.",
-      link: "/admin/agent-logs",
-      time,
-    };
-  }
-
-  if (status === "RUNNING") {
-    return {
-      id: `agent-running-${log.id}`,
-      type: "info",
-      title: "Agent đang xử lý",
-      description: log.description || log.message || "AI Agent đang xử lý tác vụ.",
-      link: "/admin/agent-logs",
-      time,
-    };
-  }
-
-  return null;
+  return {
+    id: `agent-notification-${log.id}`,
+    type,
+    title,
+    description: finalDescription,
+    actionUrl,
+    actionLabel,
+    time,
+  };
 }
 
 function buildNotifications(
@@ -176,49 +180,61 @@ function buildNotifications(
 ): Notification[] {
   const items: Notification[] = [];
 
-  orders
-    .filter((order) => order.status === "PENDING" || order.status === "CONFIRMED")
-    .slice(0, 5)
-    .forEach((order) => {
-      items.push({
-        id: `order-${order.id}`,
-        type: "new_order",
-        title: order.status === "PENDING" ? "Đơn hàng mới chờ duyệt" : "Đơn hàng đang chờ xử lý",
-        description: `Đơn hàng #${order.id.slice(-8).toUpperCase()} trị giá ${order.totalAmount.toLocaleString()}đ`,
-        link: `/admin/orders/${order.id}`,
-        time: timeOf(order.createdAt),
-      });
-    });
+  const seenAgentLogs = new Set<string>();
+  const filteredAgentLogs = [];
+  for (const log of agentLogs) {
+    const key = `${log.productId || 'none'}:${log.action || 'none'}:${log.reason || 'none'}:${log.purchaseRequestId || ''}`;
+    if (!seenAgentLogs.has(key)) {
+      seenAgentLogs.add(key);
+      filteredAgentLogs.push(log);
+    }
+  }
 
-  lowStock.slice(0, 5).forEach((inventory) => {
-    const name = inventory.product?.name || "Sản phẩm không rõ";
-    const min = inventory.minThreshold ?? inventory.min_threshold ?? 5;
-    items.push({
-      id: `low-${inventory.id}`,
-      type: "low_stock",
-      title: "Tồn kho sắp hết",
-      description: `"${name}" chỉ còn ${inventory.quantity} đơn vị (ngưỡng tối thiểu: ${min})`,
-      link: "/admin/inventory",
-      time: "Vừa cập nhật",
-    });
-  });
-
-  pendingPRs.slice(0, 3).forEach((request) => {
-    const name = request.product?.name || "Sản phẩm không rõ";
-    items.push({
-      id: `pr-${request.id}`,
-      type: "purchase_request",
-      title: "Yêu cầu mua hàng mới",
-      description: `Yêu cầu nhập "${name}" đang chờ phê duyệt`,
-      link: `/admin/purchase-requests/${request.id}`,
-      time: timeOf(request.createdAt || request.created_at),
-    });
-  });
-
-  agentLogs.slice(0, 10).forEach((log) => {
+  filteredAgentLogs.slice(0, 10).forEach((log) => {
     const notification = buildAgentNotification(log);
     if (notification) items.push(notification);
   });
+
+  if (items.length < 15) {
+    orders
+      .filter((order) => order.status === "PENDING" || order.status === "CONFIRMED")
+      .slice(0, 3)
+      .forEach((order) => {
+        items.push({
+          id: `order-${order.id}`,
+          type: "new_order",
+          title: order.status === "PENDING" ? "Đơn hàng mới chờ duyệt" : "Đơn hàng đang chờ xử lý",
+          description: `Đơn hàng #${order.id.slice(-8).toUpperCase()} trị giá ${order.totalAmount.toLocaleString()}đ`,
+          link: `/admin/orders/${order.id}`,
+          time: timeOf(order.createdAt),
+        });
+      });
+
+    lowStock.slice(0, 3).forEach((inventory) => {
+      const name = inventory.product?.name || "Sản phẩm không rõ";
+      const min = inventory.minThreshold ?? inventory.min_threshold ?? 5;
+      items.push({
+        id: `low-${inventory.id}`,
+        type: "low_stock",
+        title: "Tồn kho sắp hết",
+        description: `"${name}" chỉ còn ${inventory.quantity} đơn vị (ngưỡng tối thiểu: ${min})`,
+        link: "/admin/inventory",
+        time: "Vừa cập nhật",
+      });
+    });
+
+    pendingPRs.slice(0, 3).forEach((request) => {
+      const name = request.product?.name || "Sản phẩm không rõ";
+      items.push({
+        id: `pr-${request.id}`,
+        type: "purchase_request",
+        title: "Yêu cầu mua hàng mới",
+        description: `Yêu cầu nhập "${name}" đang chờ phê duyệt`,
+        link: `/admin/purchase-requests/${request.id}`,
+        time: timeOf(request.createdAt || request.created_at),
+      });
+    });
+  }
 
   return items;
 }
@@ -290,7 +306,6 @@ const ICON_MAP = {
 };
 
 export const NotificationPanel: React.FC = () => {
-  const { toasts } = useToastState();
   const [open, setOpen] = useState(false);
   const [apiNotifications, setApiNotifications] = useState<Notification[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(() => {
@@ -313,8 +328,6 @@ export const NotificationPanel: React.FC = () => {
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
-
     const fetchNotifications = async () => {
       setLoading(true);
       try {
@@ -339,18 +352,19 @@ export const NotificationPanel: React.FC = () => {
     };
 
     fetchNotifications();
-  }, [open]);
+    
+    const handleRefresh = () => {
+      fetchNotifications();
+    };
+    window.addEventListener("refresh-notifications", handleRefresh);
+    window.addEventListener("agent-logs-updated", handleRefresh);
+    return () => {
+      window.removeEventListener("refresh-notifications", handleRefresh);
+      window.removeEventListener("agent-logs-updated", handleRefresh);
+    };
+  }, []);
 
-  const localNotifications: Notification[] = toasts.map((toast) => ({
-    id: toast.id,
-    type: toast.type,
-    title: toast.title,
-    description: toast.message || "",
-    link: toast.link,
-    time: "Vừa xong",
-  }));
-
-  const notifications = [...localNotifications.slice().reverse(), ...apiNotifications];
+  const notifications = apiNotifications;
   const unreadCount = notifications.filter((notification) => !readIds.has(notification.id)).length;
 
   const markAllRead = () => {
@@ -389,7 +403,7 @@ export const NotificationPanel: React.FC = () => {
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
               <div className="flex items-center gap-2">
                 <Bell size={15} className="text-slate-500" />
-                <span className="font-bold text-slate-800 text-sm">Thông báo</span>
+                <span className="font-bold text-slate-800 text-sm">Thông báo AI Agent</span>
                 {unreadCount > 0 && (
                   <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 text-[11px] font-black rounded-full">
                     {unreadCount} mới
@@ -455,6 +469,17 @@ export const NotificationPanel: React.FC = () => {
                         <p className="text-xs text-slate-500 mt-0.5 leading-relaxed line-clamp-2">
                           {notification.description}
                         </p>
+                        {notification.actionUrl && notification.actionLabel && (
+                          <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                            <Link 
+                              to={notification.actionUrl} 
+                              onClick={() => { markRead(notification.id); setOpen(false); }}
+                              className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              {notification.actionLabel}
+                            </Link>
+                          </div>
+                        )}
                         {notification.time && (
                           <p className="text-[11px] text-slate-400 mt-1 font-medium">{notification.time}</p>
                         )}

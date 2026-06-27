@@ -36,9 +36,9 @@ export const purchaseRepository = {
         return Boolean(item);
     },
     async create(input: CreatePurchaseRequestInput, userId: string, requestNumber: string): Promise<PurchaseRequestRecord> {
-        return prisma.$transaction(async (tx) => {
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const inventories = await tx.inventory.findMany({ where: { id: { in: input.items.map((item) => item.inventoryId) }, product: { isActive: true } }, include: { product: true } });
-            const inventoryById = new Map(inventories.map((inventory) => [inventory.id, inventory]));
+            const inventoryById = new Map(inventories.map((inventory: any) => [inventory.id, inventory]));
             const activeItem = await tx.purchaseRequestItem.findFirst({
                 where: {
                     inventoryId: { in: input.items.map((item) => item.inventoryId) },
@@ -73,7 +73,7 @@ export const purchaseRepository = {
     },
     async updateStatus(id: string, data: Prisma.PurchaseRequestUpdateInput): Promise<PurchaseRequestRecord> { return prisma.purchaseRequest.update({ where: { id }, data, include: purchaseInclude }); },
     async receive(request: PurchaseRequestRecord, input: ReceivePurchaseRequestInput, userId: string): Promise<PurchaseRequestRecord> {
-        return prisma.$transaction(async (tx) => {
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const currentRequest = await tx.purchaseRequest.findUnique({ where: { id: request.id }, select: { status: true, emailSentAt: true } });
             if (currentRequest?.status === PurchaseRequestStatus.RECEIVED || currentRequest?.status === PurchaseRequestStatus.COMPLETED) {
                 throw new Error('Yêu cầu nhập hàng này đã được nhận đủ trước đó, không thể cộng kho lần nữa.');

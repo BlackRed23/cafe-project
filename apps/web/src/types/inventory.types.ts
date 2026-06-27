@@ -35,6 +35,13 @@ export interface Inventory {
   minStock?: number;
   min_stock?: number;
   unit?: string;
+  safetyStock?: number;
+  leadTimeDemand?: number;
+  recommendedThreshold?: number;
+  hasOpenPurchaseRequest?: boolean;
+  openPurchaseRequestId?: string;
+  openPurchaseRequestCode?: string;
+  openPurchaseRequestStatus?: string;
 }
 
 export interface InventoryTransaction {

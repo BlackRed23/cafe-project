@@ -11,6 +11,7 @@ export interface SupplierProduct {
   id: string;
   supplierId: string;
   supplier_id?: string;
+  supplier?: Supplier;
   productId: string;
   product_id?: string;
   importPrice?: number;

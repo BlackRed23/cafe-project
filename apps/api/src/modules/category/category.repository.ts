@@ -1,12 +1,22 @@
-﻿import type { Category, Prisma } from '@cafe-project/database';
+import type { Category, Prisma } from '@cafe-project/database';
 import { prisma } from '@cafe-project/database';
 
 export type CategoryRecord = Category;
 
 export const categoryRepository = {
-    async findMany(): Promise<CategoryRecord[]> {
+    async findMany() {
         return prisma.category.findMany({
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            include: {
+                products: {
+                    select: { id: true, name: true, sku: true },
+                    take: 5,
+                    orderBy: { name: 'asc' }
+                },
+                _count: {
+                    select: { products: true }
+                }
+            }
         });
     },
 

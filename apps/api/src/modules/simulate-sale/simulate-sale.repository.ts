@@ -15,7 +15,9 @@ export const simulateSaleRepository = {
         return prisma.inventory.findUnique({ where: { productId }, include: inventoryInclude });
     },
     async applyProductSale(inventory: SaleInventoryRecord, quantity: number, note: string | null, userId: string) {
-        return prisma.$transaction(async (tx) => {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const current = await tx.inventory.findUnique({ where: { id: inventory.id }, include: inventoryInclude });
             if (!current) throw new HttpError(404, 'Inventory not found for selected product.');
 
@@ -27,12 +29,44 @@ export const simulateSaleRepository = {
             const newQuantity = previousQuantity - quantity;
 
             await tx.inventory.update({ where: { id: current.id }, data: { quantity: newQuantity } });
-            const transaction = await tx.inventoryTransaction.create({ data: { productId: current.productId, userId, type: InventoryTransactionType.SIMULATE_SALE, quantity: -quantity, reason: note ?? 'Simulate sale' } });
+            
+            const batches = await tx.inventoryBatch.findMany({
+                where: { inventoryId: current.id, quantity: { gt: 0 }, expirationDate: { gte: startOfToday } },
+                orderBy: { expirationDate: 'asc' }
+            });
+
+            const totalSellable = batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
+            if (totalSellable < quantity) {
+                throw new HttpError(400, `Không đủ lô hàng còn hạn để mô phỏng. Yêu cầu: ${quantity}, Có thể xuất: ${totalSellable}.`);
+            }
+
+            let remainingToDeduct = quantity;
+            const deductionTransactions = [];
+
+            for (const batch of batches) {
+                if (remainingToDeduct <= 0) break;
+                const deduction = Math.min(batch.quantity, remainingToDeduct);
+                await tx.inventoryBatch.update({
+                    where: { id: batch.id },
+                    data: { quantity: { decrement: deduction } }
+                });
+                
+                const txn = await tx.inventoryTransaction.create({
+                    data: { productId: current.productId, userId, type: InventoryTransactionType.SIMULATE_SALE, quantity: -deduction, reason: note ?? 'Simulate sale', batchId: batch.id }
+                });
+                deductionTransactions.push(txn);
+                remainingToDeduct -= deduction;
+            }
+
+            if (deductionTransactions.length === 0) {
+                throw new HttpError(400, 'Không tạo được giao dịch nào cho mô phỏng.');
+            }
+            const lastTransactionId = deductionTransactions[deductionTransactions.length - 1].id;
 
             return {
                 productId: current.productId,
                 inventoryId: current.id,
-                transactionId: transaction.id,
+                transactionId: lastTransactionId,
                 productName: current.product.name,
                 stockBefore: previousQuantity,
                 stockAfter: newQuantity,
@@ -42,18 +76,53 @@ export const simulateSaleRepository = {
         });
     },
     async applySale(plans: SalePlan[], note: string | null, userId: string) {
-        return prisma.$transaction(async (tx) => {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const affected = [];
             for (const plan of plans) {
                 const previousQuantity = plan.inventory.quantity;
                 const decreaseQuantity = Math.min(plan.decrease, previousQuantity);
                 const newQuantity = previousQuantity - decreaseQuantity;
                 await tx.inventory.update({ where: { id: plan.inventory.id }, data: { quantity: newQuantity } });
-                const transaction = await tx.inventoryTransaction.create({ data: { productId: plan.inventory.productId, userId, type: InventoryTransactionType.SIMULATE_SALE, quantity: -decreaseQuantity, reason: note ?? 'Simulate sale' } });
+                
+                const batches = await tx.inventoryBatch.findMany({
+                    where: { inventoryId: plan.inventory.id, quantity: { gt: 0 }, expirationDate: { gte: startOfToday } },
+                    orderBy: { expirationDate: 'asc' }
+                });
+
+                const totalSellable = batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
+                if (totalSellable < decreaseQuantity) {
+                    throw new HttpError(400, `Không đủ lô hàng còn hạn. Yêu cầu: ${decreaseQuantity}, Có thể xuất: ${totalSellable}.`);
+                }
+
+                let remainingToDeduct = decreaseQuantity;
+                const deductionTransactions = [];
+
+                for (const batch of batches) {
+                    if (remainingToDeduct <= 0) break;
+                    const deduction = Math.min(batch.quantity, remainingToDeduct);
+                    await tx.inventoryBatch.update({
+                        where: { id: batch.id },
+                        data: { quantity: { decrement: deduction } }
+                    });
+                    
+                    const txn = await tx.inventoryTransaction.create({
+                        data: { productId: plan.inventory.productId, userId, type: InventoryTransactionType.SIMULATE_SALE, quantity: -deduction, reason: note ?? 'Simulate sale', batchId: batch.id }
+                    });
+                    deductionTransactions.push(txn);
+                    remainingToDeduct -= deduction;
+                }
+
+                if (deductionTransactions.length === 0) {
+                    throw new HttpError(400, 'Không tạo được giao dịch nào cho mô phỏng.');
+                }
+                const lastTransactionId = deductionTransactions[deductionTransactions.length - 1].id;
+
                 affected.push({
                     productId: plan.inventory.productId,
                     inventoryId: plan.inventory.id,
-                    transactionId: transaction.id,
+                    transactionId: lastTransactionId,
                     productName: plan.inventory.product.name,
                     stockBefore: previousQuantity,
                     previousQuantity,
@@ -66,7 +135,7 @@ export const simulateSaleRepository = {
         });
     },
     async restoreSale(transactionId: string, userId: string) {
-        return prisma.$transaction(async (tx) => {
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const originalTransaction = await tx.inventoryTransaction.findUnique({
                 where: { id: transactionId },
                 include: { product: true }

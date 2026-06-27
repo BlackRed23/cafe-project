@@ -8,23 +8,42 @@ enum InventoryTransactionType {
 }
 
 model Inventory {
-  id           String  @id @default(cuid())
-  productId    String  @unique
-  product      Product @relation(fields: [productId], references: [id])
-  quantity     Int     @default(0)
-  reservedStock Int    @default(0)
-  minThreshold Int     @default(10)
-  unit         String
+  id                   String                @id @default(cuid())
+  productId            String                @unique
+  product              Product               @relation(fields: [productId], references: [id])
+  quantity             Int                   @default(0)
+  reservedStock        Int                   @default(0)
+  minThreshold         Int                   @default(10)
+  unit                 String
   purchaseRequestItems PurchaseRequestItem[]
+  batches              InventoryBatch[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model InventoryBatch {
+  id             String    @id @default(cuid())
+  inventoryId    String
+  inventory      Inventory @relation(fields: [inventoryId], references: [id])
+  batchCode      String
+  quantity       Int       @default(0)
+  expirationDate DateTime
+
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  inventoryTransactions InventoryTransaction[]
+
+  @@index([inventoryId])
+  @@index([expirationDate])
 }
 
 model InventoryTransaction {
   id        String                   @id @default(cuid())
   productId String
   product   Product                  @relation(fields: [productId], references: [id])
+  batchId   String?
+  batch     InventoryBatch?          @relation(fields: [batchId], references: [id])
   userId    String?
   user      User?                    @relation(fields: [userId], references: [id])
   type      InventoryTransactionType

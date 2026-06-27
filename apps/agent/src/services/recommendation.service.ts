@@ -230,10 +230,13 @@ export const recommendationService = {
         let errorMessage: string | null = null;
 
         const planningSettings = await this.getPlanningSettings();
+        const promptPrefix = await agentRepository.getSettingValue('ai.promptPrefix');
+        const storeNameSetting = await agentRepository.getSettingValue('store.name');
+        const storeName = storeNameSetting || 'Cafe Admin';
 
         if (process.env.AGENT_RECOMMENDATION_MODE === 'gemini' && process.env.GEMINI_API_KEY) {
             try {
-                const prompt = this.buildPrompt(product, inventory, sales, suppliers);
+                const prompt = this.buildPrompt(product, inventory, sales, suppliers, promptPrefix, storeName);
                 const geminiResult = await geminiService.getRecommendation(prompt);
 
                 const supplierExists = suppliers.some((s) => s.supplierId === geminiResult.recommendedSupplierId);
@@ -267,7 +270,7 @@ export const recommendationService = {
                 recommendedSupplierId: ruleBased.supplier.supplierId,
                 confidence: 0.5,
                 reasoning: `[Rule-Based Fallback] ${ruleBased.reasoning}`,
-                emailDraft: `Kinh gui doi tac ${ruleBased.supplier.supplierName},\n\nCafe Admin dang co nhu cau dat hang/bao gia:\n- ${product.name}: ${ruleBased.quantityDisplay.recommendedQtyDisplay}${ruleBased.quantityDisplay.conversionMissing ? '' : `\n  Quy cach: 1 ${ruleBased.quantityDisplay.purchaseUnit} = ${ruleBased.quantityDisplay.conversionQuantity} ${ruleBased.quantityDisplay.conversionTargetUnit}`}\n\nTran trong,\nCafe Admin`
+                emailDraft: `Kinh gui doi tac ${ruleBased.supplier.supplierName},\n\n${storeName} dang co nhu cau dat hang/bao gia:\n- ${product.name}: ${ruleBased.quantityDisplay.recommendedQtyDisplay}${ruleBased.quantityDisplay.conversionMissing ? '' : `\n  Quy cach: 1 ${ruleBased.quantityDisplay.purchaseUnit} = ${ruleBased.quantityDisplay.conversionQuantity} ${ruleBased.quantityDisplay.conversionTargetUnit}`}\n\nTran trong,\n${storeName}`
             };
         }
 
@@ -345,8 +348,9 @@ export const recommendationService = {
         };
     },
 
-    buildPrompt(product: any, inventory: any, sales: any, suppliers: any[]): string {
-        return `You are an AI inventory reorder assistant for a cafe product inventory system.
+    buildPrompt(product: any, inventory: any, sales: any, suppliers: any[], promptPrefix: string | null, storeName: string): string {
+        const prefixSection = promptPrefix ? `Định hướng từ admin: ${promptPrefix}\n\n` : '';
+        return `${prefixSection}You are an AI inventory reorder assistant for a cafe product inventory system. Draft emails on behalf of ${storeName}.
 
 Analyze this product:
 

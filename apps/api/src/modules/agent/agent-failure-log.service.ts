@@ -18,6 +18,17 @@ const safeJsonParse = (value?: string | null): any => {
     }
 };
 
+const serializeAgentLogField = (value: unknown): string | null => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "string") return value;
+
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
+};
+
 const asString = (value: unknown): string | undefined =>
     typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
@@ -88,7 +99,7 @@ export const agentFailureLogService = {
         const log = await prisma.agentLog.create({
             data: {
                 action: 'AGENT_SERVICE_UNAVAILABLE',
-                input: JSON.stringify({
+                input: serializeAgentLogField({
                     triggerType: input.triggerType,
                     productId: input.productId,
                     productIds: input.productIds,
@@ -96,7 +107,7 @@ export const agentFailureLogService = {
                     sourceId: input.sourceId,
                     note: input.note
                 }),
-                output: JSON.stringify(output),
+                output: serializeAgentLogField(output),
                 reasoning: 'apps/api could not reach the separate apps/agent HTTP service.',
                 result: 'FAILED',
                 fallback_used: false,

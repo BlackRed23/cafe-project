@@ -4,4 +4,6 @@ export interface Category {
   description?: string;
   createdAt?: string;
   updatedAt?: string;
+  productCount?: number;
+  products?: { id: string; name: string; sku: string }[];
 }

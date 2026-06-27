@@ -45,6 +45,32 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
     return map[type] || "bg-slate-50 text-slate-800 border-slate-200";
   };
 
+  const getTransactionTypeLabel = (type: string) => {
+    switch (type) {
+      case "IMPORT":
+        return "Nhập kho";
+      case "ADJUST":
+        return "Điều chỉnh kho";
+      case "ORDER":
+        return "Bán hàng";
+      case "SIMULATE_SALE":
+        return "Mô phỏng bán";
+      case "RESTORE_SIMULATION":
+        return "Khôi phục mô phỏng";
+      case "THRESHOLD_UPDATE":
+        return "Cập nhật ngưỡng";
+      case "PURCHASE_RECEIVE":
+        return "Nhận hàng nhập";
+      case "RETURN":
+        return "Hoàn hàng";
+      case "CANCEL_ORDER":
+      case "CANCEL":
+        return "Huỷ đơn";
+      default:
+        return "Hoạt động kho";
+    }
+  };
+
   if (isLoading) {
     return <Loading message="Đang tải lịch sử giao dịch..." />;
   }
@@ -69,7 +95,7 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
       header: "Loại hoạt động",
       render: (tx: InventoryTransaction) => (
         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${getTypeBadgeColor(tx.type)}`}>
-          {tx.type}
+          {getTransactionTypeLabel(tx.type)}
         </span>
       ),
     },

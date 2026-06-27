@@ -3,7 +3,7 @@ import { HttpError } from '../../common/http-error';
 import type { JwtUserPayload } from '../auth/auth.service';
 import { orderRepository, type OrderRecord } from './order.repository';
 import type { CreateOrderInput, OrderFiltersInput, OrderStatusInput } from './order.validator';
-import { scanInventoryViaAgentService } from '../agent/agent.client';
+import { scanInventoryViaAgentService, createAgentLogViaAgentService } from '../agent/agent.client';
 
 export type OrderDto = ReturnType<typeof toOrderDto>;
 
@@ -118,9 +118,7 @@ const normalizeOrderError = (error: unknown, fallback: string): HttpError => {
         lower.includes('stock') ||
         lower.includes('không đủ') ||
         lower.includes('tồn kho') ||
-        lower.includes('vừa hết hàng') ||
-        lower.includes('khÃ´ng Ä‘á»§') ||
-        lower.includes('vá»«a háº¿t hÃ ng')
+        lower.includes('vừa hết hàng')
     ) {
         return new HttpError(400, 'Không đủ tồn kho để tạo/cập nhật đơn hàng, vui lòng giảm số lượng hoặc kiểm tra lại tồn kho khả dụng.');
     }
@@ -128,7 +126,6 @@ const normalizeOrderError = (error: unknown, fallback: string): HttpError => {
     if (
         lower.includes('product not found') ||
         lower.includes('không tìm thấy sản phẩm') ||
-        lower.includes('khÃ´ng tÃ¬m tháº¥y sáº£n pháº©m') ||
         lower.includes('inactive') ||
         lower.includes('not available')
     ) {
@@ -170,6 +167,22 @@ export const updateOrderStatus = async (id: string, input: OrderStatusInput, use
 
         if (nextStatus === OrderStatus.COMPLETED && !order.stockDeductedAt) {
             const productIds = updatedOrder.items.map((item) => item.productId);
+            createAgentLogViaAgentService({
+                action: 'ORDER_COMPLETED',
+                result: 'SUCCESS',
+                reasoning: `Đơn hàng ${updatedOrder.id.slice(-6)} đã hoàn thành. Tồn kho thật đã được trừ.`,
+                input: {
+                    orderId: updatedOrder.id,
+                    orderNumber: updatedOrder.id,
+                    productIds: productIds,
+                    triggerType: 'ORDER_COMPLETED'
+                },
+                output: {
+                    description: `Đơn hàng ${updatedOrder.id.slice(-6)} đã hoàn thành. Tồn kho thật đã được trừ.`
+                },
+                creator: userId ? { connect: { id: userId } } : undefined
+            }).catch(console.error);
+
             scanInventoryViaAgentService({
                 productIds,
                 triggerType: 'ORDER_COMPLETED',

@@ -53,7 +53,7 @@ export const productRepository = {
     },
 
     async create(data: Prisma.ProductUncheckedCreateInput): Promise<ProductRecord> {
-        return prisma.$transaction(async (tx) => {
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const product = await tx.product.create({ data });
 
             await tx.inventory.create({
@@ -97,7 +97,7 @@ export const productRepository = {
     },
 
     async delete(id: string): Promise<ProductRecord> {
-        return prisma.$transaction(async (tx) => {
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.inventory.deleteMany({ where: { productId: id } });
             await tx.supplierProduct.deleteMany({ where: { productId: id } });
 

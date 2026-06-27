@@ -151,18 +151,20 @@ const getReasonText = (code: string | undefined | null) => {
   }
 };
 
-export const getAgentLogDescription = (log: AgentLog): string => {
+export const getAgentLogDisplayDescription = (log: AgentLog): string => {
   const input = asRecord(log.input);
   const output = asRecord(log.output);
 
   const realMessage =
-    log.description ||
-    log.message ||
     output?.description ||
     output?.message ||
-    output?.resultMessage ||
+    output?.errorMessage ||
+    log.description ||
+    log.message ||
     input?.description ||
     input?.message ||
+    log.reasoning ||
+    log.errorMessage ||
     getReasonText(log.reason || log.result || (output?.reason as string) || (output?.result as string));
 
   if (realMessage) {
@@ -271,6 +273,12 @@ export const AdminAgentLogsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<AgentLogFilter>(
     searchParams.get("tab") === "simulation" ? "SIMULATION" : ""
   );
+  const [triggerTypeFilter, setTriggerTypeFilter] = useState<string>(
+    searchParams.get("triggerType") || ""
+  );
+  const [dateFilter, setDateFilter] = useState<string>(
+    searchParams.get("date") || ""
+  );
   const [showSessionLogs, setShowSessionLogs] = useState(false);
   const [page, setPage] = useState(1);
   const [selectedLog, setSelectedLog] = useState<AgentLog | null>(null);
@@ -301,6 +309,29 @@ export const AdminAgentLogsPage: React.FC = () => {
     };
     fetchSummary();
   }, []);
+
+  const cronSummary = useMemo(() => {
+    const cronSessions = summaryLogs.filter(log => 
+      log.action === "SCAN_INVENTORY_SESSION" && 
+      (log.triggerType === "SCHEDULED_CRON_SCAN" || (log.output as any)?.triggerType === "SCHEDULED_CRON_SCAN" || (log.input as any)?.triggerType === "SCHEDULED_CRON_SCAN")
+    );
+    const latestCronSession = cronSessions.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0];
+
+    if (!latestCronSession) return null;
+
+    const output = asRecord(latestCronSession.output) || {};
+    
+    return {
+      scanSessionId: String(output.scanSessionId || latestCronSession.scanSessionId || (latestCronSession.input as any)?.scanSessionId || ''),
+      time: formatDate(latestCronSession.createdAt!),
+      totalChecked: Number(output.totalProductsScanned ?? output.totalChecked ?? 0),
+      createdCount: Number(output.purchaseRequestCreatedCount ?? output.createdPurchaseRequestCount ?? 0),
+      warningCount: (Number(output.warningCount) || 0) + (Number(output.atThresholdCount) || 0) + (Number(output.lowStockCount) || 0) + (Number(output.outOfStockCount) || 0),
+      duplicateCount: Number(output.skippedDuplicatePrCount ?? output.skippedDuplicateCount ?? 0),
+      noSupplierCount: Number(output.noSupplierCount ?? 0),
+      errorCount: Number(output.errorCount ?? output.failedCount ?? 0),
+    };
+  }, [summaryLogs]);
 
   const scanSummary = useMemo(() => {
     const todayLogs = summaryLogs.filter(log => isToday(log.createdAt));
@@ -366,7 +397,7 @@ export const AdminAgentLogsPage: React.FC = () => {
           page,
           limit: PAGE_SIZE,
           status: statusFilter !== "SIMULATION" ? statusFilter || undefined : undefined,
-          triggerType: statusFilter === "SIMULATION" ? "SIMULATE_SALE" : undefined,
+          triggerType: statusFilter === "SIMULATION" ? "SIMULATE_SALE" : triggerTypeFilter || undefined,
           productId: productIdParam || undefined,
         });
         setLogs(data.logs);
@@ -379,7 +410,7 @@ export const AdminAgentLogsPage: React.FC = () => {
     };
 
     fetchLogs();
-  }, [page, statusFilter]);
+  }, [page, statusFilter, triggerTypeFilter, productIdParam]);
 
   const filteredLogs = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -452,6 +483,10 @@ export const AdminAgentLogsPage: React.FC = () => {
       paramFilteredLogs = scopedLogs;
     }
 
+    if (dateFilter) {
+      paramFilteredLogs = paramFilteredLogs.filter(log => log.createdAt && log.createdAt.startsWith(dateFilter));
+    }
+
     if (statusFilter !== "SIMULATION") return paramFilteredLogs;
 
     const seen = new Set<string>();
@@ -482,17 +517,20 @@ export const AdminAgentLogsPage: React.FC = () => {
     setPage(1);
     
     // Giữ lại các param lọc
-    const newParams = new URLSearchParams();
-    if (value === "SIMULATION") newParams.set("tab", "simulation");
-    if (scanSessionIdParam) newParams.set("scanSessionId", scanSessionIdParam);
-    if (productIdParam) newParams.set("productId", productIdParam);
-    if (sourceIdParam) newParams.set("sourceId", sourceIdParam);
-    if (productNameParam) newParams.set("productName", productNameParam);
+    const newParams = new URLSearchParams(searchParams);
+    if (value === "SIMULATION") {
+      newParams.set("tab", "simulation");
+      newParams.delete("triggerType");
+    } else {
+      newParams.delete("tab");
+    }
     setSearchParams(newParams);
   };
 
   const clearFilters = () => {
     setStatusFilter("");
+    setTriggerTypeFilter("");
+    setDateFilter("");
     setSearch("");
     setPage(1);
     setSearchParams(new URLSearchParams());
@@ -507,6 +545,49 @@ export const AdminAgentLogsPage: React.FC = () => {
       {error && (
         <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium rounded-xl">
           {error}
+        </div>
+      )}
+
+      {/* Cron Summary */}
+      {cronSummary && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 shadow-sm p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Tóm tắt quét tồn kho ban đêm (Cron)</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Lần quét gần nhất lúc {cronSummary.time}
+              </p>
+            </div>
+            <Link to={`/admin/agent-logs?triggerType=SCHEDULED_CRON_SCAN&scanSessionId=${cronSummary.scanSessionId}`}>
+              <Button size="sm" variant="outline" className="bg-white border-blue-200 text-blue-700">Xem chi tiết lần quét này</Button>
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="p-3 rounded-xl border border-indigo-100 bg-indigo-50/50 flex flex-col">
+              <span className="text-xs font-semibold text-indigo-600 uppercase">Đã kiểm tra</span>
+              <div className="text-2xl font-bold text-indigo-700 mt-1">{cronSummary.totalChecked}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-emerald-100 bg-emerald-50/50 flex flex-col">
+              <span className="text-xs font-semibold text-emerald-600 uppercase">Đã tạo yêu cầu</span>
+              <div className="text-2xl font-bold text-emerald-700 mt-1">{cronSummary.createdCount}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-amber-100 bg-amber-50/50 flex flex-col">
+              <span className="text-xs font-semibold text-amber-600 uppercase">Cần chú ý / Thấp</span>
+              <div className="text-2xl font-bold text-amber-700 mt-1">{cronSummary.warningCount}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-orange-100 bg-orange-50/50 flex flex-col">
+              <span className="text-xs font-semibold text-orange-600 uppercase">Thiếu NCC</span>
+              <div className="text-2xl font-bold text-orange-700 mt-1">{cronSummary.noSupplierCount}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-purple-100 bg-purple-50/50 flex flex-col">
+              <span className="text-xs font-semibold text-purple-600 uppercase">Đã có PR</span>
+              <div className="text-2xl font-bold text-purple-700 mt-1">{cronSummary.duplicateCount}</div>
+            </div>
+            <div className="p-3 rounded-xl border border-rose-100 bg-rose-50/50 flex flex-col">
+              <span className="text-xs font-semibold text-rose-600 uppercase">Lỗi kỹ thuật</span>
+              <div className="text-2xl font-bold text-rose-700 mt-1">{cronSummary.errorCount}</div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -601,7 +682,39 @@ export const AdminAgentLogsPage: React.FC = () => {
             placeholder="Tìm theo hành động, trạng thái, sản phẩm, nội dung..."
             className="w-full lg:max-w-md rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none transition focus:border-amber-700 focus:ring-2 focus:ring-amber-50"
           />
-
+          <div className="flex gap-2 flex-wrap">
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => {
+                setDateFilter(e.target.value);
+                const newParams = new URLSearchParams(searchParams);
+                if (e.target.value) newParams.set("date", e.target.value);
+                else newParams.delete("date");
+                setSearchParams(newParams);
+              }}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none text-slate-600 focus:border-amber-700"
+            />
+            <select
+              value={triggerTypeFilter}
+              onChange={(e) => {
+                setTriggerTypeFilter(e.target.value);
+                const newParams = new URLSearchParams(searchParams);
+                if (e.target.value) newParams.set("triggerType", e.target.value);
+                else newParams.delete("triggerType");
+                setSearchParams(newParams);
+              }}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none text-slate-600 focus:border-amber-700"
+            >
+              <option value="">Tất cả sự kiện</option>
+              <option value="SCHEDULED_CRON_SCAN">Cron Ban Đêm</option>
+              <option value="MANUAL_ADMIN_SCAN">Quét Thủ Công</option>
+              <option value="ORDER_COMPLETED">Đơn Hàng Mới</option>
+              <option value="PURCHASE_RECEIVED">Nhập Hàng</option>
+            </select>
+          </div>
+        </div>
+        <div className="px-4 py-3 border-b border-slate-100 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between bg-slate-50/50">
           <div className="flex flex-wrap items-center gap-2">
             {(["", "SUCCESS", "SKIPPED", "FAILED", "RUNNING", "SIMULATION"] as AgentLogFilter[]).map((status) => (
               <button
@@ -672,7 +785,7 @@ export const AdminAgentLogsPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-700 max-w-sm">
-                        <span className="line-clamp-2">{getAgentLogDescription(log)}</span>
+                        <span className="line-clamp-2">{getAgentLogDisplayDescription(log)}</span>
                       </td>
                       <td className="px-4 py-3 text-slate-700">
                         {log.productName || log.productId || "-"}
@@ -738,7 +851,7 @@ export const AdminAgentLogsPage: React.FC = () => {
               <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
                 <Info size={14} className="text-amber-800" /> Thông tin xử lý
               </h4>
-              <p className="text-slate-800 font-semibold">{getAgentLogDescription(selectedLog)}</p>
+              <p className="text-slate-800 font-semibold">{getAgentLogDisplayDescription(selectedLog)}</p>
               <div className="grid sm:grid-cols-2 gap-2 text-xs text-slate-600">
                 <span>Trạng thái kỹ thuật: <b>{selectedLog.status}</b></span>
                 <span>Action kỹ thuật: <b>{selectedLog.action}</b></span>

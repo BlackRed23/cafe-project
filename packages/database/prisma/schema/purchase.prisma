@@ -8,25 +8,25 @@ enum PurchaseRequestStatus {
 }
 
 model PurchaseRequest {
-  id            String                @id @default(cuid())
-  requestNumber String                @unique
-  status        PurchaseRequestStatus @default(PENDING)
-  supplierId    String
-  supplier      Supplier              @relation(fields: [supplierId], references: [id])
-  notes         String?
-  aiGenerated   Boolean               @default(false)
-  totalAmount   Decimal               @default(0) @db.Decimal(12, 2)
-  requestedBy   String
-  requester     User                  @relation("RequestedBy", fields: [requestedBy], references: [id])
-  approvedBy    String?
-  approver      User?                 @relation("ApprovedBy", fields: [approvedBy], references: [id])
-  approvedAt    DateTime?
-  emailSentAt   DateTime?
-  emailContent  String?
-  retryCount    Int                   @default(0)
+  id             String                @id @default(cuid())
+  requestNumber  String                @unique
+  status         PurchaseRequestStatus @default(PENDING)
+  supplierId     String
+  supplier       Supplier              @relation(fields: [supplierId], references: [id])
+  notes          String?
+  aiGenerated    Boolean               @default(false)
+  totalAmount    Decimal               @default(0) @db.Decimal(12, 2)
+  requestedBy    String
+  requester      User                  @relation("RequestedBy", fields: [requestedBy], references: [id])
+  approvedBy     String?
+  approver       User?                 @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  approvedAt     DateTime?
+  emailSentAt    DateTime?
+  emailContent   String?
+  retryCount     Int                   @default(0)
   lastEmailError String?
-  receivedAt    DateTime?
-  items         PurchaseRequestItem[]
+  receivedAt     DateTime?
+  items          PurchaseRequestItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -47,5 +47,6 @@ model PurchaseRequestItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   @@unique([requestId, productId])
 }

@@ -1,13 +1,7 @@
 import { apiClient, unwrapApiData, unwrapApiList } from "./client";
 import type { Inventory, InventoryTransaction } from "../types/inventory.types";
 
-type ThresholdSuggestionParams = {
-  salesWindowDays?: number;
-  bufferDays?: number;
-  delayBufferDays?: number;
-  planningPeriod?: "WEEKLY" | "MONTHLY" | "CUSTOM";
-  planningDays?: number;
-};
+
 
 const normalizeInventoryMutation = (payload: any) => {
   const data = unwrapApiData<any>(payload);
@@ -34,6 +28,10 @@ const normalizeInventory = (inventory: any): Inventory => {
   const productName = inventory?.productName ?? inventory?.product_name ?? inventory?.product?.name ?? "Sản phẩm";
   const unit = inventory?.unit ?? inventory?.product?.unit;
 
+  const safetyStock = inventory?.safetyStock !== undefined && inventory?.safetyStock !== null ? Number(inventory.safetyStock) : undefined;
+  const leadTimeDemand = inventory?.leadTimeDemand !== undefined && inventory?.leadTimeDemand !== null ? Number(inventory.leadTimeDemand) : undefined;
+  const recommendedThreshold = inventory?.recommendedThreshold !== undefined && inventory?.recommendedThreshold !== null ? Number(inventory.recommendedThreshold) : (inventory?.minThreshold ?? 0);
+
   return {
     ...inventory,
     productId,
@@ -50,6 +48,9 @@ const normalizeInventory = (inventory: any): Inventory => {
     min_threshold: inventory?.min_threshold ?? minThreshold,
     minStock: inventory?.minStock ?? minThreshold,
     min_stock: inventory?.min_stock ?? minThreshold,
+    safetyStock,
+    leadTimeDemand,
+    recommendedThreshold,
     unit,
     product: inventory?.product ?? {
       id: productId,
@@ -99,6 +100,12 @@ export const inventoryApi = {
     return inventories.filter((i) => (i.availableStock ?? i.quantity) < (i.minThreshold ?? i.min_threshold ?? 5));
   },
 
+  getInventoryById: async (id: string): Promise<Inventory> => {
+    const response = await apiClient.get(`/inventories/${id}`);
+    const data = unwrapApiData<any>(response.data);
+    return normalizeInventory(data?.inventory ?? data);
+  },
+
   getLowStock: async (): Promise<Inventory[]> => inventoryApi.getLowStockInventories(),
 
   updateInventory: async (productId: string, payload: { minThreshold?: number; min_threshold?: number; quantity?: number }): Promise<any> => {
@@ -119,11 +126,13 @@ export const inventoryApi = {
     throw new Error("Invalid payload for updateInventory");
   },
 
-  importInventory: async (payload: { productId: string; quantity: number; note?: string }): Promise<any> => {
+  importInventory: async (payload: { productId: string; quantity: number; note?: string; batchCode?: string; expirationDate?: string }): Promise<any> => {
     const response = await apiClient.post("/inventories/import", {
       inventoryId: await resolveInventoryId(payload.productId),
       quantity: payload.quantity,
       note: payload.note,
+      batchCode: payload.batchCode,
+      expirationDate: payload.expirationDate,
     });
     return normalizeInventoryMutation(response.data);
   },
@@ -142,9 +151,9 @@ export const inventoryApi = {
     return unwrapApiList<any>(response.data, "transactions").map(normalizeTransaction);
   },
 
-  getThresholdSuggestion: async (inventoryId: string, params?: ThresholdSuggestionParams): Promise<any> => {
+  getThresholdSuggestion: async (inventoryId: string): Promise<any> => {
     const resolvedInventoryId = await resolveInventoryId(inventoryId);
-    const response = await apiClient.get(`/inventories/${resolvedInventoryId}/suggest-threshold`, { params });
+    const response = await apiClient.get(`/inventories/${resolvedInventoryId}/suggest-threshold`);
     const data = unwrapApiData<any>(response.data);
     return data?.suggestion || data || {};
   },

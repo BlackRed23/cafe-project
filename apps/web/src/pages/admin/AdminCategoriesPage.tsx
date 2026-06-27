@@ -186,6 +186,7 @@ export const AdminCategoriesPage: React.FC = () => {
               <tr>
                 <th className="px-6 py-4">Tên danh mục</th>
                 <th className="px-6 py-4">Mô tả</th>
+                <th className="px-6 py-4">Sản phẩm thuộc danh mục</th>
                 <th className="px-6 py-4 text-right">Thao tác</th>
               </tr>
             </thead>
@@ -203,6 +204,29 @@ export const AdminCategoriesPage: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 text-slate-600 whitespace-normal min-w-[200px]">
                       {cat.description || <span className="text-slate-400 italic">Không có mô tả</span>}
+                    </td>
+                    <td className="px-6 py-4 min-w-[250px]">
+                      {!cat.products || cat.products.length === 0 ? (
+                        <span className="text-slate-400 italic text-sm">Chưa có sản phẩm</span>
+                      ) : (
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md w-fit">
+                            {cat.productCount} sản phẩm
+                          </span>
+                          <div className="flex flex-wrap gap-1.5 mt-0.5">
+                            {cat.products.map(p => (
+                              <span key={p.id} className="text-xs text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md truncate max-w-[150px]" title={p.name}>
+                                {p.name}
+                              </span>
+                            ))}
+                            {(cat.productCount || 0) > cat.products.length && (
+                              <span className="text-xs text-slate-500 bg-slate-50 border border-slate-200 px-2 py-1 rounded-md">
+                                +{(cat.productCount || 0) - cat.products.length} khác
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -226,7 +250,7 @@ export const AdminCategoriesPage: React.FC = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={3} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
                     Không tìm thấy danh mục nào
                   </td>
                 </tr>

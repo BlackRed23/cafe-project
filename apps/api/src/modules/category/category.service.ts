@@ -3,14 +3,19 @@ import { HttpError } from '../../common/http-error';
 import { categoryRepository } from './category.repository';
 import type { CreateCategoryInput, UpdateCategoryInput } from './category.validator';
 
-export type CategoryDto = Pick<Category, 'id' | 'name' | 'description' | 'createdAt' | 'updatedAt'>;
+export type CategoryDto = Pick<Category, 'id' | 'name' | 'description' | 'createdAt' | 'updatedAt'> & {
+    productCount?: number;
+    products?: { id: string; name: string; sku: string }[];
+};
 
-const toCategoryDto = (category: Category): CategoryDto => ({
+const toCategoryDto = (category: any): CategoryDto => ({
     id: category.id,
     name: category.name,
     description: category.description,
     createdAt: category.createdAt,
-    updatedAt: category.updatedAt
+    updatedAt: category.updatedAt,
+    productCount: category._count?.products,
+    products: category.products
 });
 
 const normalizeDescription = (description: string | null | undefined): string | null | undefined => {

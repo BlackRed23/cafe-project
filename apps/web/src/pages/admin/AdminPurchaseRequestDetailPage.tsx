@@ -11,6 +11,7 @@ import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { Modal } from "../../components/common/Modal";
 import { getErrorMessage } from "../../api/client";
 import { useToast } from "../../contexts/ToastContext";
+import { systemSettingsApi } from "../../api/systemSettings.api";
 
 const TOAST_DURATION = 4500;
 
@@ -80,8 +81,8 @@ const getQuantityDisplay = (pr: PurchaseRequest): string => {
   return `${suggestedQty}${inventoryUnit ? ` ${inventoryUnit}` : ""}`;
 };
 
-const buildManualEmailSubject = (pr: PurchaseRequest): string => {
-  if ((pr.items?.length ?? 0) > 1) return "Yêu cầu báo giá/đặt hàng sản phẩm cho Cafe Admin";
+const buildManualEmailSubject = (pr: PurchaseRequest, storeName: string): string => {
+  if ((pr.items?.length ?? 0) > 1) return `Yêu cầu báo giá/đặt hàng sản phẩm cho ${storeName}`;
   return `Yêu cầu báo giá/đặt hàng ${getPrimaryProductName(pr)} - ${getQuantityDisplay(pr)}`;
 };
 
@@ -103,12 +104,12 @@ const buildManualEmailItemsList = (pr: PurchaseRequest): string => {
     .join("\n");
 };
 
-const buildManualEmailBody = (pr: PurchaseRequest): string => {
+const buildManualEmailBody = (pr: PurchaseRequest, storeName: string): string => {
   const supplierName = pr.supplier?.name || "nhà cung cấp";
 
   return `Kính gửi ${supplierName},
 
-Cafe Admin đang có nhu cầu đặt hàng/báo giá cho các sản phẩm sau:
+${storeName} đang có nhu cầu đặt hàng/báo giá cho các sản phẩm sau:
 
 ${buildManualEmailItemsList(pr)}
 
@@ -121,7 +122,7 @@ Vui lòng hỗ trợ xác nhận:
 Nếu có thay đổi về quy cách đóng gói, số lượng tối thiểu hoặc thời gian giao hàng, vui lòng phản hồi lại để chúng tôi xác nhận trước khi đặt hàng chính thức.
 
 Trân trọng,
-Cafe Admin`;
+${storeName}`;
 };
 
 export const AdminPurchaseRequestDetailPage: React.FC = () => {
@@ -130,6 +131,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
   const [pr, setPr] = useState<PurchaseRequest | null>(null);
   const [emailPreview, setEmailPreview] = useState<PurchaseRequestEmailPreview | null>(null);
   const [manualEmailDraft, setManualEmailDraft] = useState<PurchaseRequestEmailPreview | null>(null);
+  const [storeName, setStoreName] = useState("Cafe Admin");
   const [isLoading, setIsLoading] = useState(true);
   const [showConfirmApprove, setShowConfirmApprove] = useState(false);
   const [showConfirmReceive, setShowConfirmReceive] = useState(false);
@@ -235,6 +237,11 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
 
   useEffect(() => {
     fetchPR();
+    systemSettingsApi.getSetting('store.name').then(setting => {
+      if (setting && setting.value) {
+        setStoreName(setting.value);
+      }
+    }).catch(console.error);
   }, [fetchPR]);
 
   const emailDraft = useMemo(() => {
@@ -332,8 +339,8 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
 
     setEmailModalMode(mode);
     setEditEmailTo(emailDraft?.to || pr.supplier?.email || "");
-    setEditEmailSubject(emailDraft?.subject?.trim() || buildManualEmailSubject(pr));
-    setEditEmailBody(emailDraft?.body?.trim() || buildManualEmailBody(pr));
+    setEditEmailSubject(emailDraft?.subject?.trim() || buildManualEmailSubject(pr, storeName));
+    setEditEmailBody(emailDraft?.body?.trim() || buildManualEmailBody(pr, storeName));
     setShowEmailModal(true);
   };
 

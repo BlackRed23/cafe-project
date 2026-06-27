@@ -34,15 +34,15 @@ export const normalizeAgentLogStatus = (result?: string, errorMessage?: string):
   return "SUCCESS";
 };
 
-const asObject = (value: unknown): Record<string, any> =>
-  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, any>) : {};
+const parseAgentLogJsonField = (value: unknown) => {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return null;
 
-const parseJsonObject = (value: unknown): Record<string, any> => {
-  if (typeof value !== "string" || !value.trim()) return asObject(value);
   try {
-    return asObject(JSON.parse(value));
+    return JSON.parse(value);
   } catch {
-    return {};
+    return null;
   }
 };
 
@@ -78,8 +78,8 @@ const normalizeAgentOutput = (output: Record<string, any>): Record<string, any> 
 };
 
 const normalizeAgentLog = (log: any): AgentLog => {
-  const input = parseJsonObject(log?.input);
-  const parsedOutput = parseJsonObject(log?.output);
+  const input = parseAgentLogJsonField(log?.input) || {};
+  const parsedOutput = parseAgentLogJsonField(log?.output) || {};
   const output = Object.keys(parsedOutput).length ? normalizeAgentOutput(parsedOutput) : parsedOutput;
   const result = firstString(log?.result, log?.status) || "";
   const errorMessage = firstString(log?.errorMessage, log?.error_message, log?.error);
@@ -98,8 +98,8 @@ const normalizeAgentLog = (log: any): AgentLog => {
       : normalizeAgentLogStatus(result, errorMessage),
     result,
     reason: firstString(log?.reason, output.reason, input.reason, result),
-    description: firstString(log?.description, log?.data?.description, output?.description, output?.message, log?.message) || "",
-    message: firstString(log?.message, log?.description, output?.message, output?.description) || "",
+    description: firstString(output?.description, output?.message, log?.description, log?.data?.description, log?.message, log?.reasoning) || "",
+    message: firstString(output?.message, output?.description, log?.message, log?.description) || "",
     triggerType: firstString(log?.triggerType, input.triggerType),
     sourceType: firstString(log?.sourceType, log?.source_type, input.sourceType, output.sourceType),
     sourceId: firstString(log?.sourceId, log?.source_id, input.sourceId, output.sourceId),

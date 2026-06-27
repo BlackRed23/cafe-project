@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { systemSettingsApi } from "../../api/systemSettings.api";
 import {
   LayoutDashboard,
   Coffee,
@@ -66,6 +67,32 @@ const MENU_GROUPS = [
 export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
   const location = useLocation();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [storeName, setStoreName] = useState("Cafe Admin");
+
+  useEffect(() => {
+    let mounted = true;
+    systemSettingsApi.getSetting('store.name').then(setting => {
+      if (mounted && setting && setting.value) {
+        setStoreName(setting.value);
+      }
+    }).catch(() => {
+      if (mounted) setStoreName("Cafe Admin");
+    });
+
+    const handleSettingsUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ key: string; value: string }>;
+      if (customEvent.detail?.key === "store.name") {
+        setStoreName(customEvent.detail.value || "Cafe Admin");
+      }
+    };
+
+    window.addEventListener("system-settings-updated", handleSettingsUpdated);
+
+    return () => {
+      mounted = false;
+      window.removeEventListener("system-settings-updated", handleSettingsUpdated);
+    };
+  }, []);
 
   const isActive = (path: string) => {
     if (path === "/admin/inventory" && location.pathname.startsWith("/admin/inventory/transactions")) {
@@ -96,7 +123,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
           </div>
           <div>
             <span className="text-[14px] font-black text-white tracking-wide uppercase font-serif leading-none block">
-              Cafe Admin
+              {storeName}
             </span>
             <span className="text-[11px] font-medium text-amber-400/60 tracking-widest block mt-0.5">
               Management System

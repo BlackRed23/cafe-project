@@ -1,12 +1,12 @@
 model Supplier {
-  id       String            @id @default(cuid())
-  name     String
-  email    String?
-  contact  String?
-  address  String?
-  status   String            @default("ACTIVE")
-  deletedAt DateTime?
-  products SupplierProduct[]
+  id               String            @id @default(cuid())
+  name             String
+  email            String?
+  contact          String?
+  address          String?
+  status           String            @default("ACTIVE")
+  deletedAt        DateTime?
+  products         SupplierProduct[]
   purchaseRequests PurchaseRequest[]
 
   createdAt DateTime @default(now())
@@ -14,18 +14,18 @@ model Supplier {
 }
 
 model SupplierProduct {
-  id               String   @id @default(cuid())
-  supplierId       String
-  supplier         Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  productId        String
-  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  price            Decimal  @db.Decimal(12, 2)
-  supplierSku      String?
-  minOrderQuantity Int      @default(1)
-  leadTimeDays     Int      @default(3)
-  isPreferred      Boolean  @default(false)
-  purchaseUnit     String?
-  conversionQuantity Float?
+  id                   String   @id @default(cuid())
+  supplierId           String
+  supplier             Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  productId            String
+  product              Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  price                Decimal  @db.Decimal(12, 2)
+  supplierSku          String?
+  minOrderQuantity     Int      @default(1)
+  leadTimeDays         Int      @default(3)
+  isPreferred          Boolean  @default(false)
+  purchaseUnit         String?
+  conversionQuantity   Float?
   conversionTargetUnit String?
 
   createdAt DateTime @default(now())

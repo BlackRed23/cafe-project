@@ -11,9 +11,9 @@ export const dashboardService = {
 
         // 2. Inventory metrics
         const inventories = await prisma.inventory.findMany();
-        const totalQuantity = inventories.reduce((sum, inv) => sum + inv.quantity, 0);
-        const lowStockCount = inventories.filter((inv) => inv.quantity <= inv.minThreshold && inv.quantity > 0).length;
-        const outOfStockCount = inventories.filter((inv) => inv.quantity <= 0).length;
+        const totalQuantity = inventories.reduce((sum: number, inv: { quantity: number }) => sum + inv.quantity, 0);
+        const lowStockCount = inventories.filter((inv: { quantity: number, minThreshold: number }) => inv.quantity <= inv.minThreshold && inv.quantity > 0).length;
+        const outOfStockCount = inventories.filter((inv: { quantity: number }) => inv.quantity <= 0).length;
 
         // 3. Orders metrics
         const todayOrders = await prisma.order.count({
@@ -73,7 +73,7 @@ export const dashboardService = {
                 totalAmount: true
             }
         });
-        const totalRevenue = completedOrdersList.reduce((sum, order) => sum + Number(order.totalAmount), 0);
+        const totalRevenue = completedOrdersList.reduce((sum: number, order: { totalAmount: any }) => sum + Number(order.totalAmount), 0);
 
         // Get details of the last AI recommendation scan for the dashboard AI widget
         const lastScanLog = await prisma.agentLog.findFirst({
@@ -203,15 +203,15 @@ export const dashboardService = {
         });
 
         return inventories
-            .filter((inv) => inv.quantity <= inv.minThreshold)
-            .map((inv) => ({
+            .filter((inv: { quantity: number, minThreshold: number }) => inv.quantity <= inv.minThreshold)
+            .map((inv: any) => ({
                 productName: inv.product.name,
                 sku: inv.product.sku,
                 quantity: inv.quantity,
                 threshold: inv.minThreshold,
                 status: inv.quantity <= 0 ? 'OUT OF STOCK' : 'LOW STOCK'
             }))
-            .sort((a, b) => a.quantity - b.quantity);
+            .sort((a: { quantity: number }, b: { quantity: number }) => a.quantity - b.quantity);
     },
 
     async getRecentActivity() {

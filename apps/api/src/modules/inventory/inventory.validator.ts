@@ -8,6 +8,8 @@ export const importInventorySchema = z.object({
     supplierId: z.string().trim().min(1, 'Supplier is required.').optional(),
     quantity: z.coerce.number().int('Số lượng phải là số nguyên.').positive('Số lượng phải lớn hơn 0.').optional(),
     purchaseQuantity: z.coerce.number().positive('Số lượng nhập phải lớn hơn 0.').optional(),
+    batchCode: z.string().trim().optional(),
+    expirationDate: z.string().trim().min(1, 'Ngày hết hạn là bắt buộc.'),
     note: z.string().trim().max(1000, 'Ghi chú tối đa 1000 ký tự.').optional().nullable()
 }).superRefine((data, ctx) => {
     if (data.quantity === undefined && data.purchaseQuantity === undefined) {
