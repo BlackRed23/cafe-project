@@ -11,7 +11,7 @@ node_modules/
 .pnp.js
 
 # Build outputs
-
+docs/
 dist/
 build/
 .next/
@@ -20,14 +20,19 @@ out/
 .turbo/
 .vercel
 
-# Test outputs
+# Playwright runtime/sensitive
+**/storageState.json
 
-coverage/
+# Playwright outputs
 test-results/
 playwright-report/
 blob-report/
-playwright/.auth/
+coverage/
+
+# Playwright videos/traces
 playwright-videos/
+**/trace.zip
+**/*.webm
 
 # Logs
 
@@ -49,14 +54,6 @@ temp/
 # Generated screenshots / temporary artifacts
 
 screenshots/
-docs/screenshots/generated/
-docs/testing/results/
-docs/testing/tmp/
-docs/archive/tmp/
-docs/archive/*.txt
-docs/archive/*.py
-docs/archive/*.js
-docs/
 
 # OS / IDE
 
@@ -75,7 +72,3 @@ Thumbs.db
 *.bak
 *.old
 *.orig
-
-tools/test-live/
-scratch/
-tests/
