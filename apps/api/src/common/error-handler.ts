@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { MulterError } from 'multer';
 import { Prisma } from '@cafe-project/database';
+import { env } from './env';
 import { HttpError } from './http-error';
 import { sendError } from './response';
 
@@ -58,5 +59,8 @@ export const errorHandler = (error: Error & { status?: number }, _req: Request, 
     }
 
     console.error('[api]', error);
-    sendError(res, 500, 'Internal server error.');
+    const message = env.nodeEnv === 'development'
+        ? `${error.message}\n${error.stack}`
+        : 'Internal server error.';
+    sendError(res, 500, message);
 };
