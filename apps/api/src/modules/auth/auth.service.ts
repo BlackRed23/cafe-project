@@ -104,28 +104,36 @@ const sendResetPasswordEmail = async (email: string, token: string): Promise<voi
 };
 
 const fetchGoogleUserInfo = async (accessToken: string): Promise<GoogleUserInfo> => {
-    const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: {
-            Authorization: `Bearer ${accessToken}`
+    try {
+        const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new HttpError(401, 'Invalid Google access token.');
         }
-    });
 
-    if (!response.ok) {
-        throw new HttpError(401, 'Invalid Google access token.');
+        const data = await response.json() as Partial<GoogleUserInfo>;
+
+        if (!data.sub || !data.email) {
+            throw new HttpError(401, 'Google account information is incomplete.');
+        }
+
+        return {
+            sub: data.sub,
+            email: data.email.toLowerCase(),
+            name: data.name,
+            picture: data.picture
+        };
+    } catch (error) {
+        if (error instanceof HttpError) {
+            throw error;
+        }
+        console.error('Error fetching Google user info:', error);
+        throw new HttpError(503, 'Failed to connect to Google authentication service. Please check your internet connection and try again.');
     }
-
-    const data = await response.json() as Partial<GoogleUserInfo>;
-
-    if (!data.sub || !data.email) {
-        throw new HttpError(401, 'Google account information is incomplete.');
-    }
-
-    return {
-        sub: data.sub,
-        email: data.email.toLowerCase(),
-        name: data.name,
-        picture: data.picture
-    };
 };
 
 export const registerUser = async (input: RegisterInput): Promise<AuthUser> => {
