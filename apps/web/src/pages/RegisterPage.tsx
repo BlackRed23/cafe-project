@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import { useGoogleLogin } from "@react-oauth/google";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { Input } from "../components/common/Input";
@@ -8,7 +9,7 @@ import { getErrorMessage } from "../api/client";
 import { Coffee } from "lucide-react";
 
 export const RegisterPage: React.FC = () => {
-  const { register } = useAuth();
+  const { register, loginWithGoogle } = useAuth();
   const toast = useToast();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -18,6 +19,7 @@ export const RegisterPage: React.FC = () => {
   const [errors, setErrors] = useState<{ name?: string; email?: string; phone?: string; password?: string; confirmPassword?: string }>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,6 +74,27 @@ export const RegisterPage: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  const handleGoogleRegister = useGoogleLogin({
+    onSuccess: async ({ access_token }) => {
+      setApiError(null);
+      setIsGoogleLoading(true);
+      try {
+        await loginWithGoogle(access_token);
+        toast.success("Đăng ký Google thành công.");
+      } catch (err: any) {
+        const errorMessage = getErrorMessage(err);
+        setApiError(errorMessage);
+        toast.error("Đăng ký Google thất bại", errorMessage || "Vui lòng thử lại.");
+      } finally {
+        setIsGoogleLoading(false);
+      }
+    },
+    onError: () => {
+      toast.error("Đăng ký Google thất bại", "Không thể lấy quyền truy cập từ Google.");
+    },
+    scope: "openid email profile",
+  });
 
   return (
     <div className="max-w-md w-full mx-auto my-12 bg-white rounded-2xl border border-slate-200 p-8 shadow-xl">
@@ -141,6 +164,25 @@ export const RegisterPage: React.FC = () => {
           Đăng ký
         </Button>
       </form>
+
+      <div className="my-6 flex items-center gap-3">
+        <div className="h-px flex-1 bg-slate-200" />
+        <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Hoặc</span>
+        <div className="h-px flex-1 bg-slate-200" />
+      </div>
+
+      <Button
+        type="button"
+        variant="secondary"
+        className="w-full py-3"
+        isLoading={isGoogleLoading}
+        onClick={() => handleGoogleRegister()}
+      >
+        <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-sm font-bold text-slate-700">
+          G
+        </span>
+        Đăng ký với Google
+      </Button>
 
       {/* Navigation to Login */}
       <p className="text-center text-sm text-slate-500 mt-6">

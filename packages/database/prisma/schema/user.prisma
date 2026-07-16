@@ -5,14 +5,18 @@ enum UserRole {
 }
 
 model User {
-  id       String   @id @default(cuid())
-  email    String   @unique
-  password String
-  name     String
-  phone    String?
-  avatar   String?
-  role     UserRole @default(CUSTOMER)
-  isActive Boolean  @default(true)
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  password            String?
+  name                String
+  phone               String?
+  avatar              String?
+  googleId            String?   @unique
+  provider            String?
+  resetToken          String?   @unique
+  resetTokenExpiresAt DateTime?
+  role                UserRole  @default(CUSTOMER)
+  isActive            Boolean   @default(true)
 
   orders                    Order[]
   inventoryTransactions     InventoryTransaction[]
