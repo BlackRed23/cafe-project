@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: cafe-api
+    runtime: node
+    rootDir: .
+    buildCommand: npm install && npm run build -w @cafe-project/database && npm run generate -w @cafe-project/database && npm run build -w @cafe-project/api
+    startCommand: npx prisma db push --schema=packages/database/prisma/schema --skip-generate && npm run start -w @cafe-project/api
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
