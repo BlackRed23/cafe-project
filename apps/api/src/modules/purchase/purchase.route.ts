@@ -16,7 +16,7 @@ router.post('/', ...adminOnly, validateBody(createPurchaseRequestSchema), asyncH
 router.patch('/:id/approve', ...adminOnly, asyncHandler(approvePurchaseRequest));
 router.patch('/:id/reject', ...adminOnly, validateBody(rejectPurchaseRequestSchema), asyncHandler(rejectPurchaseRequest));
 router.patch('/:id/mark-sent', ...adminOnly, asyncHandler(markPurchaseRequestSent));
-router.patch('/:id/receive', ...adminOnly, validateBody(receivePurchaseRequestSchema), asyncHandler(receivePurchaseRequest));
+router.patch('/:id/receive', ...canView, validateBody(receivePurchaseRequestSchema), asyncHandler(receivePurchaseRequest));
 router.post('/:id/mark-paid', ...adminOnly, validateBody(markPurchaseRequestPaidSchema), asyncHandler(markPurchaseRequestPaid));
 router.patch('/:id/complete', ...adminOnly, asyncHandler(completePurchaseRequest));
 router.delete('/:id', ...adminOnly, asyncHandler(removePurchaseRequest));

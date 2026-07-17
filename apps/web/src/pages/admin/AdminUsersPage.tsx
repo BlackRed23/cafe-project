@@ -25,7 +25,7 @@ export const AdminUsersPage: React.FC = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<"ADMIN" | "CUSTOMER" | "USER">("CUSTOMER");
+  const [role, setRole] = useState<"ADMIN" | "CUSTOMER" | "USER" | "STAFF">("CUSTOMER");
   const [isActiveUser, setIsActiveUser] = useState(true);
   const [password, setPassword] = useState("");
   const [modalLoading, setModalLoading] = useState(false);
@@ -170,16 +170,24 @@ export const AdminUsersPage: React.FC = () => {
     {
       header: "Quyền hạn",
       render: (u: User) => {
-        const isAdmin = u.role === "ADMIN";
+        let label = "Khách hàng";
+        let icon = <UserIcon size={12} />;
+        let colorClass = "bg-slate-50 text-slate-600 border-slate-200";
+
+        if (u.role === "ADMIN") {
+          label = "Admin";
+          icon = <Shield size={12} />;
+          colorClass = "bg-amber-50 text-amber-800 border-amber-200";
+        } else if (u.role === "STAFF") {
+          label = "Nhân viên";
+          icon = <Users size={12} />;
+          colorClass = "bg-blue-50 text-blue-800 border-blue-200";
+        }
+
         return (
-          <span
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-bold border transition-colors ${isAdmin
-                ? "bg-amber-50 text-amber-800 border-amber-200"
-                : "bg-slate-50 text-slate-650 border-slate-200"
-              }`}
-          >
-            {isAdmin ? <Shield size={12} /> : <UserIcon size={12} />}
-            {isAdmin ? "Admin" : "Khách hàng"}
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-bold border transition-colors ${colorClass}`}>
+            {icon}
+            {label}
           </span>
         );
       },
@@ -306,6 +314,7 @@ export const AdminUsersPage: React.FC = () => {
             label="Quyền hạn hệ thống"
             options={[
               { value: "CUSTOMER", label: "Khách hàng thân thiết" },
+              { value: "STAFF", label: "Nhân viên (STAFF)" },
               { value: "ADMIN", label: "Quản trị viên (ADMIN)" },
             ]}
             value={role}

@@ -6,8 +6,10 @@ import { Button } from "../../components/common/Button";
 import { Input } from "../../components/common/Input";
 import { Loading } from "../../components/common/Loading";
 import { getErrorMessage } from "../../api/client";
+import { useAuth } from "../../contexts/AuthContext";
 
 export const AdminCategoriesPage: React.FC = () => {
+  const { isStaff } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -146,9 +148,11 @@ export const AdminCategoriesPage: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-800">Danh mục sản phẩm</h1>
           <p className="text-sm text-slate-500 mt-1">Quản lý phân loại các sản phẩm trong hệ thống</p>
         </div>
-        <Button onClick={() => handleOpenModal()} className="flex items-center gap-2 px-4 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-xl shadow-sm">
-          <Plus size={18} /> Thêm danh mục
-        </Button>
+        {!isStaff && (
+          <Button onClick={() => handleOpenModal()} className="flex items-center gap-2 px-4 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-xl shadow-sm">
+            <Plus size={18} /> Thêm danh mục
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -187,7 +191,7 @@ export const AdminCategoriesPage: React.FC = () => {
                 <th className="px-6 py-4">Tên danh mục</th>
                 <th className="px-6 py-4">Mô tả</th>
                 <th className="px-6 py-4">Sản phẩm thuộc danh mục</th>
-                <th className="px-6 py-4 text-right">Thao tác</th>
+                {!isStaff && <th className="px-6 py-4 text-right">Thao tác</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -228,9 +232,10 @@ export const AdminCategoriesPage: React.FC = () => {
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
+                    {!isStaff && (
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
                           onClick={() => handleOpenModal(cat)}
                           className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           title="Chỉnh sửa"
@@ -243,14 +248,15 @@ export const AdminCategoriesPage: React.FC = () => {
                           title="Xóa"
                         >
                           <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={isStaff ? 3 : 4} className="px-6 py-8 text-center text-slate-500">
                     Không tìm thấy danh mục nào
                   </td>
                 </tr>

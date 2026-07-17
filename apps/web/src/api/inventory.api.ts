@@ -27,6 +27,7 @@ const normalizeInventory = (inventory: any): Inventory => {
   const productId = inventory?.productId ?? inventory?.product_id;
   const productName = inventory?.productName ?? inventory?.product_name ?? inventory?.product?.name ?? "Sản phẩm";
   const unit = inventory?.unit ?? inventory?.product?.unit;
+  const sellableQuantity = Number(inventory?.sellableQuantity ?? 0);
 
   const safetyStock = inventory?.safetyStock !== undefined && inventory?.safetyStock !== null ? Number(inventory.safetyStock) : undefined;
   const leadTimeDemand = inventory?.leadTimeDemand !== undefined && inventory?.leadTimeDemand !== null ? Number(inventory.leadTimeDemand) : undefined;
@@ -44,6 +45,7 @@ const normalizeInventory = (inventory: any): Inventory => {
     reserved_stock: inventory?.reserved_stock ?? reservedStock,
     availableStock,
     available_stock: inventory?.available_stock ?? availableStock,
+    sellableQuantity,
     minThreshold,
     min_threshold: inventory?.min_threshold ?? minThreshold,
     minStock: inventory?.minStock ?? minThreshold,
@@ -74,6 +76,11 @@ const normalizeTransaction = (transaction: any): InventoryTransaction => ({
     id: transaction?.productId ?? transaction?.product_id,
     name: transaction?.productName ?? "Sản phẩm",
   },
+  user: transaction?.createdBy ? {
+    id: "unknown",
+    name: transaction.createdBy,
+    email: transaction.createdByEmail ?? "",
+  } : null,
 });
 
 const resolveInventoryId = async (productIdOrInventoryId: string): Promise<string> => {

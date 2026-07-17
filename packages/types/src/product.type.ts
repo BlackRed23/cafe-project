@@ -9,10 +9,21 @@ export type ProductCategory = {
   description: string | null;
 };
 
+export type InventoryBatch = {
+  id: string;
+  inventoryId: string;
+  batchCode: string;
+  quantity: number;
+  expirationDate: string | Date;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+};
+
 export type ProductInventory = {
   quantity: number;
   minThreshold: number;
   unit: string;
+  batches?: InventoryBatch[];
 };
 
 export type Product = {

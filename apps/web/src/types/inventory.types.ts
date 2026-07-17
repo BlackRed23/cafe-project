@@ -42,6 +42,7 @@ export interface Inventory {
   openPurchaseRequestId?: string;
   openPurchaseRequestCode?: string;
   openPurchaseRequestStatus?: string;
+  sellableQuantity?: number;
 }
 
 export interface InventoryTransaction {
@@ -58,4 +59,9 @@ export interface InventoryTransaction {
   note?: string;
   createdAt?: string;
   created_at?: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
 }

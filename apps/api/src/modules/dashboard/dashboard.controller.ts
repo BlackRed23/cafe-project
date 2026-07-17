@@ -3,6 +3,15 @@ import { sendSuccess, sendError } from '../../common/response';
 import type { AuthenticatedRequest } from '../auth/auth.middleware';
 import { dashboardService } from './dashboard.service';
 
+export const getStaffSummary = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+        const summary = await dashboardService.getStaffSummary();
+        sendSuccess(res, 200, 'Get staff dashboard summary successfully.', summary);
+    } catch (error: any) {
+        sendError(res, 500, error.message || 'Unable to retrieve staff dashboard summary.');
+    }
+};
+
 export const getSummary = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
         const summary = await dashboardService.getSummary();

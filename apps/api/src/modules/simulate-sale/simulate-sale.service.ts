@@ -81,7 +81,10 @@ export const simulateSaleService = {
                     triggerType: 'SIMULATE_SALE'
                 },
                 output: {
-                    description: `Mô phỏng bán hoàn tất. AI Agent đã kiểm tra tồn kho.`
+                    description: `Mô phỏng bán hoàn tất. AI Agent đã kiểm tra tồn kho.`,
+                    agentWarning: scan.agentWarning || null,
+                    createdPurchaseRequestsCount: scan.createdPurchaseRequests?.length || 0,
+                    scanSessionId: scan.scanSessionId || null
                 },
                 creator: userId ? { connect: { id: userId } } : undefined
             }).catch(console.error);
@@ -165,7 +168,10 @@ export const simulateSaleService = {
                     triggerType: 'SIMULATE_SALE'
                 },
                 output: {
-                    description: `Mô phỏng bán hoàn tất. AI Agent đã kiểm tra tồn kho.`
+                    description: `Mô phỏng bán hoàn tất. AI Agent đã kiểm tra tồn kho.`,
+                    agentWarning: scan.agentWarning || null,
+                    createdPurchaseRequestsCount: scan.createdPurchaseRequests?.length || 0,
+                    scanSessionId: scan.scanSessionId || null
                 },
                 creator: userId ? { connect: { id: userId } } : undefined
             }).catch(console.error);
@@ -217,7 +223,10 @@ export const simulateSaleService = {
                     triggerType: 'SIMULATE_SALE'
                 },
                 output: {
-                    description: `Mô phỏng bán hoàn tất. AI Agent đã kiểm tra tồn kho.`
+                    description: `Mô phỏng bán hoàn tất. AI Agent đã kiểm tra tồn kho.`,
+                    agentWarning: scan.agentWarning || null,
+                    createdPurchaseRequestsCount: scan.createdPurchaseRequests?.length || 0,
+                    scanSessionId: scan.scanSessionId || null
                 },
                 creator: userId ? { connect: { id: userId } } : undefined
             }).catch(console.error);
@@ -245,7 +254,9 @@ export const simulateSaleService = {
                 triggerType: 'SIMULATE_SALE_REVERTED'
             },
             output: {
-                description: `Đã khôi phục mô phỏng bán sản phẩm ${restored.productName}. Tồn kho cộng lại ${restored.decreasedQuantity}.`
+                description: `Đã khôi phục mô phỏng bán sản phẩm ${restored.productName}. Tồn kho cộng lại ${restored.decreasedQuantity}.`,
+                restoredQuantity: restored.decreasedQuantity,
+                finalStock: restored.restoredStock
             },
             creator: userId ? { connect: { id: userId } } : undefined
         }).catch(console.error);

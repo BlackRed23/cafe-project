@@ -85,6 +85,10 @@ const getAgentActionLabel = (log: AgentLog) => {
     return "Chuyển đề xuất thành yêu cầu nhập hàng";
   }
 
+  if (action === "SCAN_INVENTORY_EXPIRED" || action === "SCAN_INVENTORY_CRITICAL_EXPIRY" || action === "SCAN_INVENTORY_NEAR_EXPIRY" || reason === "EXPIRED" || reason === "CRITICAL_EXPIRY" || reason === "NEAR_EXPIRY") {
+    return "Cảnh báo hạn sử dụng";
+  }
+
   return "Xử lý tồn kho";
 };
 
@@ -111,6 +115,10 @@ const getAgentStatusLabel = (log: AgentLog) => {
 
   if (log.status === "SKIPPED" && (log.reason === "STOCK_OK" || log.reason === "ABOVE_THRESHOLD")) {
     return "Bỏ qua vì tồn kho an toàn";
+  }
+
+  if (log.result === "WARNING" && (log.reason === "EXPIRED" || log.reason === "CRITICAL_EXPIRY" || log.reason === "NEAR_EXPIRY")) {
+    return "Cảnh báo";
   }
 
   if (log.status === "FAILED") {
@@ -147,6 +155,9 @@ const getReasonText = (code: string | undefined | null) => {
     case "CREATED_PURCHASE_REQUEST": return "AI Agent đã tạo yêu cầu nhập hàng cho sản phẩm này.";
     case "RECOMMENDED": return "AI Agent đã tạo đề xuất nhập hàng cho sản phẩm này.";
     case "CONVERTED_TO_PR": return "Đề xuất nhập hàng đã được chuyển thành yêu cầu nhập hàng.";
+    case "EXPIRED": return "Phát hiện lô hàng đã hết hạn.";
+    case "CRITICAL_EXPIRY": return "Phát hiện lô hàng sắp hết hạn mức độ nghiêm trọng.";
+    case "NEAR_EXPIRY": return "Phát hiện lô hàng cận hạn.";
     default: return "";
   }
 };
@@ -256,9 +267,9 @@ const isInventoryScanLog = (log: AgentLog) => {
 
   if (action.startsWith("SCAN_INVENTORY")) return true;
 
-  if (["CREATED_PURCHASE_REQUEST", "ACTIVE_PR_EXISTS", "SKIPPED_DUPLICATE", "NO_SUPPLIER", "NO_SUPPLIERS_MAPPED", "SUPPLIERS_INACTIVE", "STOCK_OK", "ABOVE_THRESHOLD"].includes(result) || ["CREATED_PURCHASE_REQUEST", "ACTIVE_PR_EXISTS", "SKIPPED_DUPLICATE", "NO_SUPPLIER", "NO_SUPPLIERS_MAPPED", "SUPPLIERS_INACTIVE", "STOCK_OK", "ABOVE_THRESHOLD"].includes(reason)) return true;
+  if (["CREATED_PURCHASE_REQUEST", "ACTIVE_PR_EXISTS", "SKIPPED_DUPLICATE", "NO_SUPPLIER", "NO_SUPPLIERS_MAPPED", "SUPPLIERS_INACTIVE", "STOCK_OK", "ABOVE_THRESHOLD", "EXPIRED", "CRITICAL_EXPIRY", "NEAR_EXPIRY"].includes(result) || ["CREATED_PURCHASE_REQUEST", "ACTIVE_PR_EXISTS", "SKIPPED_DUPLICATE", "NO_SUPPLIER", "NO_SUPPLIERS_MAPPED", "SUPPLIERS_INACTIVE", "STOCK_OK", "ABOVE_THRESHOLD", "EXPIRED", "CRITICAL_EXPIRY", "NEAR_EXPIRY"].includes(reason)) return true;
 
-  if (message.includes("tồn kho") || message.includes("inventory") || message.includes("nhập hàng")) return true;
+  if (message.includes("tồn kho") || message.includes("inventory") || message.includes("nhập hàng") || message.includes("hết hạn") || message.includes("cận hạn")) return true;
 
   return false;
 };

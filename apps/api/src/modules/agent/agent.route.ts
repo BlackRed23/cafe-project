@@ -12,9 +12,10 @@ import {
 import { recommendReorderSchema, scanInventorySchema } from './agent.validator';
 
 const router = Router();
+const canView = [authenticate, requireRole(['ADMIN', 'STAFF'])];
 const adminOnly = [authenticate, requireRole(['ADMIN'])];
 
-router.get('/logs', ...adminOnly, asyncHandler(getLogs));
+router.get('/logs', ...canView, asyncHandler(getLogs));
 router.post('/scan-inventory', ...adminOnly, validateBody(scanInventorySchema), asyncHandler(scanInventory));
 router.post('/recommend-reorder', ...adminOnly, validateBody(recommendReorderSchema), asyncHandler(recommendReorder));
 router.get('/recommendations', ...adminOnly, asyncHandler(getRecommendations));

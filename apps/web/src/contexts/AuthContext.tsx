@@ -7,6 +7,7 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isStaff: boolean;
   loading: boolean;
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
@@ -60,7 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem("user", JSON.stringify(data.user));
         
         // Redirect according to user role
-        if (data.user.role === "ADMIN") {
+        if (data.user.role === "ADMIN" || data.user.role === "STAFF") {
           window.location.href = "/admin/dashboard";
         } else {
           window.location.href = "/";
@@ -104,6 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isAuthenticated = !!user;
   const isAdmin = user?.role === "ADMIN";
+  const isStaff = user?.role === "STAFF";
 
   return (
     <AuthContext.Provider
@@ -112,6 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         isAuthenticated,
         isAdmin,
+        isStaff,
         loading,
         login,
         register,

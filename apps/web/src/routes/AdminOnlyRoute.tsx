@@ -3,12 +3,12 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { Loading } from "../components/common/Loading";
 
-interface AdminRouteProps {
+interface AdminOnlyRouteProps {
   children: React.ReactNode;
 }
 
-export const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
-  const { isAuthenticated, isAdmin, isStaff, loading } = useAuth();
+export const AdminOnlyRoute: React.FC<AdminOnlyRouteProps> = ({ children }) => {
+  const { isAuthenticated, isAdmin, loading } = useAuth();
 
   if (loading) {
     return <Loading message="Đang kiểm tra quyền hạn..." fullPage />;
@@ -18,8 +18,8 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (!isAdmin && !isStaff) {
-    return <Navigate to="/products" replace />;
+  if (!isAdmin) {
+    return <Navigate to="/admin/dashboard" replace />;
   }
 
   return <>{children}</>;

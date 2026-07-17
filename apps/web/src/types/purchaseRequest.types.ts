@@ -65,6 +65,8 @@ export interface PurchaseRequest {
   paymentStatus?: PurchaseRequestPaymentStatus;
   paidAt?: string | null;
   paymentNote?: string | null;
+  receivedAmount?: number;
+  amountPaid?: number;
 
   suggestedQuantity?: number;
   suggested_quantity?: number;

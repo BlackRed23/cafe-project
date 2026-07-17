@@ -4,6 +4,7 @@ import { CustomerLayout } from "../layouts/CustomerLayout";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { AdminRoute } from "./AdminRoute";
+import { AdminOnlyRoute } from "./AdminOnlyRoute";
 
 // Customer pages
 import { HomePage } from "../pages/HomePage";
@@ -114,16 +115,16 @@ export const AppRoutes: React.FC = () => {
           <Route path="inventory" element={<AdminInventoryPage />} />
           <Route path="inventory/transactions" element={<AdminInventoryTransactionsPage />} />
           <Route path="inventory/:inventoryId" element={<AdminInventoryDetailPage />} />
-          <Route path="suppliers" element={<AdminSuppliersPage />} />
+          <Route path="suppliers" element={<AdminOnlyRoute><AdminSuppliersPage /></AdminOnlyRoute>} />
           <Route path="orders" element={<AdminOrdersPage />} />
           <Route path="orders/:id" element={<AdminOrderDetailPage />} />
-          <Route path="simulate-sale" element={<AdminSimulateSalePage />} />
+          <Route path="simulate-sale" element={<AdminOnlyRoute><AdminSimulateSalePage /></AdminOnlyRoute>} />
           <Route path="purchase-requests" element={<AdminPurchaseRequestsPage />} />
           <Route path="purchase-requests/:id" element={<AdminPurchaseRequestDetailPage />} />
           <Route path="agent-logs" element={<AdminAgentLogsPage />} />
-          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="users" element={<AdminOnlyRoute><AdminUsersPage /></AdminOnlyRoute>} />
           <Route path="change-password" element={<ChangePasswordPage />} />
-          <Route path="system-settings" element={<AdminSystemSettingsPage />} />
+          <Route path="system-settings" element={<AdminOnlyRoute><AdminSystemSettingsPage /></AdminOnlyRoute>} />
           <Route path="notifications" element={<AdminNotificationsPage />} />
         </Route>
 

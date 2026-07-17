@@ -12,6 +12,7 @@ import { formatDate } from "../../utils/formatDate";
 import { Loading } from "../../components/common/Loading";
 import { Button } from "../../components/common/Button";
 import { Badge } from "../../components/common/Badge";
+import { useAuth } from "../../contexts/AuthContext";
 import {
   Package,
   Receipt,
@@ -33,6 +34,7 @@ import {
 
 export const AdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
+  const { isStaff } = useAuth();
   const [stats, setStats] = useState({
     totalProducts: 0,
     totalOrders: 0,
@@ -48,6 +50,18 @@ export const AdminDashboardPage: React.FC = () => {
     const loadDashboardData = async () => {
       try {
         setIsLoading(true);
+        
+        if (isStaff) {
+          const statsData = await dashboardApi.getStaffStats().catch(() => ({} as any));
+          setStats({
+            totalProducts: 0,
+            totalOrders: statsData.todayOrders || 0,
+            lowStockCount: statsData.lowStockCount || 0,
+            pendingPRsCount: statsData.pendingReceivePRsCount || 0,
+          });
+          return;
+        }
+
         const [statsData, allOrders, allProducts, lowStock, pendingPRs] = await Promise.all([
           dashboardApi.getStats().catch(() => ({} as any)),
           ordersApi.getOrders().catch(() => [] as Order[]),
@@ -105,7 +119,38 @@ export const AdminDashboardPage: React.FC = () => {
     );
   }
 
-  const statCards = [
+  const statCards = isStaff ? [
+    {
+      title: "Đơn hàng hôm nay",
+      val: stats.totalOrders,
+      desc: "Phát sinh trong ngày",
+      icon: Receipt,
+      path: "/admin/orders",
+      iconColor: "text-emerald-700",
+      iconBg: "bg-emerald-100",
+      trend: "Mới nhất",
+    },
+    {
+      title: "Tồn kho thấp",
+      val: stats.lowStockCount,
+      desc: "Cần nhập hàng sớm",
+      icon: AlertTriangle,
+      path: "/admin/inventory",
+      iconColor: "text-rose-700",
+      iconBg: "bg-rose-100",
+      trend: stats.lowStockCount > 0 ? "⚠ Cần xử lý" : "Ổn định",
+    },
+    {
+      title: "PRs chờ nhận hàng",
+      val: stats.pendingPRsCount,
+      desc: "Hàng đang về kho",
+      icon: FileSpreadsheet,
+      path: "/admin/purchase-requests",
+      iconColor: "text-violet-700",
+      iconBg: "bg-violet-100",
+      trend: stats.pendingPRsCount > 0 ? "Cần nhận hàng" : "Không có hàng về",
+    },
+  ] : [
     {
       title: "Tổng sản phẩm",
       val: stats.totalProducts,
@@ -176,12 +221,14 @@ export const AdminDashboardPage: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <Button
-            onClick={() => navigate("/admin/simulate-sale")}
-            className="flex items-center gap-1.5 bg-amber-800 hover:bg-amber-900 border-none shadow-md shadow-amber-900/20 text-white"
-          >
-            <Play size={14} /> Chạy Giả Lập Bán
-          </Button>
+          {!isStaff && (
+            <Button
+              onClick={() => navigate("/admin/simulate-sale")}
+              className="flex items-center gap-1.5 bg-amber-800 hover:bg-amber-900 border-none shadow-md shadow-amber-900/20 text-white"
+            >
+              <Play size={14} /> Chạy Giả Lập Bán
+            </Button>
+          )}
           <Button
             onClick={() => navigate("/admin/orders")}
             variant="outline"
@@ -229,31 +276,34 @@ export const AdminDashboardPage: React.FC = () => {
       </div>
 
       {/* ── QUICK ACTIONS ── */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Xem Đơn hàng", path: "/admin/orders", icon: Receipt, color: "hover:border-amber-300 hover:bg-amber-50/30" },
-          { label: "Mô phỏng bán", path: "/admin/simulate-sale", icon: Play, color: "hover:border-violet-300 hover:bg-violet-50/30" },
-          { label: "Duyệt PR", path: "/admin/purchase-requests", icon: FileSpreadsheet, color: "hover:border-teal-300 hover:bg-teal-50/30" },
-          { label: "Agent Logs", path: "/admin/agent-logs", icon: Eye, color: "hover:border-slate-300 hover:bg-slate-50/30" },
-        ].map((action, idx) => {
-          const Icon = action.icon;
-          return (
-            <button
-              key={idx}
-              onClick={() => navigate(action.path)}
-              className={`flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 transition-all duration-200 group ${action.color}`}
-            >
-              <Icon size={16} className="text-slate-400 group-hover:text-amber-800 transition-colors" />
-              {action.label}
-              <ArrowRight size={14} className="ml-auto text-slate-300 group-hover:text-amber-700 group-hover:translate-x-0.5 transition-all" />
-            </button>
-          );
-        })}
-      </div>
+      {!isStaff && (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { label: "Xem Đơn hàng", path: "/admin/orders", icon: Receipt, color: "hover:border-amber-300 hover:bg-amber-50/30" },
+            { label: "Mô phỏng bán", path: "/admin/simulate-sale", icon: Play, color: "hover:border-violet-300 hover:bg-violet-50/30" },
+            { label: "Duyệt PR", path: "/admin/purchase-requests", icon: FileSpreadsheet, color: "hover:border-teal-300 hover:bg-teal-50/30" },
+            { label: "Agent Logs", path: "/admin/agent-logs", icon: Eye, color: "hover:border-slate-300 hover:bg-slate-50/30" },
+          ].map((action, idx) => {
+            const Icon = action.icon;
+            return (
+              <button
+                key={idx}
+                onClick={() => navigate(action.path)}
+                className={`flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 transition-all duration-200 group ${action.color}`}
+              >
+                <Icon size={16} className="text-slate-400 group-hover:text-amber-800 transition-colors" />
+                {action.label}
+                <ArrowRight size={14} className="ml-auto text-slate-300 group-hover:text-amber-700 group-hover:translate-x-0.5 transition-all" />
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── MAIN CONTENT GRID ── */}
-      <div className="grid lg:grid-cols-3 gap-6 items-start">
-        {/* Recent Orders */}
+      {!isStaff && (
+        <div className="grid lg:grid-cols-3 gap-6 items-start">
+          {/* Recent Orders */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
           <div className="flex items-center justify-between mb-5">
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
@@ -381,10 +431,12 @@ export const AdminDashboardPage: React.FC = () => {
           )}
         </div>
       </div>
+      )}
 
       {/* ── DEMO FLOW ── */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
-        <div className="mb-5">
+      {!isStaff && (
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
+          <div className="mb-5">
           <h3 className="font-bold text-slate-800 flex items-center gap-2">
             <Sparkles size={16} className="text-amber-700" />
             Luồng demo hệ thống
@@ -439,7 +491,8 @@ export const AdminDashboardPage: React.FC = () => {
             <Eye size={12} className="mr-1" /> Xem Agent Logs
           </Button>
         </div>
-      </div>
+        </div>
+      )}
     </div>
   );
 };

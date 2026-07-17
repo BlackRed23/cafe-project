@@ -15,11 +15,13 @@ import { Input } from "../../components/common/Input";
 import { DataTable } from "../../components/admin/DataTable";
 import { AlertCircle, PlusCircle, Sliders, Settings, Package, CheckCircle, Info, X } from "lucide-react";
 import { getErrorMessage } from "../../api/client";
+import { useAuth } from "../../contexts/AuthContext";
 
-type InventoryTab = "ALL" | "LOW_STOCK" | "WARNING";
+type InventoryTab = "ALL" | "LOW_STOCK" | "WARNING" | "EXPIRING_SOON";
 
 export const AdminInventoryPage: React.FC = () => {
   const navigate = useNavigate();
+  const { isStaff } = useAuth();
   const [inventories, setInventories] = useState<Inventory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -468,6 +470,16 @@ export const AdminInventoryPage: React.FC = () => {
     if (activeInventoryTab === "WARNING") {
       return matchesSearch && (status === "AT_THRESHOLD" || status === "WARNING");
     }
+    if (activeInventoryTab === "EXPIRING_SOON") {
+      const hasExpiringBatch = (inv as any).batches?.some((b: any) => {
+          const startOfToday = new Date();
+          startOfToday.setHours(0, 0, 0, 0);
+          const expDate = new Date(b.expirationDate);
+          const daysLeft = Math.ceil((expDate.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24));
+          return daysLeft <= 7 && b.quantity > 0;
+      });
+      return matchesSearch && hasExpiringBatch;
+    }
     return matchesSearch;
   });
 
@@ -486,6 +498,16 @@ export const AdminInventoryPage: React.FC = () => {
     return status === "AT_THRESHOLD" || status === "WARNING";
   }).length;
 
+  const expiringCount = inventories.filter((inv) => {
+    return (inv as any).batches?.some((b: any) => {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        const expDate = new Date(b.expirationDate);
+        const daysLeft = Math.ceil((expDate.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24));
+        return daysLeft <= 7 && b.quantity > 0;
+    });
+  }).length;
+
   const columns = [
     {
       header: "Sản phẩm",
@@ -494,12 +516,28 @@ export const AdminInventoryPage: React.FC = () => {
         const available = inv.availableStock ?? inv.quantity;
         const status = getInventoryStatus(available, threshold);
         const isLow = status === "OUT_OF_STOCK" || status === "LOW_STOCK";
+        
+        const expiringBatches = ((inv as any).batches || []).filter((b: any) => {
+            const startOfToday = new Date();
+            startOfToday.setHours(0, 0, 0, 0);
+            const expDate = new Date(b.expirationDate);
+            const daysLeft = Math.ceil((expDate.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24));
+            return daysLeft <= 7 && b.quantity > 0;
+        });
+
         return (
-          <div className="flex items-center gap-2.5">
-            {isLow && <AlertCircle className="text-rose-500 flex-shrink-0 animate-pulse" size={15} />}
-            <span className={`font-semibold ${isLow ? "text-rose-700" : "text-slate-800"}`}>
-              {inv.product?.name || "Sản phẩm không tên"}
-            </span>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2.5">
+              {isLow && <AlertCircle className="text-rose-500 flex-shrink-0 animate-pulse" size={15} />}
+              <span className={`font-semibold ${isLow ? "text-rose-700" : "text-slate-800"}`}>
+                {inv.product?.name || "Sản phẩm không tên"}
+              </span>
+            </div>
+            {expiringBatches.length > 0 && (
+              <span className="bg-orange-100 text-orange-700 text-[10px] font-bold px-1.5 py-0.5 rounded w-fit">
+                {expiringBatches.length} lô cận/hết hạn
+              </span>
+            )}
           </div>
         );
       },
@@ -583,46 +621,50 @@ export const AdminInventoryPage: React.FC = () => {
             >
               Chi tiết
             </button>
-            {shouldShowPRBtn && !inv.hasOpenPurchaseRequest && (
-              hasSupplier ? (
+            {!isStaff && (
+              <>
+                {shouldShowPRBtn && !inv.hasOpenPurchaseRequest && (
+                  hasSupplier ? (
+                    <button
+                      onClick={() => handleOpenModal(inv, "create_pr")}
+                      className={`${actionBtnClass} border-amber-600 bg-amber-600 text-white hover:bg-amber-700`}
+                    >
+                      <PlusCircle size={13} /> Tạo YC nhập
+                    </button>
+                  ) : (
+                    <span className={`${actionBtnClass} bg-slate-100 text-slate-600 border-slate-200`}>
+                      Thiếu NCC
+                    </span>
+                  )
+                )}
+                {inv.hasOpenPurchaseRequest && (
+                  <Link
+                    to={`/admin/purchase-requests/${inv.openPurchaseRequestId}`}
+                    className={`${actionBtnClass} border-amber-200 bg-amber-50 text-amber-700`}
+                  >
+                    Đã có yêu cầu
+                  </Link>
+                )}
                 <button
-                  onClick={() => handleOpenModal(inv, "create_pr")}
-                  className={`${actionBtnClass} border-amber-600 bg-amber-600 text-white hover:bg-amber-700`}
+                  onClick={() => handleOpenModal(inv, "import")}
+                  className={`${actionBtnClass} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
                 >
-                  <PlusCircle size={13} /> Tạo YC nhập
+                  <PlusCircle size={13} /> Nhập kho
                 </button>
-              ) : (
-                <span className={`${actionBtnClass} bg-slate-100 text-slate-600 border-slate-200`}>
-                  Thiếu NCC
-                </span>
-              )
+                <button
+                  onClick={() => handleOpenModal(inv, "adjust")}
+                  className={`${actionBtnClass} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
+                >
+                  <Sliders size={13} /> Điều chỉnh
+                </button>
+                <button
+                  onClick={() => handleOpenModal(inv, "threshold")}
+                  className={`${actionBtnClass} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
+                >
+                  <Settings size={13} /> Ngưỡng
+                </button>
+              </>
             )}
-            {inv.hasOpenPurchaseRequest && (
-              <Link
-                to={`/admin/purchase-requests/${inv.openPurchaseRequestId}`}
-                className={`${actionBtnClass} border-amber-200 bg-amber-50 text-amber-700`}
-              >
-                Đã có yêu cầu
-              </Link>
-            )}
-            <button
-              onClick={() => handleOpenModal(inv, "import")}
-              className={`${actionBtnClass} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
-            >
-              <PlusCircle size={13} /> Nhập kho
-            </button>
-            <button
-              onClick={() => handleOpenModal(inv, "adjust")}
-              className={`${actionBtnClass} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
-            >
-              <Sliders size={13} /> Điều chỉnh
-            </button>
-            <button
-              onClick={() => handleOpenModal(inv, "threshold")}
-              className={`${actionBtnClass} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
-            >
-              <Settings size={13} /> Ngưỡng
-            </button>
           </div>
         );
       },
@@ -659,36 +701,51 @@ export const AdminInventoryPage: React.FC = () => {
           <button
             onClick={() => setActiveInventoryTab("WARNING")}
             className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeInventoryTab === "WARNING"
+              ? "border-amber-600 text-amber-700 bg-amber-50/50"
+              : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+              }`}
+          >
+            <AlertCircle size={16} className={activeInventoryTab === "WARNING" ? "text-amber-600" : "text-amber-500"} />
+            <span>Cảnh báo ngưỡng {warnCount > 0 && `(${warnCount})`}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveInventoryTab("EXPIRING_SOON")}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeInventoryTab === "EXPIRING_SOON"
               ? "border-orange-600 text-orange-700 bg-orange-50/50"
               : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50"
               }`}
           >
-            <AlertCircle size={16} className={activeInventoryTab === "WARNING" ? "text-orange-600" : "text-orange-500"} />
-            <span>Cảnh báo ngưỡng {warnCount > 0 && `(${warnCount})`}</span>
+            <AlertCircle size={16} className={activeInventoryTab === "EXPIRING_SOON" ? "text-orange-600" : "text-orange-500"} />
+            <span>Sắp hết hạn {expiringCount > 0 && `(${expiringCount})`}</span>
           </button>
 
           <div className="flex flex-wrap items-center gap-3 ml-auto py-2 sm:py-0 pr-2">
-            <Button
-              onClick={handleScanInventory}
-              disabled={isScanningInventory}
-              className="flex items-center gap-2 bg-Brown-600 hover:bg-Brown-700 text-white border-transparent transition-colors shadow-sm"
-              size="sm"
-            >
-              {isScanningInventory ? (
-                <span>Đang quét...</span>
-              ) : (
-                <>
+            {!isStaff && (
+              <>
+                <Button
+                  onClick={handleScanInventory}
+                  disabled={isScanningInventory}
+                  className="flex items-center gap-2 bg-Brown-600 hover:bg-Brown-700 text-white border-transparent transition-colors shadow-sm"
+                  size="sm"
+                >
+                  {isScanningInventory ? (
+                    <span>Đang quét...</span>
+                  ) : (
+                    <>
 
-                  <span>Quét tồn kho bằng AI Agent</span>
-                </>
-              )}
-            </Button>
-            <Link
-              to="/admin/agent-logs"
-              className="text-sm font-semibold text-Brown-600 hover:text-Brown-800 hover:underline whitespace-nowrap"
-            >
-              Xem Nhật ký Agent
-            </Link>
+                      <span>Quét tồn kho bằng AI Agent</span>
+                    </>
+                  )}
+                </Button>
+                <Link
+                  to="/admin/agent-logs"
+                  className="text-sm font-semibold text-Brown-600 hover:text-Brown-800 hover:underline whitespace-nowrap"
+                >
+                  Xem Nhật ký Agent
+                </Link>
+              </>
+            )}
           </div>
         </div>
 

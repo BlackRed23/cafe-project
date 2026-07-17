@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { asyncHandler } from '../../common/async-handler';
 import { validateBody } from '../../common/validate';
 import { authenticate, requireRole } from '../auth/auth.middleware';
@@ -6,7 +6,7 @@ import { findSystemSetting, listSystemSettings, patchSystemSetting } from './sys
 import { updateSystemSettingSchema } from './system-setting.validator';
 
 const router = Router();
-const canRead = [authenticate, requireRole(['ADMIN', 'STAFF'])];
+const canRead = [authenticate, requireRole(['ADMIN'])];
 const adminOnly = [authenticate, requireRole(['ADMIN'])];
 
 router.get('/', ...canRead, asyncHandler(listSystemSettings));

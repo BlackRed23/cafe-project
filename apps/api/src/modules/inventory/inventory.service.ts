@@ -44,6 +44,7 @@ export type InventoryDto = {
     openPurchaseRequestId?: string;
     openPurchaseRequestCode?: string;
     openPurchaseRequestStatus?: string;
+    sellableQuantity: number;
     batches?: any[];
 };
 
@@ -83,26 +84,40 @@ const getStatus = (availableStock: number, minThreshold: number): InventoryStatu
     return 'IN_STOCK';
 };
 
-const toInventoryDto = (inventory: InventoryRecord): InventoryDto => ({
-    id: inventory.id,
-    inventoryId: inventory.id,
-    productId: inventory.productId,
-    productImageUrl: inventory.product.imageUrl,
-    productName: inventory.product.name,
-    productSku: inventory.product.sku,
-    categoryName: inventory.product.category.name,
-    quantity: inventory.quantity,
-    stock: inventory.quantity,
-    reservedStock: inventory.reservedStock,
-    availableStock: inventory.quantity - inventory.reservedStock,
-    minThreshold: inventory.minThreshold,
-    minStock: inventory.minThreshold,
-    unit: inventory.unit,
-    status: getStatus(inventory.quantity - inventory.reservedStock, inventory.minThreshold),
-    createdAt: inventory.createdAt,
-    updatedAt: inventory.updatedAt,
-    batches: (inventory as any).batches ?? []
-});
+const toInventoryDto = (inventory: InventoryRecord): InventoryDto => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const batches = (inventory as any).batches ?? [];
+    const sellableQuantity = batches.reduce((sum: number, batch: any) => {
+        if (batch.quantity > 0 && new Date(batch.expirationDate) >= startOfToday) {
+            return sum + batch.quantity;
+        }
+        return sum;
+    }, 0);
+
+    return {
+        id: inventory.id,
+        inventoryId: inventory.id,
+        productId: inventory.productId,
+        productImageUrl: inventory.product.imageUrl,
+        productName: inventory.product.name,
+        productSku: inventory.product.sku,
+        categoryName: inventory.product.category.name,
+        quantity: inventory.quantity,
+        stock: inventory.quantity,
+        reservedStock: inventory.reservedStock,
+        availableStock: inventory.quantity - inventory.reservedStock,
+        sellableQuantity,
+        minThreshold: inventory.minThreshold,
+        minStock: inventory.minThreshold,
+        unit: inventory.unit,
+        status: getStatus(inventory.quantity - inventory.reservedStock, inventory.minThreshold),
+        createdAt: inventory.createdAt,
+        updatedAt: inventory.updatedAt,
+        batches
+    };
+};
 
 const toTransactionDto = (transaction: InventoryTransactionRecord): InventoryTransactionDto => ({
     id: transaction.id,

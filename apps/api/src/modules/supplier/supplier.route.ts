@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { asyncHandler } from '../../common/async-handler';
 import { validateBody } from '../../common/validate';
 import { authenticate, requireRole } from '../auth/auth.middleware';
@@ -7,7 +7,7 @@ import { createSupplierProductSchema, createSupplierSchema, updateSupplierProduc
 
 const supplierRoutes = Router();
 const supplierProductRoutes = Router();
-const canView = [authenticate, requireRole(['ADMIN', 'STAFF'])];
+const canView = [authenticate, requireRole(['ADMIN'])];
 const adminOnly = [authenticate, requireRole(['ADMIN'])];
 
 supplierRoutes.get('/', ...canView, asyncHandler(listSuppliers));
