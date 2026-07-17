@@ -5,12 +5,17 @@ import { formatDate } from "../../utils/formatDate";
 import { Loading } from "../../components/common/Loading";
 import { EmptyState } from "../../components/common/EmptyState";
 import { DataTable } from "../../components/admin/DataTable";
+import { Modal } from "../../components/common/Modal";
+import { Button } from "../../components/common/Button";
+import { Eye, User as UserIcon } from "lucide-react";
 
 export const AdminInventoryTransactionsPage: React.FC = () => {
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [selectedTx, setSelectedTx] = useState<InventoryTransaction | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -116,6 +121,32 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
       header: "Ghi chú",
       render: (tx: InventoryTransaction) => <span className="text-slate-500 font-light truncate block max-w-xs">{tx.note || "—"}</span>,
     },
+    {
+      header: "Người thực hiện",
+      render: (tx: InventoryTransaction) => (
+        <span className="text-slate-600 font-medium flex items-center gap-1.5">
+          <UserIcon size={14} className="text-slate-400" />
+          {tx.user?.name || "Hệ thống"}
+        </span>
+      ),
+    },
+    {
+      header: "",
+      render: (tx: InventoryTransaction) => (
+        <div className="flex justify-end">
+          <button
+            onClick={() => {
+              setSelectedTx(tx);
+              setIsModalOpen(true);
+            }}
+            className="p-1.5 text-slate-400 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors"
+            title="Xem chi tiết"
+          >
+            <Eye size={18} />
+          </button>
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -136,6 +167,71 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
           searchValue={search}
           onSearchChange={setSearch}
         />
+      )}
+
+      {isModalOpen && selectedTx && (
+        <Modal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          title="Chi tiết giao dịch tồn kho"
+        >
+          <div className="space-y-4 text-sm">
+            <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
+              <div className="col-span-1 text-slate-500">Sản phẩm</div>
+              <div className="col-span-2 font-semibold text-slate-800">{selectedTx.product?.name || "Sản phẩm không tên"}</div>
+            </div>
+            <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
+              <div className="col-span-1 text-slate-500">Loại hoạt động</div>
+              <div className="col-span-2">
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${getTypeBadgeColor(selectedTx.type)}`}>
+                  {getTransactionTypeLabel(selectedTx.type)}
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
+              <div className="col-span-1 text-slate-500">Số lượng biến động</div>
+              <div className="col-span-2 font-bold">
+                {(() => {
+                  const qtyChange = selectedTx.quantityChange ?? selectedTx.quantity_change ?? 0;
+                  const isPositive = qtyChange > 0;
+                  return (
+                    <span className={isPositive ? "text-emerald-600" : "text-rose-600"}>
+                      {isPositive ? `+${qtyChange}` : `${qtyChange}`}
+                    </span>
+                  );
+                })()}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
+              <div className="col-span-1 text-slate-500">Ngày giao dịch</div>
+              <div className="col-span-2 font-medium text-slate-700">
+                {(selectedTx.createdAt || selectedTx.created_at) ? formatDate(selectedTx.createdAt || selectedTx.created_at || "") : "N/A"}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
+              <div className="col-span-1 text-slate-500">Người thực hiện</div>
+              <div className="col-span-2">
+                {selectedTx.user ? (
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-slate-800">{selectedTx.user.name}</span>
+                    <span className="text-xs text-slate-500">{selectedTx.user.email}</span>
+                  </div>
+                ) : (
+                  <span className="font-medium text-slate-500 italic">Hệ thống / Không xác định</span>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-1 text-slate-500">Ghi chú</div>
+              <div className="col-span-2 text-slate-700 whitespace-pre-wrap">
+                {selectedTx.note || "—"}
+              </div>
+            </div>
+          </div>
+          <div className="mt-6 flex justify-end">
+            <Button onClick={() => setIsModalOpen(false)}>Đóng</Button>
+          </div>
+        </Modal>
       )}
     </div>
   );

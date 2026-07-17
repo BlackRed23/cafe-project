@@ -130,8 +130,7 @@ export const AdminSimulateSalePage: React.FC = () => {
   const currentQty = selectedInventory?.quantity ?? 0;
   const threshold = selectedInventory?.minThreshold ?? selectedInventory?.min_threshold ?? 0;
   // Compute availableStock per rules
-  const availableStock = selectedInventory?.availableStock ??
-    (selectedInventory?.quantity ?? 0) - (selectedInventory?.reservedStock ?? selectedInventory?.reserved_stock ?? 0);
+  const availableStock = selectedInventory?.sellableQuantity ?? 0;
   let unit = selectedProduct?.unit || "đơn vị";
   if (unit.toLowerCase() === "ly") unit = "đơn vị";
 
@@ -169,7 +168,7 @@ export const AdminSimulateSalePage: React.FC = () => {
       }
       const overStock = validItems.find(item => {
         const inv = inventories.find(i => i.productId === item.productId);
-        const available = inv?.availableStock ?? ((inv?.quantity ?? 0) - (inv?.reservedStock ?? 0));
+        const available = inv?.sellableQuantity ?? 0;
         return item.quantity > (available ?? 0);
       });
       if (overStock) {
@@ -186,7 +185,7 @@ export const AdminSimulateSalePage: React.FC = () => {
         return;
       }
       const inv = inventories.find(i => i.productId === selectedProductId);
-      const available = inv?.availableStock ?? ((inv?.quantity ?? 0) - (inv?.reservedStock ?? 0));
+      const available = inv?.sellableQuantity ?? 0;
       if (localSimulatedDemand > (available ?? 0)) {
         toast.error('Số lượng mô phỏng không được vượt quá tồn kho khả dụng.');
         return;
@@ -465,11 +464,11 @@ export const AdminSimulateSalePage: React.FC = () => {
 
     // Build pool of valid products
     const validPool = products
-      .filter((p) => p.isActive !== false)
+      .filter((p) => p.isActive !== false && !p.pendingDeleteUntil)
       .map((p) => {
         const inv = inventories.find((i) => i.productId === p.id);
         if (!inv) return null;
-        const available = inv.availableStock ?? ((inv.quantity ?? 0) - (inv.reservedStock ?? inv.reserved_stock ?? 0));
+        const available = inv.sellableQuantity ?? 0;
         if (available <= 0) return null;
         return { product: p, available };
       })
@@ -684,7 +683,7 @@ export const AdminSimulateSalePage: React.FC = () => {
                 </div>
                 {items.map((item, idx) => {
                   const inv = inventories.find(i => i.productId === item.productId);
-                  const available = inv ? (inv.availableStock ?? ((inv.quantity ?? 0) - (inv.reservedStock ?? inv.reserved_stock ?? 0))) : 0;
+                  const available = inv ? (inv.sellableQuantity ?? 0) : 0;
                   const isOverStock = item.quantity > available && available > 0;
                   return (
                     <div key={idx} className="grid grid-cols-[1fr_100px_44px] gap-2 items-center">

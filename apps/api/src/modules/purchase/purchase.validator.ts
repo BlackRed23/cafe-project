@@ -1,4 +1,4 @@
-﻿import { PurchaseRequestStatus } from '@cafe-project/database';
+import { PurchaseRequestStatus } from '@cafe-project/database';
 import { z } from 'zod';
 
 export const createPurchaseRequestSchema = z.object({
@@ -21,7 +21,23 @@ export const receivePurchaseRequestSchema = z.object({
     note: z.string().trim().max(1000, 'Note must be at most 1000 characters.').optional().nullable(),
     items: z.array(z.object({
         purchaseRequestItemId: z.string().trim().min(1, 'Purchase request item is required.'),
-        receivedQuantity: z.coerce.number().int('Received quantity must be an integer.').min(0, 'Received quantity must be greater than or equal to 0.')
+        receivedQuantity: z.coerce.number().int('Received quantity must be an integer.').min(0, 'Received quantity must be greater than or equal to 0.'),
+        batches: z.array(z.object({
+            batchCode: z.string().trim().optional().nullable(),
+            expirationDate: z.string().trim().min(1, 'Expiration date is required.'),
+            quantity: z.coerce.number().int('Quantity must be an integer.').positive('Quantity must be greater than 0.')
+        })).optional()
+    }).superRefine((data, ctx) => {
+        if (data.batches && data.batches.length > 0) {
+            const totalBatchQty = data.batches.reduce((sum, b) => sum + b.quantity, 0);
+            if (totalBatchQty !== data.receivedQuantity) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'Tổng số lượng các lô phải bằng đúng số lượng nhận.',
+                    path: ['batches']
+                });
+            }
+        }
     })).min(1, 'Receive items cannot be empty.')
 });
 

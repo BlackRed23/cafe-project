@@ -7,6 +7,7 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isStaff: boolean;
   loading: boolean;
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
@@ -60,7 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const redirectAfterAuth = (user?: User) => {
-    if (user?.role === "ADMIN") {
+    if (user?.role === "ADMIN" || user?.role === "STAFF") {
       window.location.href = "/admin/dashboard";
     } else {
       window.location.href = "/";
@@ -71,7 +72,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const data = await authApi.login(payload);
+
+      // Bắt buộc: lưu token + user vào localStorage TRƯỚC khi redirect
       persistAuth(data);
+
+      // Xác nhận token đã thực sự nằm trong localStorage trước khi điều hướng
+      const savedToken = localStorage.getItem("access_token");
+      if (!savedToken) {
+        throw new Error("Token không được lưu thành công sau khi login");
+      }
+
       redirectAfterAuth(data.user);
     } catch (error) {
       setLoading(false);
@@ -117,6 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isAuthenticated = !!user;
   const isAdmin = user?.role === "ADMIN";
+  const isStaff = user?.role === "STAFF";
 
   return (
     <AuthContext.Provider
@@ -125,6 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         isAuthenticated,
         isAdmin,
+        isStaff,
         loading,
         login,
         register,

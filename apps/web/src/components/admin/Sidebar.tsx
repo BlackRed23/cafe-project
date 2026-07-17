@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { systemSettingsApi } from "../../api/systemSettings.api";
+import { useAuth } from "../../contexts/AuthContext";
 import {
   LayoutDashboard,
   Coffee,
@@ -65,6 +66,7 @@ const MENU_GROUPS = [
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
+  const { isStaff } = useAuth();
   const location = useLocation();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [storeName, setStoreName] = useState("Cafe Admin");
@@ -144,6 +146,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
       {/* ── NAV MENU ── */}
       <div className="no-scrollbar flex flex-col overflow-y-auto flex-1 px-3 py-3 gap-1">
         {MENU_GROUPS.map((group) => {
+          const visibleItems = group.items.filter(item => {
+            if (isStaff) {
+              return !["/admin/suppliers", "/admin/users", "/admin/system-settings", "/admin/simulate-sale"].includes(item.path);
+            }
+            return true;
+          });
+
+          if (visibleItems.length === 0) return null;
+
           const isCollapsed = collapsedGroups[group.label];
           return (
             <div key={group.label} className="mb-1">
@@ -165,7 +176,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
               {/* Items */}
               {!isCollapsed && (
                 <ul className="flex flex-col gap-0.5">
-                  {group.items.map((item) => {
+                  {visibleItems.map((item) => {
                     const Icon = item.icon;
                     const active = isActive(item.path);
                     return (

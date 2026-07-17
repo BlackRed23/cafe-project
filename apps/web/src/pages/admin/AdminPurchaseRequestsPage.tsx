@@ -11,6 +11,7 @@ import { Badge } from "../../components/common/Badge";
 import { Loading } from "../../components/common/Loading";
 import { EmptyState } from "../../components/common/EmptyState";
 import { DataTable } from "../../components/admin/DataTable";
+import { useAuth } from "../../contexts/AuthContext";
 
 const paymentStatusLabel = (status?: string) => (status === "PAID" ? "Đã thanh toán" : "Chưa thanh toán");
 const paymentStatusClassName = (status?: string) =>
@@ -28,6 +29,7 @@ const FILTER_OPTIONS = [
 
 export const AdminPurchaseRequestsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { isStaff } = useAuth();
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +40,7 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
   const [products, setProducts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [inventories, setInventories] = useState<any[]>([]);
+  const [supplierProductsMapping, setSupplierProductsMapping] = useState<any[]>([]);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -74,14 +77,16 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
     setIsModalOpen(true);
     setIsFormLoading(true);
     try {
-      const [prodRes, suppRes, invRes] = await Promise.all([
+      const [prodRes, suppRes, invRes, spmRes] = await Promise.all([
         productsApi.getProducts(),
         suppliersApi.getSuppliers(),
         inventoryApi.getInventories(),
+        suppliersApi.getSupplierProducts(),
       ]);
       setProducts(prodRes);
       setSuppliers(suppRes);
       setInventories(invRes);
+      setSupplierProductsMapping(spmRes);
     } catch {
       showToast("Không thể tải danh sách sản phẩm hoặc nhà cung cấp.", "error");
     } finally {
@@ -274,13 +279,15 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
           )}
         </div>
 
-        <button
-          onClick={handleOpenModal}
-          className="flex items-center gap-2 rounded-xl bg-amber-800 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-900"
-        >
-          <Plus size={16} />
-          Tạo yêu cầu nhập hàng
-        </button>
+        {!isStaff && (
+          <button
+            onClick={handleOpenModal}
+            className="flex items-center gap-2 rounded-xl bg-amber-800 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-900"
+          >
+            <Plus size={16} />
+            Tạo yêu cầu nhập hàng
+          </button>
+        )}
       </div>
 
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">{error}</div>}
@@ -291,8 +298,8 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
             key={opt.value}
             onClick={() => setStatusFilter(opt.value)}
             className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-all duration-200 ${statusFilter === opt.value
-                ? "bg-amber-800 text-white shadow-sm"
-                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              ? "bg-amber-800 text-white shadow-sm"
+              : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
               }`}
           >
             {opt.label}
@@ -326,10 +333,10 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
       {toast && (
         <div
           className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${toast.type === "success"
-              ? "border border-emerald-200 bg-emerald-100 text-emerald-800"
-              : toast.type === "error"
-                ? "border border-rose-200 bg-rose-100 text-rose-800"
-                : "border border-blue-200 bg-blue-100 text-blue-800"
+            ? "border border-emerald-200 bg-emerald-100 text-emerald-800"
+            : toast.type === "error"
+              ? "border border-rose-200 bg-rose-100 text-rose-800"
+              : "border border-blue-200 bg-blue-100 text-blue-800"
             }`}
         >
           {toast.message}
@@ -354,7 +361,23 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
                   </label>
                   <select
                     value={selectedProductId}
-                    onChange={(e) => setSelectedProductId(e.target.value)}
+                    onChange={(e) => {
+                      const newProductId = e.target.value;
+                      setSelectedProductId(newProductId);
+                      if (newProductId) {
+                        const sps = supplierProductsMapping.filter(
+                          (sp: any) => sp.productId === newProductId || sp.product_id === newProductId
+                        );
+                        if (sps.length > 0) {
+                          const preferred = sps.find((sp: any) => sp.isPreferred || sp.is_preferred) || sps[0];
+                          setSelectedSupplierId(preferred.supplierId || preferred.supplier_id);
+                        } else {
+                          setSelectedSupplierId("");
+                        }
+                      } else {
+                        setSelectedSupplierId("");
+                      }
+                    }}
                     disabled={isFormLoading}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                   >
@@ -378,7 +401,21 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                   >
                     <option value="">-- Chọn nhà cung cấp --</option>
-                    {suppliers.map((supplier) => (
+                    {(selectedProductId
+                      ? suppliers.filter((supplier) => {
+                        const sps = supplierProductsMapping.filter(
+                          (sp: any) => sp.productId === selectedProductId || sp.product_id === selectedProductId
+                        );
+
+                        if (sps.length > 0) {
+                          return sps.some((sp: any) => (sp.supplierId || sp.supplier_id) === supplier.id);
+                        }
+
+                        // If NO mappings are found at all, we show all suppliers so they can at least pick one manually
+                        return true;
+                      })
+                      : suppliers
+                    ).map((supplier) => (
                       <option key={supplier.id} value={supplier.id}>
                         {supplier.name}
                       </option>

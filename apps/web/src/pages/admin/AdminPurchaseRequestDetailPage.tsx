@@ -12,6 +12,7 @@ import { Modal } from "../../components/common/Modal";
 import { getErrorMessage } from "../../api/client";
 import { useToast } from "../../contexts/ToastContext";
 import { systemSettingsApi } from "../../api/systemSettings.api";
+import { useAuth } from "../../contexts/AuthContext";
 
 const TOAST_DURATION = 4500;
 
@@ -133,6 +134,7 @@ ${storeName}`;
 
 export const AdminPurchaseRequestDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const { isStaff } = useAuth();
   const globalToast = useToast();
   const [pr, setPr] = useState<PurchaseRequest | null>(null);
   const [emailPreview, setEmailPreview] = useState<PurchaseRequestEmailPreview | null>(null);
@@ -142,6 +144,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
   const [showConfirmApprove, setShowConfirmApprove] = useState(false);
   const [showConfirmReceive, setShowConfirmReceive] = useState(false);
   const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
+  const [receivedBatches, setReceivedBatches] = useState<Record<string, { id: string; batchCode: string; expirationDate: string; quantity: number }[]>>({});
   const [isReceiving, setIsReceiving] = useState(false);
   const [showConfirmPayment, setShowConfirmPayment] = useState(false);
   const [paymentNote, setPaymentNote] = useState("");
@@ -278,23 +281,61 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
   };
 
   const openReceiveModal = () => {
-    const init: Record<string, number> = {};
+    const initQty: Record<string, number> = {};
+    const initBatches: Record<string, { id: string; batchCode: string; expirationDate: string; quantity: number }[]> = {};
     pr?.items?.forEach(item => {
       const remaining = (item.quantity || 0) - (item.quantityReceived || 0);
-      init[item.id] = remaining > 0 ? remaining : 0;
+      const qty = remaining > 0 ? remaining : 0;
+      initQty[item.id] = qty;
+      initBatches[item.id] = [{ id: Math.random().toString(), batchCode: "", expirationDate: "", quantity: qty }];
     });
-    setReceivedQuantities(init);
+    setReceivedQuantities(initQty);
+    setReceivedBatches(initBatches);
     setShowConfirmReceive(true);
   };
 
   const handleReceive = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+
+    for (const item of pr?.items || []) {
+       if (receivedQuantities[item.id] > 0) {
+          const itemBatches = receivedBatches[item.id] || [];
+          const totalBatchQty = itemBatches.reduce((acc, b) => acc + (b.quantity || 0), 0);
+          if (totalBatchQty !== receivedQuantities[item.id]) {
+             showToast("receive", "error", `Tổng số lượng các lô của sản phẩm "${item.productName}" phải bằng đúng số lượng nhận (${receivedQuantities[item.id]}).`);
+             return;
+          }
+          for (const b of itemBatches) {
+             if (!b.expirationDate) {
+                 showToast("receive", "error", `Vui lòng nhập Hạn sử dụng cho tất cả các lô của "${item.productName}".`);
+                 return;
+             }
+             if (b.quantity <= 0) {
+                 showToast("receive", "error", `Số lượng mỗi lô phải lớn hơn 0.`);
+                 return;
+             }
+          }
+       }
+    }
+
     setIsReceiving(true);
     try {
       const items = pr?.items?.map((item: any) => ({
         purchaseRequestItemId: item.id,
-        receivedQuantity: receivedQuantities[item.id] || 0
-      })) || [];
+        receivedQuantity: receivedQuantities[item.id] || 0,
+        batches: (receivedBatches[item.id] || []).map((b: any) => ({
+            batchCode: b.batchCode.trim() || undefined,
+            expirationDate: new Date(b.expirationDate).toISOString(),
+            quantity: b.quantity
+        }))
+      })).filter((item: any) => item.receivedQuantity > 0) || [];
+
+      if (items.length === 0) {
+        showToast("receive", "error", "Chưa có sản phẩm nào được nhập số lượng.");
+        setIsReceiving(false);
+        return;
+      }
+
       const res = await purchaseRequestsApi.receivePurchaseRequest(id!, {
         notes: "Admin nhận hàng",
         items
@@ -474,7 +515,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
   const hasPurchaseConversion = Boolean(pr.purchaseQuantity && pr.purchaseUnit && invUnit);
   const paymentStatus = pr.paymentStatus ?? "UNPAID";
   const isReceivedForPayment = pr.status === "RECEIVED" || pr.status === "COMPLETED";
-  const canMarkPaid = isReceivedForPayment && paymentStatus === "UNPAID";
+  const canMarkPaid = !isStaff && isReceivedForPayment && paymentStatus === "UNPAID";
 
   const supplierEmail = pr.supplier?.email?.trim() || "";
   const isSupplierEmailEmpty = !supplierEmail;
@@ -485,6 +526,24 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
     : "Email nhà cung cấp không hợp lệ.";
 
   const isPendingDelete = pr.items?.some(item => !!item.productPendingDelete);
+
+  const isReceiveFormValid = pr?.items?.every(item => {
+    const remaining = (item.quantity || 0) - (item.quantityReceived || 0);
+    if (remaining <= 0) return true;
+    
+    const totalReceivedInput = receivedQuantities[item.id] || 0;
+    if (totalReceivedInput <= 0) return false;
+    
+    const batches = receivedBatches[item.id] || [];
+    const sumBatches = batches.reduce((sum, b) => sum + (b.quantity || 0), 0);
+    
+    if (sumBatches !== totalReceivedInput) return false;
+    
+    const hasInvalidBatches = batches.some(b => !b.expirationDate || (b.quantity || 0) <= 0);
+    if (hasInvalidBatches) return false;
+    
+    return true;
+  }) ?? false;
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -641,24 +700,37 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
           </div>
         )}
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
-            <h4 className="text-sm font-bold text-slate-800">Thanh toán nhà cung cấp</h4>
-            <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${getPaymentStatusClassName(paymentStatus)}`}>
-              {getPaymentStatusLabel(paymentStatus)}
-            </span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
+              <h4 className="text-sm font-bold text-slate-800">Thanh toán nhà cung cấp</h4>
+              <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${getPaymentStatusClassName(paymentStatus)}`}>
+                {getPaymentStatusLabel(paymentStatus)}
+              </span>
+            </div>
+            <div className="grid gap-3 p-5 text-sm">
+              <PaymentField label="Trạng thái thanh toán" value={getPaymentStatusLabel(paymentStatus)} />
+              {pr.paidAt && <PaymentField label="Ngày thanh toán" value={formatDate(pr.paidAt)} />}
+              {pr.paymentNote && <PaymentField label="Ghi chú" value={pr.paymentNote} />}
+              {canMarkPaid && (
+                <div className="pt-1">
+                  <Button onClick={() => setShowConfirmPayment(true)} className="border-none bg-emerald-600 text-white hover:bg-emerald-700">
+                    <CheckCircle size={14} className="mr-1.5" /> Đánh dấu đã thanh toán
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
-          <div className="grid gap-3 p-5 text-sm">
-            <PaymentField label="Trạng thái thanh toán" value={getPaymentStatusLabel(paymentStatus)} />
-            {pr.paidAt && <PaymentField label="Ngày thanh toán" value={formatDate(pr.paidAt)} />}
-            {pr.paymentNote && <PaymentField label="Ghi chú" value={pr.paymentNote} />}
-            {canMarkPaid && (
-              <div className="pt-1">
-                <Button onClick={() => setShowConfirmPayment(true)} className="border-none bg-emerald-600 text-white hover:bg-emerald-700">
-                  <CheckCircle size={14} className="mr-1.5" /> Đánh dấu đã thanh toán
-                </Button>
-              </div>
-            )}
+
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
+              <h4 className="text-sm font-bold text-slate-800">Công nợ nhà cung cấp</h4>
+            </div>
+            <div className="grid gap-3 p-5 text-sm">
+              <PaymentField label="Đã nhận" value={`${(pr.receivedAmount ?? 0).toLocaleString("vi-VN")} đ`} />
+              <PaymentField label="Đã trả" value={`${(pr.amountPaid ?? 0).toLocaleString("vi-VN")} đ`} />
+              <PaymentField label="Còn nợ" value={`${((pr.receivedAmount ?? 0) - (pr.amountPaid ?? 0)).toLocaleString("vi-VN")} đ`} />
+            </div>
           </div>
         </div>
 
@@ -728,7 +800,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
               <h4 className="flex items-center gap-2 text-sm font-bold text-slate-800">
                 <Mail size={16} className="text-amber-800" /> {hasUsableEmailDraft ? "Email đặt hàng do Agent đề xuất" : "Email đặt hàng"}
               </h4>
-              {(canEditEmailDraft || canInputManualEmail) && (
+              {!isStaff && (canEditEmailDraft || canInputManualEmail) && (
                 <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                   {canEditEmailDraft ? (
                     <>
@@ -823,7 +895,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
           </div>
         )}
 
-        {(isPending || isApproved || isSent) && (
+        {!isStaff && (isPending || isApproved || isSent) && (
           <div className="mt-4 flex flex-wrap justify-end gap-3.5 border-t border-slate-100 pt-6">
             <Button onClick={() => setShowRejectModal(true)} variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50">
               <Ban size={14} className="mr-1.5" /> {isPending ? "Từ chối yêu cầu" : "Huỷ yêu cầu"}
@@ -891,16 +963,109 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
 
                   {remaining > 0 ? (
                     <div>
-                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Số lượng thực nhận ({invUnit})</label>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-700">Tổng số lượng thực nhận ({invUnit})</label>
                       <input
                         type="number"
                         min="1"
                         max={remaining}
                         value={receivedQuantities[item.id] === undefined ? "" : receivedQuantities[item.id]}
                         onChange={(e) => setReceivedQuantities({ ...receivedQuantities, [item.id]: parseInt(e.target.value) || 0 })}
-                        className="block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-700/20"
+                        className="block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-700/20 mb-3"
                         required
                       />
+
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <label className="text-xs font-bold uppercase text-slate-500">Chi tiết Lô hàng</label>
+                          <button
+                            type="button"
+                            className="text-xs font-bold text-amber-700 hover:text-amber-900 underline"
+                            onClick={() => {
+                                const currentBatches = receivedBatches[item.id] || [];
+                                setReceivedBatches({
+                                    ...receivedBatches,
+                                    [item.id]: [...currentBatches, { id: Math.random().toString(), batchCode: "", expirationDate: "", quantity: 1 }]
+                                });
+                            }}
+                          >
+                            + Thêm lô
+                          </button>
+                        </div>
+                        
+                        {(receivedBatches[item.id] || []).map((batch, idx) => (
+                           <div key={batch.id} className="flex gap-2 items-start mb-2 bg-white p-2 rounded border border-slate-100">
+                              <div className="flex-1">
+                                <label className="block text-[10px] text-slate-400 font-semibold mb-1">Mã lô (Tùy chọn)</label>
+                                <input
+                                   type="text"
+                                   value={batch.batchCode}
+                                   onChange={(e) => {
+                                      const newB = [...receivedBatches[item.id]];
+                                      newB[idx].batchCode = e.target.value;
+                                      setReceivedBatches({ ...receivedBatches, [item.id]: newB });
+                                   }}
+                                   placeholder="Để trống để tự động sinh mã (BATCH_YYMMDD_XXX)"
+                                   className="block w-full rounded border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-amber-700"
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <label className="block text-[10px] text-slate-400 font-semibold mb-1">Hạn sử dụng (*)</label>
+                                <input
+                                   type="date"
+                                   required
+                                   value={batch.expirationDate}
+                                   onChange={(e) => {
+                                      const newB = [...receivedBatches[item.id]];
+                                      newB[idx].expirationDate = e.target.value;
+                                      setReceivedBatches({ ...receivedBatches, [item.id]: newB });
+                                   }}
+                                   className="block w-full rounded border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-amber-700"
+                                />
+                              </div>
+                              <div className="w-20">
+                                <label className="block text-[10px] text-slate-400 font-semibold mb-1">SL (*)</label>
+                                <input
+                                   type="number"
+                                   required
+                                   min="1"
+                                   value={batch.quantity}
+                                   onChange={(e) => {
+                                      const newB = [...receivedBatches[item.id]];
+                                      newB[idx].quantity = parseInt(e.target.value) || 0;
+                                      setReceivedBatches({ ...receivedBatches, [item.id]: newB });
+                                   }}
+                                   className="block w-full rounded border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-amber-700"
+                                />
+                              </div>
+                              {receivedBatches[item.id].length > 1 && (
+                                <button
+                                   type="button"
+                                   onClick={() => {
+                                      const newB = receivedBatches[item.id].filter((_, i) => i !== idx);
+                                      setReceivedBatches({ ...receivedBatches, [item.id]: newB });
+                                   }}
+                                   className="mt-4 p-1 text-rose-500 hover:bg-rose-50 rounded"
+                                >
+                                   <X size={14} />
+                                </button>
+                              )}
+                           </div>
+                        ))}
+                        
+                        {(() => {
+                           const totalReceivedInput = receivedQuantities[item.id] || 0;
+                           const batches = receivedBatches[item.id] || [];
+                           const sumBatches = batches.reduce((sum, b) => sum + (b.quantity || 0), 0);
+                           if (totalReceivedInput > 0 && sumBatches !== totalReceivedInput) {
+                             return (
+                               <div className="mt-3 text-xs text-rose-600 font-medium bg-rose-50 p-2 rounded border border-rose-200">
+                                 Tổng số lượng các lô ({sumBatches}) chưa khớp với tổng thực nhận ({totalReceivedInput}). Vui lòng kiểm tra lại.
+                               </div>
+                             );
+                           }
+                           return null;
+                        })()}
+                      </div>
                     </div>
                   ) : (
                     <div className="p-2 bg-emerald-50 text-emerald-700 text-sm rounded-lg border border-emerald-200">
@@ -915,7 +1080,13 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
               <Button type="button" variant="outline" onClick={() => setShowConfirmReceive(false)}>
                 Hủy
               </Button>
-              <Button type="submit" variant="primary" className="bg-emerald-600 hover:bg-emerald-700 text-white border-none" isLoading={isReceiving}>
+              <Button 
+                type="submit" 
+                variant="primary" 
+                className={`text-white border-none ${(!isReceiveFormValid || isReceiving) ? 'bg-emerald-600/60 cursor-not-allowed hover:bg-emerald-600/60' : 'bg-emerald-600 hover:bg-emerald-700'}`} 
+                isLoading={isReceiving}
+                disabled={!isReceiveFormValid || isReceiving}
+              >
                 Xác nhận nhận hàng
               </Button>
             </div>
@@ -998,7 +1169,11 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
           size="lg"
         >
           <form onSubmit={handleEmailModalSubmit} className="space-y-4">
-            {!canSendEmail && (
+            {isSent ? (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-900">
+                Email này đã được gửi, chỉ có thể xem lại.
+              </div>
+            ) : !canSendEmail && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
                 Chỉ yêu cầu đã duyệt và chưa gửi mới được gửi email cho nhà cung cấp.
               </div>
@@ -1013,6 +1188,8 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
                 className="block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-700/20"
                 placeholder="supplier@example.com"
                 required
+                readOnly={isSent}
+                disabled={isSent}
               />
             </div>
 
@@ -1024,6 +1201,8 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
                 onChange={(e) => setEditEmailSubject(e.target.value)}
                 className="block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-700/20"
                 required
+                readOnly={isSent}
+                disabled={isSent}
               />
             </div>
 
@@ -1035,6 +1214,8 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
                 onChange={(e) => setEditEmailBody(e.target.value)}
                 className="block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 font-mono text-sm leading-relaxed outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-700/20"
                 required
+                readOnly={isSent}
+                disabled={isSent}
               />
             </div>
 
@@ -1042,15 +1223,17 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
               <Button type="button" variant="outline" onClick={() => setShowEmailModal(false)}>
                 Đóng
               </Button>
-              <Button type="submit" isLoading={isSendingEmail}>
-                {canSendEmail ? (
-                  <>
-                    <Send size={14} className="mr-1.5" /> Xác nhận gửi
-                  </>
-                ) : (
-                  "Lưu tạm trên màn hình"
-                )}
-              </Button>
+              {!isSent && (
+                <Button type="submit" isLoading={isSendingEmail}>
+                  {canSendEmail ? (
+                    <>
+                      <Send size={14} className="mr-1.5" /> Xác nhận gửi
+                    </>
+                  ) : (
+                    "Lưu tạm trên màn hình"
+                  )}
+                </Button>
+              )}
             </div>
           </form>
         </Modal>

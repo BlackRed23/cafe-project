@@ -216,6 +216,8 @@ const toDto = async (request: PurchaseRequestRecord) => ({
     paymentStatus: request.paymentStatus,
     paidAt: request.paidAt,
     paymentNote: request.paymentNote,
+    receivedAmount: Number(request.receivedAmount),
+    amountPaid: Number(request.amountPaid),
     emailDraft: await buildPurchaseRequestEmailDraft(request),
     items: request.items.map((item) => {
         const conversion = purchaseConversionForItem(request, item);
@@ -463,7 +465,8 @@ export const purchaseService = {
         return await toDto(await purchaseRepository.updateStatus(id, {
             paymentStatus: 'PAID',
             paidAt: new Date(),
-            paymentNote: input.paymentNote?.trim() || null
+            paymentNote: input.paymentNote?.trim() || null,
+            amountPaid: request.receivedAmount
         }));
     },
 

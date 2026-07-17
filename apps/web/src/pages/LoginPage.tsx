@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useGoogleLogin } from "@react-oauth/google";
+import { useGoogleLogin, type TokenResponse } from "@react-oauth/google";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { Input } from "../components/common/Input";
@@ -66,7 +66,7 @@ export const LoginPage: React.FC = () => {
   };
 
   const handleGoogleLogin = useGoogleLogin({
-    onSuccess: async ({ access_token }) => {
+    onSuccess: async ({ access_token }: TokenResponse) => {
       setApiError(null);
       setIsGoogleLoading(true);
       try {

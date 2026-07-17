@@ -2,6 +2,40 @@ import { prisma } from '@cafe-project/database';
 import { PurchaseRequestStatus, OrderStatus } from '@cafe-project/database';
 
 export const dashboardService = {
+    async getStaffSummary() {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
+        const todayOrders = await prisma.order.count({
+            where: {
+                createdAt: {
+                    gte: startOfToday
+                }
+            }
+        });
+
+        const inventories = await prisma.inventory.findMany();
+        const lowStockCount = inventories.filter((inv: { quantity: number, minThreshold: number }) => inv.quantity <= inv.minThreshold && inv.quantity > 0).length;
+        const outOfStockCount = inventories.filter((inv: { quantity: number }) => inv.quantity <= 0).length;
+
+        const prPendingReceive = await prisma.purchaseRequest.count({
+            where: { status: PurchaseRequestStatus.SENT }
+        });
+
+        return {
+            orders: {
+                today: todayOrders
+            },
+            inventory: {
+                lowStockCount,
+                outOfStockCount
+            },
+            purchaseRequests: {
+                pendingReceive: prPendingReceive
+            }
+        };
+    },
+
     async getSummary() {
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);

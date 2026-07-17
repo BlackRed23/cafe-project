@@ -11,10 +11,12 @@ import { Loading } from "../../components/common/Loading";
 import { EmptyState } from "../../components/common/EmptyState";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { DataTable } from "../../components/admin/DataTable";
+import { useAuth } from "../../contexts/AuthContext";
 import { Plus, Edit2, Trash2, Coffee, RefreshCw, AlertCircle, CheckCircle, Info } from "lucide-react";
 
 export const AdminProductsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { isStaff } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState("");
@@ -228,6 +230,7 @@ export const AdminProductsPage: React.FC = () => {
       header: "Hành động",
       className: "text-right",
       render: (product: Product) => {
+        if (isStaff) return null;
         if (product.pendingDeleteUntil) {
           const daysLeft = Math.ceil((new Date(product.pendingDeleteUntil).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
           const isPurgable = daysLeft <= 0;
@@ -284,11 +287,13 @@ export const AdminProductsPage: React.FC = () => {
             {products.length} sản phẩm trong hệ thống
           </span>
         </div>
-        <Link to="/admin/products/create">
-          <Button className="flex items-center gap-1.5 w-full sm:w-auto">
-            <Plus size={16} /> Thêm sản phẩm
-          </Button>
-        </Link>
+        {!isStaff && (
+          <Link to="/admin/products/create">
+            <Button className="flex items-center gap-1.5 w-full sm:w-auto">
+              <Plus size={16} /> Thêm sản phẩm
+            </Button>
+          </Link>
+        )}
       </div>
 
       {error && (
