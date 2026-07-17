@@ -39,6 +39,9 @@ const normalizePurchaseRequest = (request: any): PurchaseRequest => {
     },
     emailSentAt: request?.emailSentAt ?? request?.email_sent_at,
     sentAt: request?.sentAt ?? request?.sent_at ?? request?.emailSentAt ?? request?.email_sent_at,
+    paymentStatus: request?.paymentStatus ?? request?.payment_status,
+    paidAt: request?.paidAt ?? request?.paid_at,
+    paymentNote: cleanOptionalText(request?.paymentNote ?? request?.payment_note) ?? request?.paymentNote ?? request?.payment_note,
     supplierEmail: request?.supplierEmail ?? request?.supplier_email ?? request?.supplier?.email,
     retryCount: request?.retryCount ?? request?.retry_count,
     lastEmailError: cleanOptionalText(request?.lastEmailError ?? request?.last_email_error) ?? request?.lastEmailError ?? request?.last_email_error,
@@ -131,5 +134,10 @@ export const purchaseRequestsApi = {
     const purchaseRequest = normalizePurchaseRequest(unwrapApiField<any>(data, "purchaseRequest"));
     const isStockSafe = data?.data?.isStockSafe ?? true;
     return { purchaseRequest, isStockSafe };
+  },
+
+  markPurchaseRequestPaid: async (id: string, payload: { paymentNote?: string | null }): Promise<PurchaseRequest> => {
+    const response = await apiClient.post(`/purchase-requests/${id}/mark-paid`, payload);
+    return normalizePurchaseRequest(unwrapApiField<any>(response.data, "purchaseRequest"));
   },
 };

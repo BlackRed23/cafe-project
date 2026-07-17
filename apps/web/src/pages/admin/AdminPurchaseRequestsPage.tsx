@@ -12,6 +12,12 @@ import { Loading } from "../../components/common/Loading";
 import { EmptyState } from "../../components/common/EmptyState";
 import { DataTable } from "../../components/admin/DataTable";
 
+const paymentStatusLabel = (status?: string) => (status === "PAID" ? "Đã thanh toán" : "Chưa thanh toán");
+const paymentStatusClassName = (status?: string) =>
+  status === "PAID"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : "border-amber-200 bg-amber-50 text-amber-700";
+
 const FILTER_OPTIONS = [
   { label: "Tất cả", value: "ALL" },
   { label: "Chờ duyệt", value: "PENDING" },
@@ -221,6 +227,14 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
     {
       header: "Trạng thái",
       render: (pr: PurchaseRequest) => <Badge status={pr.status} />,
+    },
+    {
+      header: "Thanh toán",
+      render: (pr: PurchaseRequest) => (
+        <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-bold ${paymentStatusClassName(pr.paymentStatus)}`}>
+          {paymentStatusLabel(pr.paymentStatus)}
+        </span>
+      ),
     },
     {
       header: "Ngày tạo",

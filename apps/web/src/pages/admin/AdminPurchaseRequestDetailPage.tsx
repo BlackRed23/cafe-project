@@ -81,6 +81,12 @@ const getQuantityDisplay = (pr: PurchaseRequest): string => {
   return `${suggestedQty}${inventoryUnit ? ` ${inventoryUnit}` : ""}`;
 };
 
+const getPaymentStatusLabel = (status?: string) => (status === "PAID" ? "Đã thanh toán" : "Chưa thanh toán");
+const getPaymentStatusClassName = (status?: string) =>
+  status === "PAID"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : "border-amber-200 bg-amber-50 text-amber-700";
+
 const buildManualEmailSubject = (pr: PurchaseRequest, storeName: string): string => {
   if ((pr.items?.length ?? 0) > 1) return `Yêu cầu báo giá/đặt hàng sản phẩm cho ${storeName}`;
   return `Yêu cầu báo giá/đặt hàng ${getPrimaryProductName(pr)} - ${getQuantityDisplay(pr)}`;
@@ -137,6 +143,9 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
   const [showConfirmReceive, setShowConfirmReceive] = useState(false);
   const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
   const [isReceiving, setIsReceiving] = useState(false);
+  const [showConfirmPayment, setShowConfirmPayment] = useState(false);
+  const [paymentNote, setPaymentNote] = useState("");
+  const [isMarkingPaid, setIsMarkingPaid] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -301,6 +310,8 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
          globalToast.success("Đã nhận một phần", `Tồn kho đã cộng cho sản phẩm ${productName}.`, `/admin/purchase-requests/${id}`);
       }
 
+      showToast("receive", "success", "Đã nhận hàng và cập nhật tồn kho. Trạng thái thanh toán: Chưa thanh toán.");
+
       if (!res.isStockSafe) {
          globalToast.warning("Tồn kho vẫn thấp", `Sản phẩm ${productName} vẫn dưới ngưỡng an toàn.`, `/admin/purchase-requests/${id}`);
       }
@@ -311,6 +322,26 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
       showToast("receive", "error", getErrorMessage(err) || "Không thể nhận hàng.");
     } finally {
       setIsReceiving(false);
+    }
+  };
+
+  const handleMarkPaid = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!id) return;
+
+    setIsMarkingPaid(true);
+    try {
+      const updated = await purchaseRequestsApi.markPurchaseRequestPaid(id, {
+        paymentNote: paymentNote.trim() || undefined
+      });
+      setPr(updated);
+      setPaymentNote("");
+      setShowConfirmPayment(false);
+      showToast("mark-paid", "success", "Đã ghi nhận thanh toán nhà cung cấp.");
+    } catch (err: any) {
+      showToast("mark-paid", "error", getErrorMessage(err) || "Không thể ghi nhận thanh toán nhà cung cấp.");
+    } finally {
+      setIsMarkingPaid(false);
     }
   };
 
@@ -441,6 +472,9 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
   const suggestedQty = pr.suggestedQuantity ?? pr.suggested_quantity ?? 0;
   const invUnit = pr.inventoryUnit ?? pr.conversionTargetUnit;
   const hasPurchaseConversion = Boolean(pr.purchaseQuantity && pr.purchaseUnit && invUnit);
+  const paymentStatus = pr.paymentStatus ?? "UNPAID";
+  const isReceivedForPayment = pr.status === "RECEIVED" || pr.status === "COMPLETED";
+  const canMarkPaid = isReceivedForPayment && paymentStatus === "UNPAID";
 
   const supplierEmail = pr.supplier?.email?.trim() || "";
   const isSupplierEmailEmpty = !supplierEmail;
@@ -491,6 +525,9 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
                pr.status === "SENT" ? ((pr.items?.[0]?.quantityReceived || 0) > 0 ? "Đã nhận một phần" : "Đã gửi email") : 
                pr.status === "APPROVED" ? "Đã duyệt" : 
                "Chờ duyệt"}
+            </span>
+            <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${getPaymentStatusClassName(paymentStatus)}`}>
+              {getPaymentStatusLabel(paymentStatus)}
             </span>
             {isSent && pr.status !== "RECEIVED" && pr.status !== "COMPLETED" && !isPendingDelete && (
                 <Button onClick={openReceiveModal} className="border-none bg-emerald-600 text-white hover:bg-emerald-700">
@@ -603,6 +640,27 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        <div className="overflow-hidden rounded-2xl border border-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
+            <h4 className="text-sm font-bold text-slate-800">Thanh toán nhà cung cấp</h4>
+            <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${getPaymentStatusClassName(paymentStatus)}`}>
+              {getPaymentStatusLabel(paymentStatus)}
+            </span>
+          </div>
+          <div className="grid gap-3 p-5 text-sm">
+            <PaymentField label="Trạng thái thanh toán" value={getPaymentStatusLabel(paymentStatus)} />
+            {pr.paidAt && <PaymentField label="Ngày thanh toán" value={formatDate(pr.paidAt)} />}
+            {pr.paymentNote && <PaymentField label="Ghi chú" value={pr.paymentNote} />}
+            {canMarkPaid && (
+              <div className="pt-1">
+                <Button onClick={() => setShowConfirmPayment(true)} className="border-none bg-emerald-600 text-white hover:bg-emerald-700">
+                  <CheckCircle size={14} className="mr-1.5" /> Đánh dấu đã thanh toán
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
 
         <div className="space-y-2 rounded-2xl border border-amber-700/10 bg-amber-50/40 p-5">
           <h4 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-800">
@@ -865,6 +923,34 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
         </Modal>
       )}
 
+      {showConfirmPayment && (
+        <Modal isOpen={true} onClose={() => setShowConfirmPayment(false)} title="Đánh dấu đã thanh toán" size="sm">
+          <form onSubmit={handleMarkPaid} className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+              Xác nhận đã thanh toán cho nhà cung cấp sau khi nhận hàng.
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">Ghi chú thanh toán</label>
+              <textarea
+                rows={3}
+                value={paymentNote}
+                onChange={(e) => setPaymentNote(e.target.value)}
+                placeholder="Ví dụ: Đã thanh toán tiền mặt"
+                className="block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-700/20"
+              />
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+              <Button type="button" variant="outline" onClick={() => setShowConfirmPayment(false)}>
+                Hủy
+              </Button>
+              <Button type="submit" variant="primary" className="bg-emerald-600 hover:bg-emerald-700 text-white border-none" isLoading={isMarkingPaid}>
+                Xác nhận đã thanh toán
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       <ConfirmDialog
         isOpen={showConfirmApprove}
         onClose={() => setShowConfirmApprove(false)}
@@ -972,6 +1058,13 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
     </div>
   );
 };
+
+const PaymentField: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div>
+    <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">{label}</span>
+    <span className="break-words font-semibold text-slate-800">{value}</span>
+  </div>
+);
 
 const EmailField: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div>

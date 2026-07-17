@@ -6,6 +6,8 @@ export type PurchaseRequestStatus =
   | "COMPLETED"
   | "REJECTED";
 
+export type PurchaseRequestPaymentStatus = "UNPAID" | "PAID";
+
 export interface PurchaseRequestItem {
   id: string;
   inventoryId: string;
@@ -60,6 +62,9 @@ export interface PurchaseRequest {
   retryCount?: number;
   lastEmailError?: string | null;
   receivedAt?: string | null;
+  paymentStatus?: PurchaseRequestPaymentStatus;
+  paidAt?: string | null;
+  paymentNote?: string | null;
 
   suggestedQuantity?: number;
   suggested_quantity?: number;

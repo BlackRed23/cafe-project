@@ -134,7 +134,7 @@ export const purchaseRepository = {
 
             return tx.purchaseRequest.update({ 
                 where: { id: request.id }, 
-                data: { status: newStatus, receivedAt: new Date() }, 
+                data: { status: newStatus, receivedAt: new Date(), paymentStatus: 'UNPAID', paidAt: null, paymentNote: null },
                 include: purchaseInclude 
             });
         });

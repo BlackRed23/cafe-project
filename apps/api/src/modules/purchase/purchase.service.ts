@@ -14,7 +14,7 @@ const serializeAgentLogField = (value: unknown): string | null => {
 };
 
 import { ACTIVE_PURCHASE_REQUEST_MESSAGE, purchaseRepository, type PurchaseRequestRecord } from './purchase.repository';
-import type { CreatePurchaseRequestInput, PurchaseRequestFiltersInput, ReceivePurchaseRequestInput, RejectPurchaseRequestInput } from './purchase.validator';
+import type { CreatePurchaseRequestInput, MarkPurchaseRequestPaidInput, PurchaseRequestFiltersInput, ReceivePurchaseRequestInput, RejectPurchaseRequestInput } from './purchase.validator';
 import { scanInventoryViaAgentService } from '../agent/agent.client';
 import { getOptionalSettingValue } from '../system-setting/system-setting.service';
 import { prisma } from '@cafe-project/database';
@@ -213,6 +213,9 @@ const toDto = async (request: PurchaseRequestRecord) => ({
     retryCount: request.retryCount,
     lastEmailError: request.lastEmailError,
     receivedAt: request.receivedAt,
+    paymentStatus: request.paymentStatus,
+    paidAt: request.paidAt,
+    paymentNote: request.paymentNote,
     emailDraft: await buildPurchaseRequestEmailDraft(request),
     items: request.items.map((item) => {
         const conversion = purchaseConversionForItem(request, item);
@@ -364,6 +367,9 @@ export const purchaseService = {
 
     async receive(id: string, input: ReceivePurchaseRequestInput, userId: string) {
         const request = await ensureRequest(id);
+        if ((request.status as PurchaseRequestStatus) === PurchaseRequestStatus.RECEIVED || (request.status as PurchaseRequestStatus) === PurchaseRequestStatus.COMPLETED) {
+            throw new HttpError(400, 'Yêu cầu nhập hàng này đã được nhận hàng trước đó.');
+        }
 
         const isPendingDelete = request.items.some(item => item.product.pendingDeleteUntil);
         if (isPendingDelete) {
@@ -385,7 +391,7 @@ export const purchaseService = {
             throw new HttpError(400, 'Không thể nhận hàng vì sản phẩm đang chờ xoá. Vui lòng khôi phục sản phẩm trước khi nhận hàng.');
         }
 
-        if (request.status === PurchaseRequestStatus.RECEIVED || request.status === PurchaseRequestStatus.COMPLETED) {
+        if ((request.status as PurchaseRequestStatus) === PurchaseRequestStatus.RECEIVED || (request.status as PurchaseRequestStatus) === PurchaseRequestStatus.COMPLETED) {
             throw new HttpError(400, 'Yêu cầu nhập hàng này đã được nhận trước đó, không thể cộng kho lần nữa.');
         }
         if (request.status !== PurchaseRequestStatus.SENT && !request.emailSentAt) {
@@ -446,6 +452,19 @@ export const purchaseService = {
         } catch (error) {
             throw new HttpError(400, error instanceof Error ? error.message : 'Unable to receive purchase request.');
         }
+    },
+
+    async markPaid(id: string, input: MarkPurchaseRequestPaidInput) {
+        const request = await ensureRequest(id);
+        if (request.status !== PurchaseRequestStatus.RECEIVED && request.status !== PurchaseRequestStatus.COMPLETED) {
+            throw new HttpError(400, 'Chỉ có thể thanh toán sau khi đã nhận hàng.');
+        }
+
+        return await toDto(await purchaseRepository.updateStatus(id, {
+            paymentStatus: 'PAID',
+            paidAt: new Date(),
+            paymentNote: input.paymentNote?.trim() || null
+        }));
     },
 
     async complete(id: string) {

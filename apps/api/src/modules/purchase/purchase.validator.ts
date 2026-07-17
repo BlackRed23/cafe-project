@@ -25,6 +25,10 @@ export const receivePurchaseRequestSchema = z.object({
     })).min(1, 'Receive items cannot be empty.')
 });
 
+export const markPurchaseRequestPaidSchema = z.object({
+    paymentNote: z.string().trim().max(1000, 'Payment note must be at most 1000 characters.').optional().nullable()
+});
+
 export const purchaseRequestFiltersSchema = z.object({
     status: z.nativeEnum(PurchaseRequestStatus).optional(),
     supplierId: z.string().trim().optional(),
@@ -34,4 +38,5 @@ export const purchaseRequestFiltersSchema = z.object({
 export type CreatePurchaseRequestInput = z.infer<typeof createPurchaseRequestSchema>;
 export type RejectPurchaseRequestInput = z.infer<typeof rejectPurchaseRequestSchema>;
 export type ReceivePurchaseRequestInput = z.infer<typeof receivePurchaseRequestSchema>;
+export type MarkPurchaseRequestPaidInput = z.infer<typeof markPurchaseRequestPaidSchema>;
 export type PurchaseRequestFiltersInput = z.infer<typeof purchaseRequestFiltersSchema>;

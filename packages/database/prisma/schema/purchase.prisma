@@ -26,6 +26,9 @@ model PurchaseRequest {
   retryCount     Int                   @default(0)
   lastEmailError String?
   receivedAt     DateTime?
+  paymentStatus  String                @default("UNPAID")
+  paidAt         DateTime?
+  paymentNote    String?
   items          PurchaseRequestItem[]
 
   createdAt DateTime @default(now())
