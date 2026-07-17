@@ -1,8 +1,8 @@
 import type { Response } from 'express';
 import { sendError } from '../../common/response';
 import type { AuthenticatedRequest } from './auth.middleware';
-import { getCurrentUser, loginUser, registerUser, updateUserProfile, changeUserPassword, type AuthResponse, type AuthUser } from './auth.service';
-import type { LoginInput, RegisterInput } from './auth.validation';
+import { getCurrentUser, loginUser, registerUser, updateUserProfile, changeUserPassword, loginWithGoogle, forgotPassword, resetPassword, type AuthResponse, type AuthUser } from './auth.service';
+import type { ForgotPasswordInput, GoogleAuthInput, LoginInput, RegisterInput, ResetPasswordInput } from './auth.validation';
 
 export const register = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const user = await registerUser(req.body as RegisterInput);
@@ -14,6 +14,24 @@ export const login = async (req: AuthenticatedRequest, res: Response): Promise<v
     const data = await loginUser(req.body as LoginInput);
 
     res.status(200).json(data satisfies AuthResponse);
+};
+
+export const google = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const data = await loginWithGoogle(req.body as GoogleAuthInput);
+
+    res.status(200).json(data satisfies AuthResponse);
+};
+
+export const forgot = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const data = await forgotPassword(req.body as ForgotPasswordInput);
+
+    res.status(200).json(data);
+};
+
+export const reset = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    await resetPassword(req.body as ResetPasswordInput);
+
+    res.status(200).json({ message: 'Password has been reset successfully.' });
 };
 
 export const me = async (req: AuthenticatedRequest, res: Response): Promise<void> => {

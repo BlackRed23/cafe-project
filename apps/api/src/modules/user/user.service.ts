@@ -41,13 +41,17 @@ export const userService = {
     },
 
     async createUser(data: Prisma.UserCreateInput) {
-        // Hash password before saving
+        if (typeof data.password !== 'string' || !data.password.trim()) {
+            throw new Error('Password is required for local users.');
+        }
+
         const hashedPassword = await bcrypt.hash(data.password, 10);
         
         const user = await prisma.user.create({
             data: {
                 ...data,
                 password: hashedPassword,
+                provider: data.provider ?? 'local',
             },
             select: {
                 id: true,

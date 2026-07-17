@@ -10,6 +10,7 @@ interface AuthContextType {
   loading: boolean;
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
+  loginWithGoogle: (accessToken: string) => Promise<void>;
   logout: () => void;
   loadMe: () => Promise<void>;
 }
@@ -46,26 +47,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [token]);
 
+  const persistAuth = (data: { accessToken?: string; token?: string; user?: User }) => {
+    const receivedToken = data.accessToken || data.token;
+    if (receivedToken) {
+      localStorage.setItem("access_token", receivedToken);
+      setToken(receivedToken);
+    }
+    if (data.user) {
+      setUser(data.user);
+      localStorage.setItem("user", JSON.stringify(data.user));
+    }
+  };
+
+  const redirectAfterAuth = (user?: User) => {
+    if (user?.role === "ADMIN") {
+      window.location.href = "/admin/dashboard";
+    } else {
+      window.location.href = "/";
+    }
+  };
+
   const login = async (payload: LoginPayload) => {
     setLoading(true);
     try {
       const data = await authApi.login(payload);
-      const receivedToken = data.accessToken || data.token;
-      if (receivedToken) {
-        localStorage.setItem("access_token", receivedToken);
-        setToken(receivedToken);
-      }
-      if (data.user) {
-        setUser(data.user);
-        localStorage.setItem("user", JSON.stringify(data.user));
-        
-        // Redirect according to user role
-        if (data.user.role === "ADMIN") {
-          window.location.href = "/admin/dashboard";
-        } else {
-          window.location.href = "/";
-        }
-      }
+      persistAuth(data);
+      redirectAfterAuth(data.user);
     } catch (error) {
       setLoading(false);
       throw error;
@@ -76,18 +83,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const data = await authApi.register(payload);
-      const receivedToken = data.accessToken || data.token;
-      if (receivedToken) {
-        localStorage.setItem("access_token", receivedToken);
-        setToken(receivedToken);
-      }
+      persistAuth(data);
       if (data.user) {
-        setUser(data.user);
-        localStorage.setItem("user", JSON.stringify(data.user));
         window.location.href = "/";
       } else {
         window.location.href = "/login?registered=true";
       }
+    } catch (error) {
+      setLoading(false);
+      throw error;
+    }
+  };
+
+  const loginWithGoogle = async (accessToken: string) => {
+    setLoading(true);
+    try {
+      const data = await authApi.google({ access_token: accessToken });
+      persistAuth(data);
+      redirectAfterAuth(data.user);
     } catch (error) {
       setLoading(false);
       throw error;
@@ -115,6 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         login,
         register,
+        loginWithGoogle,
         logout,
         loadMe,
       }}

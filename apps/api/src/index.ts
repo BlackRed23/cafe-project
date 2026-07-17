@@ -24,13 +24,23 @@ const app = express();
 const PORT = env.port;
 const SERVER_URL = `http://localhost:${PORT}`;
 
-const allowedOrigins = (process.env.CORS_ORIGIN || process.env.CLIENT_URL || process.env.FRONTEND_URL || "http://localhost:5173")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const allowedOrigins = Array.from(new Set([
+    "http://localhost:5173",
+    "http://localhost:5174",
+    ...(process.env.CORS_ORIGIN || "").split(","),
+    ...(process.env.CLIENT_URL || "").split(","),
+    ...(process.env.FRONTEND_URL || "").split(",")
+].map((origin) => origin.trim()).filter(Boolean)));
 
 app.use(cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+            return;
+        }
+
+        callback(new Error(`CORS blocked origin: ${origin}`));
+    },
     credentials: true
 }));
 app.use(express.json());
