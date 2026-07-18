@@ -20,4 +20,4 @@ WORKDIR /app
 COPY --from=builder /app /app
 
 EXPOSE 5000
-CMD ["sh", "-c", "./node_modules/.bin/prisma db push --schema=packages/database/prisma/schema --skip-generate && npm run start -w @cafe-project/api"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma db push --accept-data-loss --schema=packages/database/prisma/schema --skip-generate && npm run start -w @cafe-project/api"]
