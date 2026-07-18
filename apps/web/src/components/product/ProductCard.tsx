@@ -40,7 +40,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart }
             </span>
           </div>
         )}
-        <div className="absolute inset-0 z-20 bg-[#150d0a]/80 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center p-5 text-center text-white">
+        <div className="absolute inset-0 z-20 bg-[#150d0a]/80 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center p-5 text-center text-white pointer-events-none">
           <h4 className="font-bold font-serif text-base sm:text-lg mb-2 line-clamp-1">{product.name}</h4>
           {product.description && (
             <p className="text-[11px] sm:text-xs text-white/90 line-clamp-4 leading-relaxed font-light max-w-[90%]">
