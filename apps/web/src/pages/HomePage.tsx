@@ -8,9 +8,10 @@ import { ProductCard } from "../components/product/ProductCard";
 import { Loading } from "../components/common/Loading";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
+import { sortProductsInStockFirst } from "../utils/productStock";
 
 export const HomePage: React.FC = () => {
-  const { addToCart } = useCart();
+  const { addToCart, items } = useCart();
   const toast = useToast();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -23,8 +24,8 @@ export const HomePage: React.FC = () => {
     const fetchProducts = async () => {
       try {
         const data = await productsApi.getProducts();
-        // Take maximum 3 products for homepage
-        setProducts(data.slice(0, 3));
+        const inStockFirst = sortProductsInStockFirst(data);
+        setProducts(inStockFirst.slice(0, 3));
       } catch (err) {
         console.error("Error fetching preview products:", err);
       } finally {
@@ -48,9 +49,12 @@ export const HomePage: React.FC = () => {
       return;
     }
 
+    const cartQuantity = items.find(item => item.product.id === product.id)?.quantity || 0;
+    const availableQuantity = stockQuantity - cartQuantity;
+
     const didAdd = addToCart(product, 1);
     if (!didAdd) {
-      toast.warning("Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");
+      toast.warning(`Chỉ còn ${availableQuantity} ${product.unit || "hộp"} có thể thêm vào giỏ.`);
     }
   };
 

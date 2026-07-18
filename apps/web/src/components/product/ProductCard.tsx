@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import type { Product } from "../../types/product.types";
 import { formatCurrency } from "../../utils/formatCurrency";
+import { isProductOutOfStock } from "../../utils/productStock";
 import { Button } from "../common/Button";
 import { ShoppingCart, Eye } from "lucide-react";
 
@@ -13,10 +14,7 @@ interface ProductCardProps {
 export const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart }) => {
   const imgUrl = product.imageUrl || product.image_url || "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=400";
   const isActive = product.isActive !== false && product.is_active !== false;
-  
-  // Stock check
-  const quantity = product.inventory?.quantity;
-  const isOutOfStock = quantity !== undefined && quantity <= 0;
+  const isOutOfStock = isProductOutOfStock(product);
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     e.currentTarget.src = "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=400";
@@ -24,29 +22,50 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart }
 
   return (
     <div className="bg-white rounded-3xl border border-amber-900/5 hover:shadow-2xl hover:shadow-amber-950/5 transition-all duration-300 overflow-hidden flex flex-col group h-full">
-      {/* Product Image Wrapper */}
-      <div className="relative aspect-[4/3] w-full bg-[#faf6f0] overflow-hidden">
+      {/* Product Image Wrapper — hover shows quick details */}
+      <Link
+        to={`/products/${product.id}`}
+        className="relative aspect-[4/3] w-full bg-[#faf6f0] overflow-hidden block"
+      >
         <img
           src={imgUrl}
           alt={product.name}
           onError={handleImageError}
-          className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-550"
+          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
         />
-        {(!isActive || isOutOfStock) && (
-          <div className="absolute inset-0 bg-[#150d0a]/65 backdrop-blur-xs flex items-center justify-center">
+        {isOutOfStock && (
+          <div className="absolute inset-0 z-10 bg-[#150d0a]/65 backdrop-blur-xs flex items-center justify-center pointer-events-none">
             <span className="bg-rose-600 text-white text-[10px] font-bold uppercase tracking-widest px-3.5 py-1.5 rounded-full shadow-md">
               Hết hàng / Tạm ngưng
             </span>
           </div>
         )}
-      </div>
+        <div className="absolute inset-0 z-20 bg-[#150d0a]/80 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center p-5 text-center text-white">
+          <h4 className="font-bold font-serif text-base sm:text-lg mb-2 line-clamp-1">{product.name}</h4>
+          {product.description && (
+            <p className="text-[11px] sm:text-xs text-white/90 line-clamp-4 leading-relaxed font-light max-w-[90%]">
+              {product.description}
+            </p>
+          )}
+          <div className="mt-3 flex items-baseline gap-1">
+            <span className="text-sm font-black text-amber-300">{formatCurrency(product.price)}</span>
+            <span className="text-[10px] text-white/70">/ {product.unit || "hộp"}</span>
+          </div>
+          <span className="mt-3 text-[10px] font-bold uppercase tracking-widest text-amber-300 flex items-center gap-1.5">
+            <Eye size={12} />
+            Xem chi tiết
+          </span>
+        </div>
+      </Link>
 
       {/* Product Info */}
       <div className="p-6 flex-1 flex flex-col gap-4">
         <div className="flex flex-col gap-1 flex-grow">
-          <h3 className="font-bold text-slate-800 text-base line-clamp-1 group-hover:text-amber-800 transition-colors font-serif">
-            {product.name}
-          </h3>
+          <Link to={`/products/${product.id}`}>
+            <h3 className="font-bold text-slate-800 text-base line-clamp-1 group-hover:text-amber-800 transition-colors font-serif cursor-pointer hover:underline">
+              {product.name}
+            </h3>
+          </Link>
           <div className="flex items-baseline gap-1.5 mt-1">
             <span className="text-lg font-black text-amber-850">
               {formatCurrency(product.price)}
@@ -78,7 +97,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart }
           <Button
             onClick={() => onAddToCart(product)}
             size="sm"
-            disabled={!isActive}
+            disabled={!isActive || isOutOfStock}
             className="flex-1 flex items-center justify-center gap-1.5 bg-amber-850 hover:bg-amber-950 text-white border-none rounded-xl"
           >
             <ShoppingCart size={13} />

@@ -165,10 +165,7 @@ export const MyOrdersPage: React.FC = () => {
 
                     {/* Badges & Arrow */}
                     <div className="flex items-center gap-3.5 justify-between md:justify-end border-t border-slate-100 pt-3 md:border-t-0 md:pt-0">
-                      <div className="flex items-center gap-2">
-                        <Badge status={order.paymentStatus || (order as any).payment_status} />
-                        <Badge status={order.status} />
-                      </div>
+                      <Badge status={order.status} />
                       <div className="text-slate-400">
                         {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                       </div>
