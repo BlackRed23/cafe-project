@@ -11,9 +11,10 @@ const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d
 
 const validatePassword = (password: string): string | undefined => {
   if (!password.trim()) return "Mật khẩu mới không được để trống";
-  if (password.length < 8 || password.length > 64) return "Mật khẩu phải từ 8 đến 64 ký tự";
+  if (password.length < 8) return "Mật khẩu phải có ít nhất 8 ký tự";
+  if (password.length > 64) return "Mật khẩu tối đa 64 ký tự";
   if (!PASSWORD_REGEX.test(password)) {
-    return "Mật khẩu phải có chữ hoa, chữ thường, số và ký tự đặc biệt";
+    return "Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường, 1 số và 1 ký tự đặc biệt";
   }
   return undefined;
 };

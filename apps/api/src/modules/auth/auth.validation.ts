@@ -2,37 +2,37 @@ import { UserRole } from '@cafe-project/database';
 import { z } from 'zod';
 
 export const registerSchema = z.object({
-    email: z.string().trim().email('Email is invalid.').toLowerCase(),
+    email: z.string().trim().email('Email không hợp lệ.').toLowerCase(),
     password: z.string()
         .trim()
-        .min(8, 'Password must be at least 8 characters.')
-        .max(64, 'Password must be at most 64 characters.')
-        .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]+$/, 'Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character.'),
-    name: z.string().trim().min(2, 'Name must be at least 2 characters.').max(100, 'Name must be at most 100 characters.'),
-    phone: z.string().trim().min(10, 'Phone must be at least 10 characters.').max(15, 'Phone must be at most 15 characters.'),
+        .min(8, 'Mật khẩu phải có ít nhất 8 ký tự.')
+        .max(64, 'Mật khẩu tối đa 64 ký tự.')
+        .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]+$/, 'Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường, 1 số và 1 ký tự đặc biệt.'),
+    name: z.string().trim().min(2, 'Tên phải có ít nhất 2 ký tự.').max(100, 'Tên tối đa 100 ký tự.'),
+    phone: z.string().trim().min(10, 'Số điện thoại phải có ít nhất 10 ký tự.').max(15, 'Số điện thoại tối đa 15 ký tự.'),
     role: z.nativeEnum(UserRole).default(UserRole.CUSTOMER)
 });
 
 export const loginSchema = z.object({
-    email: z.string().trim().email('Email is invalid.').toLowerCase(),
-    password: z.string().trim().min(1, 'Password is required.')
+    email: z.string().trim().email('Email không hợp lệ.').toLowerCase(),
+    password: z.string().trim().min(1, 'Mật khẩu không được để trống.')
 });
 
 export const googleAuthSchema = z.object({
-    access_token: z.string().trim().min(1, 'Google access token is required.')
+    access_token: z.string().trim().min(1, 'Token Google là bắt buộc.')
 });
 
 export const forgotPasswordSchema = z.object({
-    email: z.string().trim().email('Email is invalid.').toLowerCase()
+    email: z.string().trim().email('Email không hợp lệ.').toLowerCase()
 });
 
 export const resetPasswordSchema = z.object({
-    token: z.string().trim().min(1, 'Reset token is required.'),
+    token: z.string().trim().min(1, 'Token đặt lại mật khẩu là bắt buộc.'),
     newPassword: z.string()
         .trim()
-        .min(8, 'Password must be at least 8 characters.')
-        .max(64, 'Password must be at most 64 characters.')
-        .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]+$/, 'Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character.')
+        .min(8, 'Mật khẩu phải có ít nhất 8 ký tự.')
+        .max(64, 'Mật khẩu tối đa 64 ký tự.')
+        .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]+$/, 'Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường, 1 số và 1 ký tự đặc biệt.')
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

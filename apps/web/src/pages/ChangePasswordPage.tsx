@@ -39,8 +39,13 @@ export const ChangePasswordPage: React.FC = () => {
       return;
     }
 
-    if (trimmedNew.length < 8 || trimmedNew.length > 64) {
-      setError("Mật khẩu mới phải từ 8 đến 64 ký tự.");
+    if (trimmedNew.length < 8) {
+      setError("Mật khẩu mới phải có ít nhất 8 ký tự.");
+      return;
+    }
+
+    if (trimmedNew.length > 64) {
+      setError("Mật khẩu mới tối đa 64 ký tự.");
       return;
     }
 

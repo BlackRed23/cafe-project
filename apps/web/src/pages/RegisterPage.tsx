@@ -45,8 +45,10 @@ export const RegisterPage: React.FC = () => {
     const trimmedPassword = password.trim();
     if (!trimmedPassword) {
       newErrors.password = "Mật khẩu không được để trống";
-    } else if (trimmedPassword.length < 8 || trimmedPassword.length > 64) {
-      newErrors.password = "Mật khẩu phải từ 8 đến 64 ký tự";
+    } else if (trimmedPassword.length < 8) {
+      newErrors.password = "Mật khẩu phải có ít nhất 8 ký tự";
+    } else if (trimmedPassword.length > 64) {
+      newErrors.password = "Mật khẩu tối đa 64 ký tự";
     } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]+$/.test(trimmedPassword)) {
       newErrors.password = "Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường, 1 số và 1 ký tự đặc biệt";
     }
