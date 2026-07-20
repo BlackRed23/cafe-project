@@ -1,5 +1,6 @@
 import { agentRepository } from '../repositories/agent.repository';
 import { geminiService } from './gemini.service';
+import { calculateReorderPoint } from '../utils/inventory.utils';
 
 const isSupplierActive = (supplier: { status?: string | null; deletedAt?: Date | null }): boolean =>
     supplier.status !== 'INACTIVE' && !supplier.deletedAt;
@@ -86,12 +87,18 @@ export const recommendationService = {
             return { skipped: true, reason: 'Product or inventory not found.' };
         }
 
-        if (inventory.quantity > inventory.minThreshold) {
-            const reasoning = 'San pham chua duoi nguong ton kho.';
+        const sales = await this.getSalesData(productId);
+        const firstActiveSupplier = product.supplierProducts.find(sp => isSupplierActive(sp.supplier));
+        const primaryLeadTimeDays = firstActiveSupplier ? (Number(firstActiveSupplier.leadTimeDays) || 0) : 0;
+        const { reorderPoint } = calculateReorderPoint(sales.salesVelocity30d, primaryLeadTimeDays);
+        const availableStock = inventory.quantity - (inventory.reservedStock ?? 0);
+
+        if (availableStock > reorderPoint) {
+            const reasoning = `San pham chua duoi nguong tai dat hang dong (available: ${availableStock}, reorderPoint: ${reorderPoint}, minThreshold: ${inventory.minThreshold}).`;
             const log = await agentRepository.createLog({
                 action: 'RECOMMEND_REORDER_SKIP_THRESHOLD',
                 input: JSON.stringify({ productId, force }),
-                output: JSON.stringify({ skipped: true, reason: 'ABOVE_THRESHOLD' }),
+                output: JSON.stringify({ skipped: true, reason: 'ABOVE_THRESHOLD', availableStock, reorderPoint, minThreshold: inventory.minThreshold }),
                 reasoning,
                 result: 'SKIPPED',
                 fallback_used: false,
@@ -218,7 +225,7 @@ export const recommendationService = {
             };
         });
 
-        const sales = await this.getSalesData(productId);
+        // sales đã được fetch từ đầu hàm để tính reorderPoint — không fetch lại
         let aiRecommendation: {
             recommendedQuantity: number;
             recommendedSupplierId: string;

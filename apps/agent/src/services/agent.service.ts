@@ -4,6 +4,7 @@ import { recommendationService } from './recommendation.service';
 import { AgentHttpError } from '../errors/http-error';
 import { logger } from '../utils/logger';
 import { fixAgentLogDisplayOutput, fixVietnameseMojibakeText } from '../utils/textEncoding';
+import { calculateReorderPoint, DELAY_BUFFER_DAYS, SAFETY_BUFFER_DAYS } from '../utils/inventory.utils';
 
 export type ScanInventoryInput = {
     productIds?: string[];
@@ -544,17 +545,12 @@ export const agentService = {
                     });
                     const totalSold = Math.abs(recentSales._sum.quantity || 0);
                     const averageDailySales = totalSold / 30;
-                    const baseDailySales = averageDailySales > 0 ? averageDailySales : 1;
 
-                    const delayBufferDays = 2;
+                    // Dùng calculateReorderPoint chung — đồng bộ tiêu chí với recommendationService
                     const leadTimeDays = supplierProduct?.leadTimeDays && supplierProduct.leadTimeDays > 0 ? supplierProduct.leadTimeDays : 0;
-                    const effectiveLeadTimeDays = leadTimeDays + delayBufferDays;
-
-                    const bufferDays = 2;
-                    const defaultSafetyStock = 10;
-                    const safetyStock = Math.max(defaultSafetyStock, Math.ceil(baseDailySales * bufferDays));
-                    const leadTimeDemand = Math.ceil(baseDailySales * effectiveLeadTimeDays);
-                    const reorderPoint = leadTimeDemand + safetyStock;
+                    const { baseDailySales, effectiveLeadTimeDays, safetyStock, leadTimeDemand, reorderPoint } = calculateReorderPoint(averageDailySales, leadTimeDays);
+                    const delayBufferDays = DELAY_BUFFER_DAYS;
+                    const bufferDays = SAFETY_BUFFER_DAYS;
 
                     const targetStock = baseDailySales > 0
                         ? Math.ceil(baseDailySales * (planningDays + effectiveLeadTimeDays + bufferDays))
@@ -909,6 +905,22 @@ export const agentService = {
                         continue;
                     }
 
+                    // BUG 2 FIX: Cảnh báo khi có NCC backup giao nhanh hơn đáng kể (>2x) so với NCC được chọn.
+                    // Chỉ ghi warning vào reasoning log, KHÔNG thay đổi NCC đã được chọn.
+                    let backupSupplierWarning: string | null = null;
+                    const selectedLeadTime = supplierProduct.leadTimeDays ?? 0;
+                    if (backupSuppliers.length > 0 && selectedLeadTime > 0) {
+                        const fasterBackup = backupSuppliers
+                            .filter(b => b.leadTimeDays < selectedLeadTime)
+                            .sort((a, b) => a.leadTimeDays - b.leadTimeDays)[0];
+                        if (fasterBackup && selectedLeadTime > fasterBackup.leadTimeDays * 2) {
+                            const leadTimeDiff = selectedLeadTime - fasterBackup.leadTimeDays;
+                            const priceDiff = fasterBackup.purchasePrice - Number(supplierProduct.price);
+                            const priceSign = priceDiff >= 0 ? '+' : '';
+                            backupSupplierWarning = `[Goi y NCC thay the] ${fasterBackup.supplierName} giao nhanh hon ${leadTimeDiff} ngay so voi NCC duoc chon (${supplierProduct.supplier.name}), gia chi chenh ${priceSign}${Math.abs(priceDiff).toFixed(0)} tren moi don vi hang.`;
+                        }
+                    }
+
                     const reasoning = withOptionalText(
                         planningReasoningText(
                             inventory,
@@ -923,6 +935,7 @@ export const agentService = {
                         ),
                         [
                             availableStock === 0 ? 'Tồn kho khả dụng đã bằng 0, cần ưu tiên tạo yêu cầu nhập hàng khẩn cấp.' : null,
+                            backupSupplierWarning,
                             settings.promptPrefix,
                             settings.slogan
                         ]
