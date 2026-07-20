@@ -16,3 +16,7 @@ export const env = {
 if (!env.DATABASE_URL) {
     console.error('❌ Missing DATABASE_URL in environment variables.');
 }
+
+if (!env.GEMINI_API_KEY) {
+    console.error('❌ Missing GEMINI_API_KEY in environment variables.');
+}

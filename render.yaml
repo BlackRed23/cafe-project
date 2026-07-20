@@ -18,3 +18,23 @@ services:
         sync: false
       - key: CORS_ORIGIN
         sync: false
+      - key: AGENT_BASE_URL
+        sync: false
+      - key: AGENT_INTERNAL_TOKEN
+        sync: false
+
+  - type: web
+    name: cafe-agent
+    runtime: node
+    rootDir: .
+    buildCommand: npm install && npm run build -w @cafe-project/database && npm run generate -w @cafe-project/database && npm run build -w @cafe-project/agent
+    startCommand: npm run start:server -w @cafe-project/agent
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: AGENT_INTERNAL_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
