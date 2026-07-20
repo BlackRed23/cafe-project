@@ -22,7 +22,7 @@ export const authMiddleware = (req: AuthenticatedRequest, res: Response, next: N
     const token = getBearerToken(req.headers.authorization);
 
     if (!token) {
-        sendError(res, 401, 'Authorization token is required.');
+        sendError(res, 401, 'Token xác thực là bắt buộc.');
         return;
     }
 
@@ -31,7 +31,7 @@ export const authMiddleware = (req: AuthenticatedRequest, res: Response, next: N
         next();
     } catch (error) {
         const statusCode = error instanceof HttpError ? error.statusCode : 401;
-        const message = error instanceof Error ? error.message : 'Invalid token.';
+        const message = error instanceof Error ? error.message : 'Token không hợp lệ.';
 
         sendError(res, statusCode, message);
     }
@@ -40,12 +40,12 @@ export const authMiddleware = (req: AuthenticatedRequest, res: Response, next: N
 export const roleMiddleware = (...allowedRoles: UserRole[]) => {
     return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
         if (!req.user) {
-            sendError(res, 401, 'Authentication is required.');
+            sendError(res, 401, 'Cần xác thực để truy cập.');
             return;
         }
 
         if (!allowedRoles.includes(req.user.role)) {
-            sendError(res, 403, 'Forbidden.');
+            sendError(res, 403, 'Bạn không có quyền truy cập.');
             return;
         }
 

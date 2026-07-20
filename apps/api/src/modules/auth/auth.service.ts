@@ -112,13 +112,13 @@ const fetchGoogleUserInfo = async (accessToken: string): Promise<GoogleUserInfo>
         });
 
         if (!response.ok) {
-            throw new HttpError(401, 'Invalid Google access token.');
+            throw new HttpError(401, 'Token Google không hợp lệ.');
         }
 
         const data = await response.json() as Partial<GoogleUserInfo>;
 
         if (!data.sub || !data.email) {
-            throw new HttpError(401, 'Google account information is incomplete.');
+            throw new HttpError(401, 'Thông tin tài khoản Google không đầy đủ.');
         }
 
         return {
@@ -132,7 +132,7 @@ const fetchGoogleUserInfo = async (accessToken: string): Promise<GoogleUserInfo>
             throw error;
         }
         console.error('Error fetching Google user info:', error);
-        throw new HttpError(503, 'Failed to connect to Google authentication service. Please check your internet connection and try again.');
+        throw new HttpError(503, 'Không thể kết nối với dịch vụ xác thực Google. Vui lòng kiểm tra kết nối internet và thử lại.');
     }
 };
 
@@ -140,11 +140,11 @@ export const registerUser = async (input: RegisterInput): Promise<AuthUser> => {
     const existingUser = await authRepository.findByEmail(input.email);
 
     if (existingUser) {
-        throw new HttpError(409, 'Email already exists.');
+        throw new HttpError(409, 'Email đã tồn tại.');
     }
 
     if (typeof input.password !== 'string' || !input.password.trim()) {
-        throw new HttpError(400, 'Password is required.');
+        throw new HttpError(400, 'Mật khẩu là bắt buộc.');
     }
 
     const hashedPassword = await bcrypt.hash(input.password, PASSWORD_SALT_ROUNDS);
@@ -169,11 +169,11 @@ export const updateUserProfile = async (userId: string, input: { name?: string; 
 export const changeUserPassword = async (userId: string, input: { currentPassword: string; newPassword: string }): Promise<void> => {
     const user = await authRepository.findById(userId);
     if (!user) {
-        throw new HttpError(404, 'User not found.');
+        throw new HttpError(404, 'Không tìm thấy người dùng.');
     }
 
     if (!user.password) {
-        throw new HttpError(400, 'This account does not have a local password yet. Please use forgot password to set one.');
+        throw new HttpError(400, 'Tài khoản này chưa có mật khẩu cục bộ. Vui lòng sử dụng tính năng quên mật khẩu để đặt mật khẩu.');
     }
 
     const isPasswordValid = await bcrypt.compare(input.currentPassword, user.password);
@@ -202,21 +202,21 @@ export const loginUser = async (input: LoginInput): Promise<AuthResponse> => {
     const user = await authRepository.findByEmail(input.email);
 
     if (!user) {
-        throw new HttpError(401, 'Invalid credentials.');
+        throw new HttpError(401, 'Email hoặc mật khẩu không chính xác.');
     }
 
     if (!user.isActive) {
-        throw new HttpError(403, 'Account is inactive.');
+        throw new HttpError(403, 'Tài khoản đã bị khóa.');
     }
 
     if (!user.password) {
-        throw new HttpError(401, 'This account uses Google login. Please sign in with Google or reset your password.');
+        throw new HttpError(401, 'Tài khoản này sử dụng đăng nhập Google. Vui lòng đăng nhập bằng Google hoặc đặt lại mật khẩu.');
     }
 
     const isPasswordValid = await bcrypt.compare(input.password, user.password);
 
     if (!isPasswordValid) {
-        throw new HttpError(401, 'Invalid credentials.');
+        throw new HttpError(401, 'Email hoặc mật khẩu không chính xác.');
     }
 
     await authRepository.updateLastLoginAt(user.id);
@@ -244,7 +244,7 @@ export const loginWithGoogle = async (input: GoogleAuthInput): Promise<AuthRespo
         });
     } else {
         if (!existingUser.isActive) {
-            throw new HttpError(403, 'Account is inactive.');
+            throw new HttpError(403, 'Tài khoản đã bị khóa.');
         }
 
         user = await authRepository.updateGoogleProfile(existingUser.id, {
@@ -282,7 +282,7 @@ export const resetPassword = async (input: ResetPasswordInput): Promise<void> =>
     const user = await authRepository.findByValidResetToken(input.token);
 
     if (!user) {
-        throw new HttpError(400, 'Reset token is invalid or expired.');
+        throw new HttpError(400, 'Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.');
     }
 
     const hashedPassword = await bcrypt.hash(input.newPassword.trim(), PASSWORD_SALT_ROUNDS);
@@ -293,11 +293,11 @@ export const getCurrentUser = async (userId: string): Promise<AuthUser> => {
     const user = await authRepository.findById(userId);
 
     if (!user) {
-        throw new HttpError(401, 'Invalid token user.');
+        throw new HttpError(401, 'Token người dùng không hợp lệ.');
     }
 
     if (!user.isActive) {
-        throw new HttpError(403, 'Account is inactive.');
+        throw new HttpError(403, 'Tài khoản đã bị khóa.');
     }
 
     return toAuthUser(user);
@@ -308,7 +308,7 @@ export const verifyAuthToken = (token: string): JwtUserPayload => {
         const decoded = jwt.verify(token, env.jwtSecret) as JwtDecodedPayload;
 
         if (!decoded.id || !decoded.email || !decoded.role) {
-            throw new HttpError(401, 'Invalid token payload.');
+            throw new HttpError(401, 'Dữ liệu token không hợp lệ.');
         }
 
         return {
@@ -321,6 +321,6 @@ export const verifyAuthToken = (token: string): JwtUserPayload => {
             throw error;
         }
 
-        throw new HttpError(401, 'Invalid or expired token.');
+        throw new HttpError(401, 'Token không hợp lệ hoặc đã hết hạn.');
     }
 };

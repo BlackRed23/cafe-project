@@ -6,12 +6,12 @@ import { HttpError } from './http-error';
 import { sendError } from './response';
 
 export const notFoundHandler = (req: Request, res: Response): void => {
-    sendError(res, 404, `Route ${req.method} ${req.originalUrl} not found.`);
+    sendError(res, 404, `Không tìm thấy route ${req.method} ${req.originalUrl}.`);
 };
 
 export const errorHandler = (error: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction): void => {
     if (error instanceof SyntaxError && error.status === 400) {
-        sendError(res, 400, 'Invalid JSON body.');
+        sendError(res, 400, 'JSON body không hợp lệ.');
         return;
     }
 
@@ -30,7 +30,7 @@ export const errorHandler = (error: Error & { status?: number }, _req: Request, 
     }
 
     if (error instanceof MulterError) {
-        const message = error.code === 'LIMIT_FILE_SIZE' ? 'Image size must be less than or equal to 5MB.' : error.message;
+        const message = error.code === 'LIMIT_FILE_SIZE' ? 'Kích thước ảnh phải nhỏ hơn hoặc bằng 5MB.' : error.message;
 
         sendError(res, 400, message);
         return;
@@ -38,29 +38,29 @@ export const errorHandler = (error: Error & { status?: number }, _req: Request, 
 
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2022' || error.code === 'P2021') {
-            sendError(res, 500, 'Database schema is not synced. Please run Prisma db push or migration, then restart the API server.');
+            sendError(res, 500, 'Cơ sở dữ liệu không đồng bộ. Vui lòng chạy Prisma db push hoặc migration, sau đó khởi động lại API server.');
             return;
         }
 
         if (error.code === 'P2002') {
-            sendError(res, 409, 'A record with this unique value already exists.');
+            sendError(res, 409, 'Dữ liệu này đã tồn tại.');
             return;
         }
     }
 
     if (error instanceof Prisma.PrismaClientInitializationError) {
-        sendError(res, 500, 'Database connection failed. Please check DATABASE_URL and make sure PostgreSQL is running.');
+        sendError(res, 500, 'Kết nối cơ sở dữ liệu thất bại. Vui lòng kiểm tra DATABASE_URL và đảm bảo PostgreSQL đang chạy.');
         return;
     }
 
     if (error instanceof Prisma.PrismaClientValidationError) {
-        sendError(res, 400, 'Invalid database request.');
+        sendError(res, 400, 'Yêu cầu cơ sở dữ liệu không hợp lệ.');
         return;
     }
 
     console.error('[api]', error);
     const message = env.nodeEnv === 'development'
         ? `${error.message}\n${error.stack}`
-        : 'Internal server error.';
+        : 'Lỗi máy chủ nội bộ.';
     sendError(res, 500, message);
 };
