@@ -85,7 +85,7 @@ export const ProductListPage: React.FC = () => {
     }
 
     const cartQuantity = items.find(item => item.product.id === product.id)?.quantity || 0;
-    const availableQuantity = stockQuantity - cartQuantity;
+    const availableQuantity = (stockQuantity ?? 0) - cartQuantity;
 
     const didAdd = addToCart(product, 1);
     if (!didAdd) {
