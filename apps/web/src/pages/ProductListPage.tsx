@@ -11,6 +11,7 @@ import { Search, Sparkles, ChevronLeft, ChevronRight, SlidersHorizontal } from "
 
 import { categoriesApi } from "../api/categories.api";
 import { useToast } from "../contexts/ToastContext";
+import { sortProductsInStockFirst } from "../utils/productStock";
 
 const PRICE_RANGES = [
   { id: "all", name: "Mọi mức giá" },
@@ -32,7 +33,7 @@ export const ProductListPage: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { addToCart } = useCart();
+  const { addToCart, items } = useCart();
   const toast = useToast();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -83,9 +84,12 @@ export const ProductListPage: React.FC = () => {
       return;
     }
 
+    const cartQuantity = items.find(item => item.product.id === product.id)?.quantity || 0;
+    const availableQuantity = stockQuantity - cartQuantity;
+
     const didAdd = addToCart(product, 1);
     if (!didAdd) {
-      toast.warning("Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");
+      toast.warning(`Chỉ còn ${availableQuantity} ${product.unit || "hộp"} có thể thêm vào giỏ.`);
     }
   };
 
@@ -126,7 +130,7 @@ export const ProductListPage: React.FC = () => {
       result.sort((a, b) => a.name.localeCompare(b.name));
     }
 
-    return result;
+    return sortProductsInStockFirst(result);
   };
 
   const processedProducts = getFilteredAndSortedProducts();

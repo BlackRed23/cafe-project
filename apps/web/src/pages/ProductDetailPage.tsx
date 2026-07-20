@@ -19,7 +19,7 @@ export const ProductDetailPage: React.FC = () => {
   const [quantity, setQuantity] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { addToCart } = useCart();
+  const { addToCart, items } = useCart();
   const toast = useToast();
 
   useEffect(() => {
@@ -84,6 +84,7 @@ export const ProductDetailPage: React.FC = () => {
   const imgUrl = product.imageUrl || product.image_url || "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=600";
   const stockCount = product.inventory?.quantity;
   const isOutOfStock = stockCount !== undefined && stockCount <= 0;
+  const cartQuantity = items.find(item => item.product.id === product.id)?.quantity || 0;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex flex-col gap-8 pb-24">
@@ -141,6 +142,9 @@ export const ProductDetailPage: React.FC = () => {
                 ) : (
                   <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-xl">
                     <ShieldCheck size={14} /> Còn lại {stockCount} {product.unit || "hộp"}
+                    {cartQuantity > 0 && (
+                      <span className="text-emerald-600/70 font-normal"> (đã có {cartQuantity} trong giỏ)</span>
+                    )}
                   </span>
                 )
               ) : (
@@ -198,9 +202,12 @@ export const ProductDetailPage: React.FC = () => {
                   navigate("/login", { state: { returnUrl: location.pathname } });
                   return;
                 }
+                const availableQuantity = stockCount ? stockCount - cartQuantity : undefined;
                 const didAdd = addToCart(product, quantity);
                 if (!didAdd) {
-                  toast.warning("Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");
+                  toast.warning(availableQuantity !== undefined
+                    ? `Chỉ còn ${availableQuantity} ${product.unit || "hộp"} có thể thêm vào giỏ.`
+                    : "Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");
                   return;
                 }
                 navigate("/cart");
