@@ -129,6 +129,18 @@ export const orderRepository = {
                 nextStatus === OrderStatus.CANCELLED &&
                 (order.status === OrderStatus.PENDING || order.status === OrderStatus.PROCESSING);
 
+            const updatedOrderCount = await tx.order.updateMany({
+                where: { id: order.id, status: order.status },
+                data: {
+                    status: nextStatus,
+                    ...(shouldFinalizeStock ? { stockDeductedAt: new Date() } : {})
+                }
+            });
+
+            if (updatedOrderCount.count !== 1) {
+                throw new Error('Đơn hàng đã được xử lý trước đó hoặc không ở trạng thái hợp lệ.');
+            }
+
             if (shouldFinalizeStock) {
                 for (const item of order.items) {
                     const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
@@ -249,14 +261,14 @@ export const orderRepository = {
                 }
             }
 
-            return tx.order.update({
+            // Đã được update ở đầu transaction, bây giờ chỉ fetch trả về
+
+            const updatedOrder = await tx.order.findUnique({
                 where: { id: order.id },
-                data: {
-                    status: nextStatus,
-                    ...(shouldFinalizeStock ? { stockDeductedAt: new Date() } : {})
-                },
                 include: orderInclude
             });
+
+            return updatedOrder!;
         });
     }
 };
