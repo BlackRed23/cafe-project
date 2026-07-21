@@ -152,7 +152,7 @@ export const orderRepository = {
 
                     const batches = await tx.inventoryBatch.findMany({
                         where: { inventoryId: inventory.id, quantity: { gt: 0 }, expirationDate: { gte: startOfToday } },
-                        orderBy: { expirationDate: 'asc' }
+                        orderBy: [{ expirationDate: 'asc' }, { id: 'asc' }]
                     });
 
                     const totalSellable = batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
@@ -164,24 +164,50 @@ export const orderRepository = {
 
                     for (const batch of batches) {
                         if (remainingToDeduct <= 0) break;
-                        const deduction = Math.min(batch.quantity, remainingToDeduct);
-                        await tx.inventoryBatch.update({
-                            where: { id: batch.id },
-                            data: { quantity: { decrement: deduction } }
-                        });
                         
-                        await tx.inventoryTransaction.create({
-                            data: {
-                                productId: item.productId,
-                                userId,
-                                type: InventoryTransactionType.ORDER,
-                                quantity: -deduction,
-                                reason: `Trừ kho thật cho đơn ${order.id}`,
-                                batchId: batch.id
+                        let currentBatchQuantity = batch.quantity;
+                        let retryCount = 0;
+                        const MAX_RETRY = 5;
+
+                        while (currentBatchQuantity > 0 && remainingToDeduct > 0) {
+                            if (retryCount >= MAX_RETRY) {
+                                throw new Error('Hệ thống đang xử lý nhiều giao dịch cùng lúc, vui lòng thử lại.');
                             }
-                        });
-                        
-                        remainingToDeduct -= deduction;
+
+                            const deduction = Math.min(currentBatchQuantity, remainingToDeduct);
+                            const updatedBatch = await tx.inventoryBatch.updateMany({
+                                where: { id: batch.id, quantity: { gte: deduction } },
+                                data: { quantity: { decrement: deduction } }
+                            });
+
+                            if (updatedBatch.count === 1) {
+                                await tx.inventoryTransaction.create({
+                                    data: {
+                                        productId: item.productId,
+                                        userId,
+                                        type: InventoryTransactionType.ORDER,
+                                        quantity: -deduction,
+                                        reason: `Trừ kho thật cho đơn ${order.id}`,
+                                        batchId: batch.id
+                                    }
+                                });
+                                remainingToDeduct -= deduction;
+                                break;
+                            } else {
+                                retryCount++;
+                                const freshBatch = await tx.inventoryBatch.findUnique({
+                                    where: { id: batch.id }
+                                });
+                                if (!freshBatch || freshBatch.quantity <= 0) {
+                                    break;
+                                }
+                                currentBatchQuantity = freshBatch.quantity;
+                            }
+                        }
+                    }
+
+                    if (remainingToDeduct > 0) {
+                        throw new Error(`Không đủ lô hàng còn hạn để xuất (vừa bị giành mất). Số lượng còn thiếu: ${remainingToDeduct}.`);
                     }
                 }
 
