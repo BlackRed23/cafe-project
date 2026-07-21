@@ -47,6 +47,9 @@ export const orderRepository = {
                 const product = productById.get(item.productId);
                 if (!product) throw new Error('Không tìm thấy sản phẩm.');
 
+                // Lưu ý: Đây chỉ là early-check để báo lỗi sớm và thân thiện cho người dùng (hiển thị số lượng khả dụng cụ thể).
+                // KHÔNG PHẢI nguồn chân lý (source of truth) để chống race condition/oversell.
+                // Chốt chặn an toàn thực sự (source of truth) nằm ở câu lệnh raw SQL atomic phía dưới trong vòng lặp giữ chỗ.
                 const availableStock = product.inventory ? product.inventory.quantity - product.inventory.reservedStock : 0;
                 if (!product.inventory || availableStock < item.quantity) {
                     throw new Error(
@@ -87,22 +90,17 @@ export const orderRepository = {
             });
 
             for (const item of input.items) {
-                const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
-                if (!inventory) continue;
+                const product = productById.get(item.productId)!;
+                if (!product.inventory) continue;
 
-                const availableStock = inventory.quantity - inventory.reservedStock;
-                if (availableStock < item.quantity) {
-                    const product = productById.get(item.productId)!;
-                    throw new Error(`Không đủ tồn kho khả dụng để tạo đơn hàng. Sản phẩm "${product.name}" vừa hết hàng.`);
-                }
+                const updateResult = await tx.$executeRaw`
+                    UPDATE "Inventory"
+                    SET "reservedStock" = "reservedStock" + ${item.quantity}
+                    WHERE "productId" = ${item.productId}
+                      AND "quantity" - "reservedStock" >= ${item.quantity}
+                `;
 
-                const updated = await tx.inventory.updateMany({
-                    where: { id: inventory.id, quantity: { gte: inventory.reservedStock + item.quantity } },
-                    data: { reservedStock: { increment: item.quantity } }
-                });
-
-                if (updated.count !== 1) {
-                    const product = productById.get(item.productId)!;
+                if (updateResult !== 1) {
                     throw new Error(`Không đủ tồn kho khả dụng để tạo đơn hàng. Sản phẩm "${product.name}" vừa hết hàng.`);
                 }
 

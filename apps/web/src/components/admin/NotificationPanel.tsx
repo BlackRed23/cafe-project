@@ -11,6 +11,7 @@ import {
   ShoppingCart,
   X,
 } from "lucide-react";
+import { useToast } from "../../contexts/ToastContext";
 import { agentLogsApi } from "../../api/agentLogs.api";
 import { inventoryApi } from "../../api/inventory.api";
 import { ordersApi } from "../../api/orders.api";
@@ -111,6 +112,12 @@ function buildAgentNotification(log: AgentLog): Notification | null {
 
   if (mappedTitle) {
     title = mappedTitle;
+  } else if (action === "SCAN_INVENTORY_EXPIRED") {
+    title = `Lô hàng đã hết hạn`;
+    type = "error";
+  } else if (action === "SCAN_INVENTORY_CRITICAL_EXPIRY" || action === "SCAN_INVENTORY_NEAR_EXPIRY") {
+    title = `Lô hàng sắp hết hạn`;
+    type = "warning";
   } else if (status === "RUNNING") {
     title = "AI Agent đang quét tồn kho...";
     type = "info";
@@ -308,6 +315,9 @@ const ICON_MAP = {
 export const NotificationPanel: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [apiNotifications, setApiNotifications] = useState<Notification[]>([]);
+  const globalToast = useToast();
+  const isInitialMount = useRef(true);
+  const lastLogId = useRef<string | null>(null);
   const [readIds, setReadIds] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -328,8 +338,8 @@ export const NotificationPanel: React.FC = () => {
   }, [open]);
 
   useEffect(() => {
-    const fetchNotifications = async () => {
-      setLoading(true);
+    const fetchNotifications = async (isPolling = false, skipToast = false) => {
+      if (!isPolling) setLoading(true);
       try {
         const [inventoryResult, purchaseResult, logResult, orderResult] = await Promise.allSettled([
           inventoryApi.getLowStock(),
@@ -338,27 +348,79 @@ export const NotificationPanel: React.FC = () => {
           ordersApi.getOrders(),
         ]);
 
+        const agentLogs = logResult.status === "fulfilled" ? logResult.value : [];
+        
+        if (!isInitialMount.current && !skipToast) {
+            const newLogs = [];
+            for (const log of agentLogs) {
+                if (log.id === lastLogId.current) break;
+                newLogs.push(log);
+            }
+            newLogs.reverse().forEach(log => {
+                const reason = log.reason || "";
+                const result = log.result || "";
+                const action = log.action || "";
+                const output = (log.output as any) || {};
+                const notification = output.notification || {};
+                const pName = notification.productName || log.productName || "sản phẩm";
+                
+                if (reason === "STOCK_OK" || result === "STOCK_OK" || result === "SKIPPED_DUPLICATE" || reason === "ACTIVE_PR_EXISTS") {
+                    return;
+                }
+
+                if (action === "SCAN_INVENTORY_EXPIRED") {
+                    globalToast.error(`Lô hàng ${notification.batchCode || ''} của "${pName}" đã HẾT HẠN.`);
+                } else if (action === "SCAN_INVENTORY_CRITICAL_EXPIRY") {
+                    globalToast.warning(`Lô hàng ${notification.batchCode || ''} của "${pName}" sắp hết hạn nghiêm trọng (${notification.daysLeft} ngày).`);
+                } else if (action === "SCAN_INVENTORY_NEAR_EXPIRY") {
+                    globalToast.warning(`Lô hàng ${notification.batchCode || ''} của "${pName}" sắp đến hạn (${notification.daysLeft} ngày).`);
+                } else if (result === "CREATED_PURCHASE_REQUEST" || reason === "PURCHASE_REQUEST_CREATED") {
+                    globalToast.success("AI Agent", `Vừa tạo yêu cầu nhập hàng cho ${pName}`, log.purchaseRequestId ? `/admin/purchase-requests/${log.purchaseRequestId}` : undefined);
+                } else if (log.status === "FAILED" || result === "FAILED" || result === "ERROR" || result === "AGENT_SCAN_FAILED") {
+                    globalToast.error("Lỗi AI Agent", "Không kết nối được AI Agent service.");
+                } else if (reason === "NO_SUPPLIER" || reason === "NO_SUPPLIERS_MAPPED" || result === "NO_SUPPLIER" || reason === "SUPPLIERS_INACTIVE") {
+                    globalToast.warning("AI Agent Cảnh báo", `Thiếu nhà cung cấp cho sản phẩm ${pName}`);
+                }
+            });
+        }
+
+        if (agentLogs.length > 0) {
+            lastLogId.current = agentLogs[0].id;
+        }
+        isInitialMount.current = false;
+
         setApiNotifications(
           buildNotifications(
             inventoryResult.status === "fulfilled" ? inventoryResult.value : [],
             purchaseResult.status === "fulfilled" ? purchaseResult.value : [],
-            logResult.status === "fulfilled" ? logResult.value : [],
+            agentLogs,
             orderResult.status === "fulfilled" ? orderResult.value : []
           )
         );
+      } catch (error) {
+        if (isPolling) {
+          console.log("Lỗi khi tải thông báo (polling)", error);
+        } else {
+          console.error(error);
+        }
       } finally {
-        setLoading(false);
+        if (!isPolling) setLoading(false);
       }
     };
 
     fetchNotifications();
     
+    const interval = setInterval(() => {
+      fetchNotifications(true, false);
+    }, 45000);
+
     const handleRefresh = () => {
-      fetchNotifications();
+      fetchNotifications(false, true);
     };
     window.addEventListener("refresh-notifications", handleRefresh);
     window.addEventListener("agent-logs-updated", handleRefresh);
     return () => {
+      clearInterval(interval);
       window.removeEventListener("refresh-notifications", handleRefresh);
       window.removeEventListener("agent-logs-updated", handleRefresh);
     };

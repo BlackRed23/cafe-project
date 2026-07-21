@@ -4,11 +4,12 @@ import { getStatusLabel } from "../../utils/statusLabel";
 interface BadgeProps {
   status: string;
   className?: string;
+  context?: "order" | "payment";
 }
 
-export const Badge: React.FC<BadgeProps> = ({ status, className = "" }) => {
+export const Badge: React.FC<BadgeProps> = ({ status, className = "", context }) => {
   const cleanStatus = (status || "").toUpperCase();
-  const label = getStatusLabel(cleanStatus);
+  const label = getStatusLabel(cleanStatus, context);
 
   const colorsMap: Record<string, string> = {
     // Shared

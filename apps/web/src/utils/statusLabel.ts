@@ -20,8 +20,18 @@ const statusMap: Record<string, string> = {
   OK: "Bình thường",
 };
 
-export function getStatusLabel(status: string): string {
+const paymentStatusOverrides: Record<string, string> = {
+  PENDING: "Chờ xử lý thanh toán",
+};
+const orderStatusOverrides: Record<string, string> = {
+  PENDING: "Chờ xử lý thanh toán",
+};
+
+export function getStatusLabel(status: string, context?: "order" | "payment"): string {
   if (!status) return "";
-  return statusMap[status.toUpperCase()] || status;
+  const key = status.toUpperCase();
+  if (context === "payment" && paymentStatusOverrides[key]) return paymentStatusOverrides[key];
+  if (context === "order" && orderStatusOverrides[key]) return orderStatusOverrides[key];
+  return statusMap[key] || status;
 }
 

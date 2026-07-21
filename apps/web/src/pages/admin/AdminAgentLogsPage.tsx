@@ -35,7 +35,6 @@ const STATUS_META: Record<AgentLogStatus, { label: string; className: string; ic
 const PAGE_SIZE = 20;
 const LOW_PRIORITY_STOCK_REASONS = new Set(["STOCK_OK", "ABOVE_THRESHOLD"]);
 type AgentLogFilter = "" | AgentLogStatus | "SIMULATION";
-const jsonBlock = (value: unknown) => JSON.stringify(value ?? null, null, 2);
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -888,20 +887,7 @@ export const AdminAgentLogsPage: React.FC = () => {
               </div>
             )}
 
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Dữ liệu đầu vào</span>
-                <pre className="p-4 bg-slate-900 text-slate-100 font-mono text-xs rounded-xl overflow-x-auto max-h-64 overflow-y-auto">
-                  {jsonBlock(selectedLog.input)}
-                </pre>
-              </div>
-              <div className="space-y-1.5">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Dữ liệu đầu ra</span>
-                <pre className="p-4 bg-slate-900 text-slate-100 font-mono text-xs rounded-xl overflow-x-auto max-h-64 overflow-y-auto">
-                  {jsonBlock(selectedLog.output)}
-                </pre>
-              </div>
-            </div>
+
 
             <div className="pt-3 border-t border-slate-100 flex flex-wrap justify-end gap-2">
               {selectedLog.purchaseRequestId && (

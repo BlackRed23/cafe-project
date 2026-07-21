@@ -12,6 +12,7 @@ import { Loading } from "../../components/common/Loading";
 import { EmptyState } from "../../components/common/EmptyState";
 import { DataTable } from "../../components/admin/DataTable";
 import { useAuth } from "../../contexts/AuthContext";
+import { useToast } from "../../contexts/ToastContext";
 
 const paymentStatusLabel = (status?: string) => (status === "PAID" ? "Đã thanh toán" : "Chưa thanh toán");
 const paymentStatusClassName = (status?: string) =>
@@ -45,12 +46,7 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [note, setNote] = useState("");
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
-
-  const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
+  const toast = useToast();
 
   const fetchPRs = async () => {
     try {
@@ -88,7 +84,7 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
       setInventories(invRes);
       setSupplierProductsMapping(spmRes);
     } catch {
-      showToast("Không thể tải danh sách sản phẩm hoặc nhà cung cấp.", "error");
+      toast.error("Không thể tải danh sách sản phẩm hoặc nhà cung cấp.");
     } finally {
       setIsFormLoading(false);
     }
@@ -104,15 +100,15 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProductId) return showToast("Vui lòng chọn sản phẩm.", "error");
-    if (!selectedSupplierId) return showToast("Vui lòng chọn nhà cung cấp.", "error");
-    if (!quantity) return showToast("Vui lòng nhập số lượng đề xuất.", "error");
+    if (!selectedProductId) return toast.error("Vui lòng chọn sản phẩm.");
+    if (!selectedSupplierId) return toast.error("Vui lòng chọn nhà cung cấp.");
+    if (!quantity) return toast.error("Vui lòng nhập số lượng đề xuất.");
 
     const qty = parseInt(quantity, 10);
-    if (Number.isNaN(qty) || qty <= 0) return showToast("Số lượng đề xuất phải lớn hơn 0.", "error");
+    if (Number.isNaN(qty) || qty <= 0) return toast.error("Số lượng đề xuất phải lớn hơn 0.");
 
     setIsFormLoading(true);
-    showToast("Đang tạo yêu cầu nhập hàng...", "info");
+    toast.info("Đang tạo yêu cầu nhập hàng...");
 
     try {
       const inv = inventories.find((item: any) => item.productId === selectedProductId || item.product_id === selectedProductId);
@@ -124,13 +120,13 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
         items: [{ inventoryId, quantity: qty }],
       });
 
-      showToast("Tạo yêu cầu nhập hàng thành công.", "success");
+      toast.success("Tạo yêu cầu nhập hàng thành công.");
       setStatusFilter(newPr.status || "PENDING");
       handleCloseModal();
       fetchPRs();
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || "Không thể tạo yêu cầu nhập hàng, vui lòng thử lại.";
-      showToast(msg, "error");
+      toast.error(msg);
     } finally {
       setIsFormLoading(false);
     }
@@ -330,18 +326,7 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
         />
       )}
 
-      {toast && (
-        <div
-          className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${toast.type === "success"
-            ? "border border-emerald-200 bg-emerald-100 text-emerald-800"
-            : toast.type === "error"
-              ? "border border-rose-200 bg-rose-100 text-rose-800"
-              : "border border-blue-200 bg-blue-100 text-blue-800"
-            }`}
-        >
-          {toast.message}
-        </div>
-      )}
+
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">

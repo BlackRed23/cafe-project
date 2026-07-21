@@ -162,8 +162,8 @@ export const AdminOrderDetailPage: React.FC = () => {
             <span className="text-xs text-slate-400 mt-1 block">Ngày đặt: {formatDate(order.createdAt)}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Badge status={order.paymentStatus} />
-            <Badge status={order.status} />
+            <Badge status={order.paymentStatus} context="payment" />
+            <Badge status={order.status} context="order" />
           </div>
         </div>
 

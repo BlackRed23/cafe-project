@@ -475,6 +475,7 @@ export const agentService = {
         let sessionLog;
         try {
             const scanStartedAt = new Date();
+            logger.info(`[AgentScan] SESSION START | sessionId=${scanSessionId} | trigger=${triggerType} | sourceType=${input.sourceType} | sourceId=${input.sourceId}`);
             sessionLog = await agentRepository.createLog({
                 action: 'SCAN_INVENTORY_SESSION',
                 input: JSON.stringify({ scanSessionId, triggerType, sourceType: input.sourceType, sourceId: input.sourceId, productIds: input.productIds, startedAt: scanStartedAt.toISOString() }),
@@ -633,13 +634,13 @@ export const agentService = {
                         const expDate = new Date(batch.expirationDate);
                         const diffTime = expDate.getTime() - startOfToday.getTime();
                         const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        
+
                         let warningType = 'SAFE';
                         let actionLabel = 'SCAN_INVENTORY_SAFE';
                         let reasoning = 'Lô hàng an toàn.';
                         let title = 'Thông báo lô hàng';
                         let actionMsg = 'Không cần xử lý';
-                        
+
                         if (daysLeft < 0) {
                             warningType = 'EXPIRED';
                             actionLabel = 'SCAN_INVENTORY_EXPIRED';
@@ -659,15 +660,15 @@ export const agentService = {
                             title = 'Cảnh báo lô hàng cận hạn';
                             actionMsg = 'Theo dõi hoặc chuẩn bị khuyến mãi';
                         }
-                        
+
                         if (warningType !== 'SAFE') {
                             hasBatchWarning = true;
                             const dedupeKey = `batch_expiry_${inventory.productId}_${batch.id}_${warningType}_${startOfToday.toISOString().split('T')[0]}`;
-                            
+
                             const existingLog = await prisma.agentLog.findFirst({
                                 where: { action: actionLabel, output: { contains: dedupeKey } }
                             });
-                            
+
                             if (!existingLog) {
                                 const message = `AI Agent phát hiện sản phẩm ${product.name}, lô ${batch.batchCode} ${warningType === 'EXPIRED' ? 'đã hết hạn' : 'sắp hết hạn trong ' + daysLeft + ' ngày'}.`;
                                 const log = await agentRepository.createLog({
@@ -956,6 +957,7 @@ export const agentService = {
                         message: `AI Agent tự động quét tồn kho sản phẩm ${product.name}. Khả dụng ${availableStock}, ngưỡng ${minThreshold}. Sản phẩm cần nhập hàng.\nAI Agent đã tạo yêu cầu nhập hàng ${request.requestNumber} cho sản phẩm ${product.name}.`,
                         notification: notificationForCreatedPurchaseRequest(product.name, request.id)
                     };
+                    logger.info(`[AgentScan] CREATE_PR | product="${product.name}" (${inventory.productId}) | qty=${recommendedQty} | supplier="${supplierProduct.supplier.name}"`, { input: baseInput, output });
                     const log = await agentRepository.createLog({
                         action: 'SCAN_INVENTORY_CREATE_PURCHASE_REQUEST',
                         input: JSON.stringify(baseInput),
@@ -993,6 +995,7 @@ export const agentService = {
                         inventoryId: inventory.id,
                         notification: notificationForAgentFailed(product.name)
                     };
+                    logger.error(`[AgentScan] FAILED | product="${product.name}" (${inventory.productId}) | error="${errorMessage}"`, { input: failureInput, output: failureOutput });
                     const log = await agentRepository.createLog({
                         action: 'SCAN_INVENTORY_FAILED',
                         input: JSON.stringify(failureInput),
