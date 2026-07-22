@@ -47,6 +47,9 @@ export const orderRepository = {
                 const product = productById.get(item.productId);
                 if (!product) throw new Error('Không tìm thấy sản phẩm.');
 
+                // Lưu ý: Đây chỉ là early-check để báo lỗi sớm và thân thiện cho người dùng (hiển thị số lượng khả dụng cụ thể).
+                // KHÔNG PHẢI nguồn chân lý (source of truth) để chống race condition/oversell.
+                // Chốt chặn an toàn thực sự (source of truth) nằm ở câu lệnh raw SQL atomic phía dưới trong vòng lặp giữ chỗ.
                 const availableStock = product.inventory ? product.inventory.quantity - product.inventory.reservedStock : 0;
                 if (!product.inventory || availableStock < item.quantity) {
                     throw new Error(
@@ -87,22 +90,17 @@ export const orderRepository = {
             });
 
             for (const item of input.items) {
-                const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
-                if (!inventory) continue;
+                const product = productById.get(item.productId)!;
+                if (!product.inventory) continue;
 
-                const availableStock = inventory.quantity - inventory.reservedStock;
-                if (availableStock < item.quantity) {
-                    const product = productById.get(item.productId)!;
-                    throw new Error(`Không đủ tồn kho khả dụng để tạo đơn hàng. Sản phẩm "${product.name}" vừa hết hàng.`);
-                }
+                const updateResult = await tx.$executeRaw`
+                    UPDATE "Inventory"
+                    SET "reservedStock" = "reservedStock" + ${item.quantity}
+                    WHERE "productId" = ${item.productId}
+                      AND "quantity" - "reservedStock" >= ${item.quantity}
+                `;
 
-                const updated = await tx.inventory.updateMany({
-                    where: { id: inventory.id, quantity: { gte: inventory.reservedStock + item.quantity } },
-                    data: { reservedStock: { increment: item.quantity } }
-                });
-
-                if (updated.count !== 1) {
-                    const product = productById.get(item.productId)!;
+                if (updateResult !== 1) {
                     throw new Error(`Không đủ tồn kho khả dụng để tạo đơn hàng. Sản phẩm "${product.name}" vừa hết hàng.`);
                 }
 
@@ -131,6 +129,18 @@ export const orderRepository = {
                 nextStatus === OrderStatus.CANCELLED &&
                 (order.status === OrderStatus.PENDING || order.status === OrderStatus.PROCESSING);
 
+            const updatedOrderCount = await tx.order.updateMany({
+                where: { id: order.id, status: order.status },
+                data: {
+                    status: nextStatus,
+                    ...(shouldFinalizeStock ? { stockDeductedAt: new Date() } : {})
+                }
+            });
+
+            if (updatedOrderCount.count !== 1) {
+                throw new Error('Đơn hàng đã được xử lý trước đó hoặc không ở trạng thái hợp lệ.');
+            }
+
             if (shouldFinalizeStock) {
                 for (const item of order.items) {
                     const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
@@ -154,7 +164,7 @@ export const orderRepository = {
 
                     const batches = await tx.inventoryBatch.findMany({
                         where: { inventoryId: inventory.id, quantity: { gt: 0 }, expirationDate: { gte: startOfToday } },
-                        orderBy: { expirationDate: 'asc' }
+                        orderBy: [{ expirationDate: 'asc' }, { id: 'asc' }]
                     });
 
                     const totalSellable = batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
@@ -166,24 +176,50 @@ export const orderRepository = {
 
                     for (const batch of batches) {
                         if (remainingToDeduct <= 0) break;
-                        const deduction = Math.min(batch.quantity, remainingToDeduct);
-                        await tx.inventoryBatch.update({
-                            where: { id: batch.id },
-                            data: { quantity: { decrement: deduction } }
-                        });
                         
-                        await tx.inventoryTransaction.create({
-                            data: {
-                                productId: item.productId,
-                                userId,
-                                type: InventoryTransactionType.ORDER,
-                                quantity: -deduction,
-                                reason: `Trừ kho thật cho đơn ${order.id}`,
-                                batchId: batch.id
+                        let currentBatchQuantity = batch.quantity;
+                        let retryCount = 0;
+                        const MAX_RETRY = 5;
+
+                        while (currentBatchQuantity > 0 && remainingToDeduct > 0) {
+                            if (retryCount >= MAX_RETRY) {
+                                throw new Error('Hệ thống đang xử lý nhiều giao dịch cùng lúc, vui lòng thử lại.');
                             }
-                        });
-                        
-                        remainingToDeduct -= deduction;
+
+                            const deduction = Math.min(currentBatchQuantity, remainingToDeduct);
+                            const updatedBatch = await tx.inventoryBatch.updateMany({
+                                where: { id: batch.id, quantity: { gte: deduction } },
+                                data: { quantity: { decrement: deduction } }
+                            });
+
+                            if (updatedBatch.count === 1) {
+                                await tx.inventoryTransaction.create({
+                                    data: {
+                                        productId: item.productId,
+                                        userId,
+                                        type: InventoryTransactionType.ORDER,
+                                        quantity: -deduction,
+                                        reason: `Trừ kho thật cho đơn ${order.id}`,
+                                        batchId: batch.id
+                                    }
+                                });
+                                remainingToDeduct -= deduction;
+                                break;
+                            } else {
+                                retryCount++;
+                                const freshBatch = await tx.inventoryBatch.findUnique({
+                                    where: { id: batch.id }
+                                });
+                                if (!freshBatch || freshBatch.quantity <= 0) {
+                                    break;
+                                }
+                                currentBatchQuantity = freshBatch.quantity;
+                            }
+                        }
+                    }
+
+                    if (remainingToDeduct > 0) {
+                        throw new Error(`Không đủ lô hàng còn hạn để xuất (vừa bị giành mất). Số lượng còn thiếu: ${remainingToDeduct}.`);
                     }
                 }
 
@@ -225,14 +261,14 @@ export const orderRepository = {
                 }
             }
 
-            return tx.order.update({
+            // Đã được update ở đầu transaction, bây giờ chỉ fetch trả về
+
+            const updatedOrder = await tx.order.findUnique({
                 where: { id: order.id },
-                data: {
-                    status: nextStatus,
-                    ...(shouldFinalizeStock ? { stockDeductedAt: new Date() } : {})
-                },
                 include: orderInclude
             });
+
+            return updatedOrder!;
         });
     }
 };

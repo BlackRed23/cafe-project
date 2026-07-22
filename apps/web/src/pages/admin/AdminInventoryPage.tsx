@@ -13,9 +13,10 @@ import { EmptyState } from "../../components/common/EmptyState";
 import { Modal } from "../../components/common/Modal";
 import { Input } from "../../components/common/Input";
 import { DataTable } from "../../components/admin/DataTable";
-import { AlertCircle, PlusCircle, Sliders, Settings, Package, CheckCircle, Info, X } from "lucide-react";
+import { AlertCircle, PlusCircle, Sliders, Settings, Package, Info } from "lucide-react";
 import { getErrorMessage } from "../../api/client";
 import { useAuth } from "../../contexts/AuthContext";
+import { useToast } from "../../contexts/ToastContext";
 
 type InventoryTab = "ALL" | "LOW_STOCK" | "WARNING" | "EXPIRING_SOON";
 
@@ -44,7 +45,7 @@ export const AdminInventoryPage: React.FC = () => {
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isScanningInventory, setIsScanningInventory] = useState(false);
 
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" | "warning" } | null>(null);
+  const globalToast = useToast();
 
   const [scanResultModalOpen, setScanResultModalOpen] = useState(false);
   const [scanResults, setScanResults] = useState<AgentLog[]>([]);
@@ -61,25 +62,22 @@ export const AdminInventoryPage: React.FC = () => {
     return log.result || log.status;
   };
 
-  const showToast = (message: string, type: "success" | "error" | "info" | "warning" = "info") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
+
 
   const handleScanInventory = async () => {
     setIsScanningInventory(true);
     setScanResultModalOpen(false);
-    showToast("AI Agent đang quét tồn kho...", "info");
+    globalToast.info("AI Agent đang quét tồn kho...");
     try {
       const res = await agentLogsApi.scanInventory({ triggerType: "MANUAL_ADMIN_SCAN" });
 
       if (res.cooldownRemainingSeconds) {
-        showToast(`Vui lòng chờ ${res.cooldownRemainingSeconds}s trước khi quét lại.`, "warning");
+        globalToast.warning(`Vui lòng chờ ${res.cooldownRemainingSeconds}s trước khi quét lại.`);
         return;
       }
 
       if (res.activeScanSessionId) {
-        showToast(`AI Agent đang quét tồn kho, vui lòng chờ hoàn tất.`, "warning");
+        globalToast.warning(`AI Agent đang quét tồn kho, vui lòng chờ hoàn tất.`);
         return;
       }
 
@@ -104,28 +102,28 @@ export const AdminInventoryPage: React.FC = () => {
       const shouldOpenModal = createdCount > 0 || duplicateCount > 0 || noSupplierCount > 0 || failedCount > 0 || (!!res.agentWarning && results.length > 0);
 
       if (res.agentWarning) {
-        showToast("Không kết nối được AI Agent service.", "warning");
+        globalToast.warning("Không kết nối được AI Agent service.");
         if (shouldOpenModal) setScanResultModalOpen(true);
       } else if (createdCount > 0) {
-        showToast("AI Agent đã tạo yêu cầu nhập hàng.", "success");
+        globalToast.success("AI Agent đã tạo yêu cầu nhập hàng.");
         setScanResultModalOpen(true);
       } else if (noSupplierCount > 0) {
-        showToast("AI Agent không thể tạo yêu cầu vì thiếu nhà cung cấp.", "warning");
+        globalToast.warning("AI Agent không thể tạo yêu cầu vì thiếu nhà cung cấp.");
         setScanResultModalOpen(true);
       } else if (duplicateCount > 0) {
-        showToast("Sản phẩm đã có yêu cầu nhập hàng đang xử lý.", "info");
+        globalToast.info("Sản phẩm đã có yêu cầu nhập hàng đang xử lý.");
         setScanResultModalOpen(true);
       } else if (stockOkCount > 0 && results.length > 0 && !shouldOpenModal) {
-        showToast("AI Agent đã kiểm tra xong, tồn kho vẫn an toàn.", "success");
+        globalToast.success("AI Agent đã kiểm tra xong, tồn kho vẫn an toàn.");
       } else if (!shouldOpenModal) {
-        showToast("AI Agent đã kiểm tra xong, tồn kho vẫn an toàn.", "success");
+        globalToast.success("AI Agent đã kiểm tra xong, tồn kho vẫn an toàn.");
       } else {
         setScanResultModalOpen(true);
       }
 
       await fetchInventories();
     } catch (err: any) {
-      showToast("AI Agent quét tồn kho thất bại. Vui lòng kiểm tra Nhật ký Agent.", "error");
+      globalToast.error("AI Agent quét tồn kho thất bại. Vui lòng kiểm tra Nhật ký Agent.");
     } finally {
       setIsScanningInventory(false);
       window.dispatchEvent(new CustomEvent("refresh-notifications"));
@@ -285,11 +283,11 @@ export const AdminInventoryPage: React.FC = () => {
       await inventoryApi.updateInventory(selectedInventory.productId, {
         minThreshold: thresholdSuggestion.recommendedThreshold,
       });
-      showToast("Đã lưu ngưỡng đề xuất.", "success");
+      globalToast.success("Đã lưu ngưỡng đề xuất.");
       await fetchInventories();
       handleCloseModal();
     } catch (err: any) {
-      showToast(getErrorMessage(err) || "Không thể lưu ngưỡng đề xuất.", "error");
+      globalToast.error(getErrorMessage(err) || "Không thể lưu ngưỡng đề xuất.");
     } finally {
       setModalLoading(false);
     }
@@ -300,29 +298,29 @@ export const AdminInventoryPage: React.FC = () => {
     if (!selectedInventory) return;
 
     if (modalType === "import" && inputValue <= 0) {
-      showToast("Số lượng nhập thêm phải lớn hơn 0", "error");
+      globalToast.error("Số lượng nhập thêm phải lớn hơn 0");
       return;
     }
     if (modalType === "adjust" && inputValue < 0) {
-      showToast("Số lượng thực tế không được âm", "error");
+      globalToast.error("Số lượng thực tế không được âm");
       return;
     }
     if (modalType === "threshold" && inputValue < 0) {
-      showToast("Ngưỡng không được âm", "error");
+      globalToast.error("Ngưỡng không được âm");
       return;
     }
 
     if (modalType === "create_pr") {
       if (!prSupplierId) {
-        showToast("Vui lòng chọn nhà cung cấp", "error");
+        globalToast.error("Vui lòng chọn nhà cung cấp");
         return;
       }
       if (prQuantity <= 0) {
-        showToast("Số lượng đề xuất phải lớn hơn 0", "error");
+        globalToast.error("Số lượng đề xuất phải lớn hơn 0");
         return;
       }
       setModalLoading(true);
-      showToast("Đang tạo yêu cầu nhập hàng...", "info");
+      globalToast.info("Đang tạo yêu cầu nhập hàng...");
       try {
         const response = await purchaseRequestsApi.createPurchaseRequest({
           supplierId: prSupplierId,
@@ -337,18 +335,18 @@ export const AdminInventoryPage: React.FC = () => {
         const createdRequestId = createdRequest?.id;
 
         if (createdRequestId) {
-          showToast("Tạo yêu cầu nhập hàng thành công. Đang chuyển đến chi tiết yêu cầu...", "success");
+          globalToast.success("Tạo yêu cầu nhập hàng thành công. Đang chuyển đến chi tiết yêu cầu...");
           handleCloseModal();
           navigate(`/admin/purchase-requests/${createdRequestId}`);
         } else {
-          showToast("Tạo yêu cầu nhập hàng thành công.", "success");
+          globalToast.success("Tạo yêu cầu nhập hàng thành công.");
           handleCloseModal();
           await fetchInventories();
           navigate("/admin/purchase-requests");
         }
         window.dispatchEvent(new CustomEvent("refresh-notifications"));
       } catch (err: any) {
-        showToast(getErrorMessage(err) || "Không thể tạo yêu cầu nhập hàng, vui lòng thử lại.", "error");
+        globalToast.info(getErrorMessage(err) || "Không thể tạo yêu cầu nhập hàng, vui lòng thử lại.", "error");
       } finally {
         setModalLoading(false);
       }
@@ -370,13 +368,13 @@ export const AdminInventoryPage: React.FC = () => {
         const finalQuantity = isSupplierMode ? inputValue * (supplierProduct!.conversionQuantity || 1) : inputValue;
 
         if (inputValue <= 0) {
-          showToast(isSupplierMode ? "Số lượng nhập theo NCC phải lớn hơn 0" : "Số lượng nhập thêm phải lớn hơn 0", "error");
+          globalToast.error(isSupplierMode ? "Số lượng nhập theo NCC phải lớn hơn 0" : "Số lượng nhập thêm phải lớn hơn 0");
           setModalLoading(false);
           return;
         }
 
         if (!expirationDate) {
-          showToast("Vui lòng nhập ngày hết hạn", "error");
+          globalToast.error("Vui lòng nhập ngày hết hạn");
           setModalLoading(false);
           return;
         }
@@ -399,14 +397,14 @@ export const AdminInventoryPage: React.FC = () => {
         }
 
         if (res.quantity <= minThreshold) {
-          showToast(warning || "Nhập kho thành công nhưng số lượng sau nhập vẫn thấp hơn ngưỡng tối thiểu.", "warning");
+          globalToast.warning(warning || "Nhập kho thành công nhưng số lượng sau nhập vẫn thấp hơn ngưỡng tối thiểu.");
         } else {
-          showToast(successMessage, "success");
+          globalToast.success(successMessage);
         }
       } else if (modalType === "adjust") {
         const diff = inputValue - selectedInventory.quantity;
         if (diff === 0) {
-          showToast("Điều chỉnh tồn kho thành công.", "success");
+          globalToast.success("Điều chỉnh tồn kho thành công.");
           handleCloseModal();
           setModalLoading(false);
           return;
@@ -419,18 +417,18 @@ export const AdminInventoryPage: React.FC = () => {
         const minThreshold = res.minThreshold ?? res.min_threshold ?? 0;
         const warning = res.warnings?.[0]?.message;
         if (res.quantity <= minThreshold) {
-          showToast(warning || "Điều chỉnh thành công. Số lượng sau điều chỉnh thấp hơn ngưỡng, cần nhập hàng.", "warning");
+          globalToast.warning(warning || "Điều chỉnh thành công. Số lượng sau điều chỉnh thấp hơn ngưỡng, cần nhập hàng.");
         } else {
-          showToast(res.message || "Điều chỉnh tồn kho thành công.", "success");
+          globalToast.success(res.message || "Điều chỉnh tồn kho thành công.");
         }
       } else if (modalType === "threshold") {
         const res = await inventoryApi.updateInventory(selectedInventory.productId, {
           minThreshold: inputValue,
         });
         if (res.warnings?.length) {
-          showToast(res.warnings[0].message, "warning");
+          globalToast.warning(res.warnings[0].message);
         } else {
-          showToast(res.message || "Cập nhật ngưỡng tồn kho thành công.", "success");
+          globalToast.success(res.message || "Cập nhật ngưỡng tồn kho thành công.");
         }
       }
       await fetchInventories();
@@ -439,11 +437,11 @@ export const AdminInventoryPage: React.FC = () => {
     } catch (err: any) {
       const msg = getErrorMessage(err);
       if (modalType === "import") {
-        showToast(msg || "Không thể nhập kho, vui lòng thử lại.", "error");
+        globalToast.error(msg || "Không thể nhập kho, vui lòng thử lại.");
       } else if (modalType === "adjust") {
-        showToast(msg || "Không thể điều chỉnh tồn kho, vui lòng thử lại.", "error");
+        globalToast.error(msg || "Không thể điều chỉnh tồn kho, vui lòng thử lại.");
       } else {
-        showToast(msg || "Không thể cập nhật ngưỡng, vui lòng thử lại.", "error");
+        globalToast.error(msg || "Không thể cập nhật ngưỡng, vui lòng thử lại.");
       }
     } finally {
       setModalLoading(false);
@@ -1205,45 +1203,7 @@ export const AdminInventoryPage: React.FC = () => {
           </Modal>
         )}
       </div>
-      {/* Toast Notification Container */}
-      {toast && (
-        <div className="fixed top-6 right-6 z-[60] animate-fade-in-down">
-          <div
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border ${toast.type === "success"
-              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-              : toast.type === "warning"
-                ? "bg-amber-50 border-amber-200 text-amber-800"
-                : toast.type === "error"
-                  ? "bg-rose-50 border-rose-200 text-rose-800"
-                  : "bg-blue-50 border-blue-200 text-blue-800"
-              }`}
-          >
-            {toast.type === "success" ? (
-              <CheckCircle size={20} className="text-emerald-600" />
-            ) : toast.type === "warning" ? (
-              <AlertCircle size={20} className="text-amber-600" />
-            ) : toast.type === "error" ? (
-              <AlertCircle size={20} className="text-rose-600" />
-            ) : (
-              <Info size={20} className="text-blue-600" />
-            )}
-            <p className="font-medium text-sm pr-6">{toast.message}</p>
-            <button
-              onClick={() => setToast(null)}
-              className={`absolute right-3 p-1 rounded-full hover:bg-black/5 transition-colors ${toast.type === "success"
-                ? "text-emerald-600"
-                : toast.type === "warning"
-                  ? "text-amber-600"
-                  : toast.type === "error"
-                    ? "text-rose-600"
-                    : "text-blue-600"
-                }`}
-            >
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-      )}
+
     </>
   );
 };

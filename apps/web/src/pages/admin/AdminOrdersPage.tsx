@@ -12,7 +12,7 @@ import { Eye, Receipt } from "lucide-react";
 
 const FILTER_OPTIONS = [
   { label: "Tất cả", value: "ALL" },
-  { label: "Chờ xử lý", value: "PENDING" },
+  { label: "Chờ xử lý thanh toán", value: "PENDING" },
   { label: "Đã xác nhận", value: "CONFIRMED" },
   { label: "Đang xử lý", value: "PROCESSING" },
   { label: "Hoàn thành", value: "COMPLETED" },
@@ -91,11 +91,11 @@ export const AdminOrdersPage: React.FC = () => {
     },
     {
       header: "Thanh toán",
-      render: (order: Order) => <Badge status={order.paymentStatus} />,
+      render: (order: Order) => <Badge status={order.paymentStatus} context="payment" />,
     },
     {
       header: "Trạng thái",
-      render: (order: Order) => <Badge status={order.status} />,
+      render: (order: Order) => <Badge status={order.status} context="order" />,
     },
     {
       header: "Chi tiết",
@@ -130,7 +130,7 @@ export const AdminOrdersPage: React.FC = () => {
         {pendingCount > 0 && (
           <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 rounded-xl border border-amber-200 text-sm shadow-sm">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-            <span className="font-semibold text-amber-700">{pendingCount} chờ xử lý</span>
+            <span className="font-semibold text-amber-700">{pendingCount} chờ xử lý thanh toán</span>
           </div>
         )}
       </div>

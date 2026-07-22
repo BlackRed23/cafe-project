@@ -64,13 +64,7 @@ const assertCanView = (order: OrderRecord, user: JwtUserPayload): void => {
 const assertTransition = (order: OrderRecord, next: OrderStatus): void => {
     const current = order.status;
 
-    if (current === OrderStatus.CANCELLED && next === OrderStatus.PENDING) {
-        if (order.payment?.status === PaymentStatus.PAID) {
-            throw new HttpError(400, 'Không thể khôi phục đơn hàng đã thanh toán.');
-        }
-
-        return;
-    }
+    // Đã xóa trạng thái CANCELLED -> PENDING vì thiếu logic giữ chỗ lại kho (re-reserve stock), tránh lỗi nghiệp vụ.
 
     const allowed = new Set([
         `${OrderStatus.PENDING}->${OrderStatus.PROCESSING}`,

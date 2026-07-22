@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Ban, CheckCircle, Mail, Info, Sparkles, PackageCheck, AlertOctagon, Send, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Ban, CheckCircle, Mail, Sparkles, PackageCheck, Send, X } from "lucide-react";
 import { purchaseRequestsApi } from "../../api/purchaseRequests.api";
 import { suppliersApi } from "../../api/suppliers.api";
 import type { PurchaseRequest, PurchaseRequestEmailPreview } from "../../types/purchaseRequest.types";
@@ -14,37 +14,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { systemSettingsApi } from "../../api/systemSettings.api";
 import { useAuth } from "../../contexts/AuthContext";
 
-const TOAST_DURATION = 4500;
-
-type ToastType = "success" | "error" | "info";
 type EmailModalMode = "edit" | "manual";
-
-interface Toast {
-  id: string;
-  type: ToastType;
-  message: string;
-}
-
-const toastStyles: Record<ToastType, { bg: string; border: string; text: string; icon: React.ReactNode }> = {
-  success: {
-    bg: "bg-emerald-50",
-    border: "border-emerald-300",
-    text: "text-emerald-900",
-    icon: <CheckCircle size={18} className="shrink-0 text-emerald-600" />,
-  },
-  error: {
-    bg: "bg-rose-50",
-    border: "border-rose-300",
-    text: "text-rose-900",
-    icon: <AlertOctagon size={18} className="shrink-0 text-rose-600" />,
-  },
-  info: {
-    bg: "bg-sky-50",
-    border: "border-sky-300",
-    text: "text-sky-900",
-    icon: <Info size={18} className="shrink-0 text-sky-600" />,
-  },
-};
 
 const normalizeEmailPreview = (
   pr: PurchaseRequest,
@@ -159,26 +129,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
   const [editEmailSubject, setEditEmailSubject] = useState("");
   const [editEmailBody, setEditEmailBody] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
   const [suggestedSuppliers, setSuggestedSuppliers] = useState<any[]>([]);
-
-  const removeToast = useCallback((toastId: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== toastId));
-  }, []);
-
-  const showToast = useCallback(
-    (toastId: string, type: ToastType, message: string, autoDismiss = true) => {
-      setToasts((prev) => {
-        const nextToast = { id: toastId, type, message };
-        return prev.some((toast) => toast.id === toastId)
-          ? prev.map((toast) => (toast.id === toastId ? nextToast : toast))
-          : [...prev, nextToast];
-      });
-
-      if (autoDismiss) window.setTimeout(() => removeToast(toastId), TOAST_DURATION);
-    },
-    [removeToast]
-  );
 
   const fetchEmailPreview = useCallback(
     async (request: PurchaseRequest) => {
@@ -239,13 +190,13 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
         }
       }
     } catch {
-      showToast("load-detail", "error", "Không thể tải chi tiết yêu cầu.");
+      globalToast.error("Không thể tải chi tiết yêu cầu.");
       setPr(null);
       setEmailPreview(null);
     } finally {
       setIsLoading(false);
     }
-  }, [fetchEmailPreview, id, showToast]);
+  }, [fetchEmailPreview, id, globalToast]);
 
   useEffect(() => {
     fetchPR();
@@ -265,15 +216,15 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
     if (!id) return;
 
     setIsApproving(true);
-    showToast("approve", "info", "Đang duyệt yêu cầu...", false);
+    globalToast.info("Đang duyệt yêu cầu...");
 
     try {
       const updated = await purchaseRequestsApi.approvePurchaseRequest(id);
       setPr(updated);
-      showToast("approve", "success", "Đã duyệt yêu cầu nhập hàng. Bạn có thể gửi email cho nhà cung cấp.");
+      globalToast.success("Đã duyệt yêu cầu nhập hàng. Bạn có thể gửi email cho nhà cung cấp.");
       await fetchEmailPreview(updated);
     } catch (err: any) {
-      showToast("approve", "error", getErrorMessage(err) || "Không thể duyệt yêu cầu, vui lòng thử lại.");
+      globalToast.error(getErrorMessage(err) || "Không thể duyệt yêu cầu, vui lòng thử lại.");
     } finally {
       setIsApproving(false);
       setShowConfirmApprove(false);
@@ -302,16 +253,16 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
           const itemBatches = receivedBatches[item.id] || [];
           const totalBatchQty = itemBatches.reduce((acc, b) => acc + (b.quantity || 0), 0);
           if (totalBatchQty !== receivedQuantities[item.id]) {
-             showToast("receive", "error", `Tổng số lượng các lô của sản phẩm "${item.productName}" phải bằng đúng số lượng nhận (${receivedQuantities[item.id]}).`);
+             globalToast.error(`Tổng số lượng các lô của sản phẩm "${item.productName}" phải bằng đúng số lượng nhận (${receivedQuantities[item.id]}).`);
              return;
           }
           for (const b of itemBatches) {
              if (!b.expirationDate) {
-                 showToast("receive", "error", `Vui lòng nhập Hạn sử dụng cho tất cả các lô của "${item.productName}".`);
+                 globalToast.error(`Vui lòng nhập Hạn sử dụng cho tất cả các lô của "${item.productName}".`);
                  return;
              }
              if (b.quantity <= 0) {
-                 showToast("receive", "error", `Số lượng mỗi lô phải lớn hơn 0.`);
+                 globalToast.error(`Số lượng mỗi lô phải lớn hơn 0.`);
                  return;
              }
           }
@@ -331,7 +282,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
       })).filter((item: any) => item.receivedQuantity > 0) || [];
 
       if (items.length === 0) {
-        showToast("receive", "error", "Chưa có sản phẩm nào được nhập số lượng.");
+        globalToast.error("Chưa có sản phẩm nào được nhập số lượng.");
         setIsReceiving(false);
         return;
       }
@@ -344,14 +295,14 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
       const productName = pr ? getPrimaryProductName(pr) : "Sản phẩm";
 
       if (res.purchaseRequest.status === "RECEIVED") {
-         showToast("receive", "success", "Nhận hàng thành công. Tồn kho đã được cập nhật.");
+         globalToast.success("Nhận hàng thành công. Tồn kho đã được cập nhật.");
          globalToast.success("Đã nhận đủ hàng", `Đã cập nhật tồn kho cho sản phẩm ${productName}.`, `/admin/purchase-requests/${id}`);
       } else {
-         showToast("receive", "success", "Đã nhận một phần. Tồn kho đã cộng.");
+         globalToast.success("Đã nhận một phần. Tồn kho đã cộng.");
          globalToast.success("Đã nhận một phần", `Tồn kho đã cộng cho sản phẩm ${productName}.`, `/admin/purchase-requests/${id}`);
       }
 
-      showToast("receive", "success", "Đã nhận hàng và cập nhật tồn kho. Trạng thái thanh toán: Chưa thanh toán.");
+      globalToast.success("Đã nhận hàng và cập nhật tồn kho. Trạng thái thanh toán: Chưa thanh toán.");
 
       if (!res.isStockSafe) {
          globalToast.warning("Tồn kho vẫn thấp", `Sản phẩm ${productName} vẫn dưới ngưỡng an toàn.`, `/admin/purchase-requests/${id}`);
@@ -360,7 +311,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
       fetchPR();
       setShowConfirmReceive(false);
     } catch (err: any) {
-      showToast("receive", "error", getErrorMessage(err) || "Không thể nhận hàng.");
+      globalToast.error(getErrorMessage(err) || "Không thể nhận hàng.");
     } finally {
       setIsReceiving(false);
     }
@@ -378,9 +329,9 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
       setPr(updated);
       setPaymentNote("");
       setShowConfirmPayment(false);
-      showToast("mark-paid", "success", "Đã ghi nhận thanh toán nhà cung cấp.");
+      globalToast.success("Đã ghi nhận thanh toán nhà cung cấp.");
     } catch (err: any) {
-      showToast("mark-paid", "error", getErrorMessage(err) || "Không thể ghi nhận thanh toán nhà cung cấp.");
+      globalToast.error(getErrorMessage(err) || "Không thể ghi nhận thanh toán nhà cung cấp.");
     } finally {
       setIsMarkingPaid(false);
     }
@@ -398,9 +349,9 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
       setShowRejectModal(false);
       setRejectReason("");
       setEmailPreview(null);
-      showToast("reject", "success", isPending ? "Từ chối yêu cầu thành công." : "Huỷ yêu cầu thành công.");
+      globalToast.success(isPending ? "Từ chối yêu cầu thành công." : "Huỷ yêu cầu thành công.");
     } catch (err: any) {
-      showToast("reject", "error", getErrorMessage(err) || (isPending ? "Không thể từ chối yêu cầu, vui lòng thử lại." : "Không thể huỷ yêu cầu, vui lòng thử lại."));
+      globalToast.error(getErrorMessage(err) || (isPending ? "Không thể từ chối yêu cầu, vui lòng thử lại." : "Không thể huỷ yêu cầu, vui lòng thử lại."));
     } finally {
       setIsRejecting(false);
     }
@@ -421,15 +372,15 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
     if (!id || !pr) return;
 
     if (!editEmailTo.trim()) {
-      showToast("send-email", "error", "Vui lòng nhập email người nhận.");
+      globalToast.error("Vui lòng nhập email người nhận.");
       return;
     }
     if (!editEmailSubject.trim()) {
-      showToast("send-email", "error", "Vui lòng nhập tiêu đề email.");
+      globalToast.error("Vui lòng nhập tiêu đề email.");
       return;
     }
     if (!editEmailBody.trim()) {
-      showToast("send-email", "error", "Vui lòng nhập nội dung email.");
+      globalToast.error("Vui lòng nhập nội dung email.");
       return;
     }
 
@@ -441,12 +392,12 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
         emailStatus: emailDraft?.emailStatus || "Chưa gửi",
       });
       setShowEmailModal(false);
-      showToast("send-email", "info", "Đã lưu tạm nội dung email trên màn hình. Chỉ yêu cầu đã duyệt và chưa gửi mới được gửi email.");
+      globalToast.info("Đã lưu tạm nội dung email trên màn hình. Chỉ yêu cầu đã duyệt và chưa gửi mới được gửi email.");
       return;
     }
 
     setIsSendingEmail(true);
-    showToast("send-email", "info", "Đang gửi email đặt hàng...", false);
+    globalToast.info("Đang gửi email đặt hàng...");
 
     try {
       const updated = await purchaseRequestsApi.sendEmail(id, {
@@ -473,10 +424,10 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
       );
       setManualEmailDraft(null);
       setShowEmailModal(false);
-      showToast("send-email", "success", "Gửi email đặt hàng thành công.");
+      globalToast.success("Gửi email đặt hàng thành công.");
       await fetchEmailPreview(updated);
     } catch (err: any) {
-      showToast("send-email", "error", getErrorMessage(err) || "Không thể gửi email đặt hàng, vui lòng thử lại.");
+      globalToast.error(getErrorMessage(err) || "Không thể gửi email đặt hàng, vui lòng thử lại.");
     } finally {
       setIsSendingEmail(false);
     }
@@ -487,7 +438,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
   if (!pr) {
     return (
       <div className="mx-auto my-12 max-w-xl rounded-xl border border-slate-200 bg-slate-50 p-8 text-center">
-        <ToastContainer toasts={toasts} onClose={removeToast} />
+        
         <p className="font-semibold text-slate-700">Yêu cầu không tồn tại.</p>
         <Link to="/admin/purchase-requests" className="mt-4 inline-block">
           <Button variant="outline">Quay lại danh sách</Button>
@@ -546,8 +497,8 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
   }) ?? false;
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6">
-      <ToastContainer toasts={toasts} onClose={removeToast} />
+    <div className="flex flex-col gap-6">
+      
 
       <Link
         to="/admin/purchase-requests"
@@ -608,8 +559,11 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
 
-        <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1.5fr_1fr]">
+        <div className="flex flex-col gap-6 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
+          <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-3">
           <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
             <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Sản phẩm đề xuất</span>
             <strong className="mt-1 block truncate text-sm text-slate-800">{getPrimaryProductName(pr)}</strong>
@@ -700,7 +654,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
           <div className="overflow-hidden rounded-2xl border border-slate-200">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
               <h4 className="text-sm font-bold text-slate-800">Thanh toán nhà cung cấp</h4>
@@ -719,17 +673,6 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
                   </Button>
                 </div>
               )}
-            </div>
-          </div>
-
-          <div className="overflow-hidden rounded-2xl border border-slate-200">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
-              <h4 className="text-sm font-bold text-slate-800">Công nợ nhà cung cấp</h4>
-            </div>
-            <div className="grid gap-3 p-5 text-sm">
-              <PaymentField label="Đã nhận" value={`${(pr.receivedAmount ?? 0).toLocaleString("vi-VN")} đ`} />
-              <PaymentField label="Đã trả" value={`${(pr.amountPaid ?? 0).toLocaleString("vi-VN")} đ`} />
-              <PaymentField label="Còn nợ" value={`${((pr.receivedAmount ?? 0) - (pr.amountPaid ?? 0)).toLocaleString("vi-VN")} đ`} />
             </div>
           </div>
         </div>
@@ -793,8 +736,10 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
             )}
           </div>
         )}
+        </div>
 
-        {canShowEmailBlock && (
+        <div className="flex flex-col gap-6 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8 lg:sticky lg:top-6">
+          {canShowEmailBlock && (
           <div className="overflow-hidden rounded-2xl border border-slate-200">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
               <h4 className="flex items-center gap-2 text-sm font-bold text-slate-800">
@@ -896,29 +841,28 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
         )}
 
         {!isStaff && (isPending || isApproved || isSent) && (
-          <div className="mt-4 flex flex-wrap justify-end gap-3.5 border-t border-slate-100 pt-6">
-            <Button onClick={() => setShowRejectModal(true)} variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50">
+          <div className="flex flex-col gap-3">
+            <Button onClick={() => setShowRejectModal(true)} variant="outline" className="w-full justify-center border-rose-200 text-rose-600 hover:bg-rose-50">
               <Ban size={14} className="mr-1.5" /> {isPending ? "Từ chối yêu cầu" : "Huỷ yêu cầu"}
             </Button>
             {isPending && (
               isPendingDelete ? (
-                <Button disabled className="border-none bg-slate-300 text-slate-500 cursor-not-allowed" title="Không thể duyệt yêu cầu vì sản phẩm đang chờ xoá.">
+                <Button disabled className="w-full justify-center border-none bg-slate-300 text-slate-500 cursor-not-allowed" title="Không thể duyệt yêu cầu vì sản phẩm đang chờ xoá.">
                   <CheckCircle size={14} className="mr-1.5" /> Duyệt yêu cầu (Chờ xoá)
                 </Button>
               ) : pr.supplier?.status === 'INACTIVE' ? (
-                <Button disabled className="border-none bg-slate-300 text-slate-500 cursor-not-allowed" title="Nhà cung cấp của yêu cầu này đang bị tắt. Vui lòng mở lại nhà cung cấp hoặc đổi sang nhà cung cấp khác trước khi duyệt.">
+                <Button disabled className="w-full justify-center border-none bg-slate-300 text-slate-500 cursor-not-allowed" title="Nhà cung cấp của yêu cầu này đang bị tắt. Vui lòng mở lại nhà cung cấp hoặc đổi sang nhà cung cấp khác trước khi duyệt.">
                   <CheckCircle size={14} className="mr-1.5" /> Duyệt yêu cầu (Đã tắt)
                 </Button>
               ) : (
-                <Button onClick={() => setShowConfirmApprove(true)} className="border-none bg-amber-800 text-white hover:bg-amber-900">
+                <Button onClick={() => setShowConfirmApprove(true)} className="w-full justify-center border-none bg-amber-800 text-white hover:bg-amber-900">
                   <CheckCircle size={14} className="mr-1.5" /> Duyệt yêu cầu
                 </Button>
               )
             )}
           </div>
         )}
-
-
+        </div>
       </div>
 
       {showConfirmReceive && (
@@ -1256,32 +1200,5 @@ const EmailField: React.FC<{ label: string; value: string }> = ({ label, value }
   </div>
 );
 
-const ToastContainer: React.FC<{ toasts: Toast[]; onClose: (id: string) => void }> = ({ toasts, onClose }) => {
-  if (toasts.length === 0) return null;
 
-  return (
-    <div className="fixed right-4 top-4 z-50 flex w-[min(360px,calc(100vw-2rem))] flex-col gap-3">
-      {toasts.map((toast) => {
-        const style = toastStyles[toast.type];
-        return (
-          <div
-            key={toast.id}
-            className={`flex items-start gap-3 rounded-xl border ${style.border} ${style.bg} ${style.text} px-4 py-3 text-sm font-medium shadow-lg`}
-          >
-            {style.icon}
-            <span className="flex-1">{toast.message}</span>
-            <button
-              type="button"
-              onClick={() => onClose(toast.id)}
-              className="rounded-md p-0.5 opacity-70 transition hover:bg-white/60 hover:opacity-100"
-              aria-label="Đóng thông báo"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
 
