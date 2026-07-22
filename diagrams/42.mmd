@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant C as Khách hàng
+    participant F as Giao diện
+    participant API as API đơn hàng
+    participant D as Order Repository
+    participant A as Admin
+
+    C->>F: Thêm sản phẩm vào giỏ hàng và kiểm tra số lượng
+    F->>API: Gửi yêu cầu tạo đơn gồm sản phẩm, số lượng, phương thức thanh toán và ghi chú
+    API->>D: Kiểm tra sản phẩm, số lượng và tồn kho khả dụng
+    API->>D: Giữ hàng: tăng tồn kho đang giữ, tạo đơn chờ xử lý
+    API->>F: Trả đơn hàng đã tạo, xóa giỏ hàng khi thành công
+    A->>API: Admin mở chi tiết đơn và cập nhật trạng thái
+    API->>F: 
+    F->>API: Cập nhật đơn sang trạng thái đang xử lý
+    API->>D: Giữ nguyên tồn kho thực tế và tồn kho đang giữ
+    F->>API: Cập nhật đơn sang trạng thái hoàn tất
+    API->>D: Trừ tồn kho thực tế, giảm tồn kho đang giữ, ghi nhận hoàn tất
+    API->>D: Ghi giao dịch kho và quét Agent nếu cần
+    API->>F: Trả trạng thái đơn hàng mới và thông báo

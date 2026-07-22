@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant S as Agent Service
+    participant API as Backend API
+    participant D as Agent Log Repository
+    participant H as Header/Admin UI
+    participant A as Admin
+
+    S->>API: Gửi kết quả scanInventory hoặc sự kiện xử lý
+    API->>D: Lưu AgentLog với description thật, productId, scanSessionId
+    A->>H: Mở header admin hoặc trang Agent Logs
+    H->>API: GET /api/agent/logs
+    API->>D: Lấy log gần nhất, loại session summary nếu cần
+    D->>API: 
+    API->>H: Trả danh sách log và thống kê ngày
+    H->>H: Dropdown hiển thị 8 log gần nhất không spam toast
+    H->>H: Lọc log theo sản phẩm hoặc phiên mô phỏng
+    H->>API: GET /api/agent/logs?productId/session
+    API->>H: Trả log đúng phạm vi sản phẩm

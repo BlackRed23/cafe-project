@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant C as Khách hàng
+    participant F as Frontend
+    participant API as Product API
+    participant CTX as CartContext
+    participant OAPI as Order API
+    participant D as Order Repository
+
+    C->>F: Xem trang chủ, sản phẩm nổi bật và gallery
+    F->>API: GET /api/products và /api/categories
+    API->>D: Lấy sản phẩm đang bán, không include inactive
+    D->>API: 
+    API->>F: Trả danh sách sản phẩm, FE hiển thị lưới 3 cột
+    C->>F: Bấm Thêm vào giỏ
+    F->>CTX: Kiểm tra sản phẩm active, còn hàng, quantity hợp lệ
+    CTX->>F: Cập nhật giỏ hàng localStorage hoặc trả false
+    F->>C: Hiển thị toast thành công/lỗi tồn kho
+    C->>F: Đặt hàng ngay
+    F->>OAPI: POST /api/orders sau khi validate cart
+    OAPI->>D: Tạo order và reservedStock
+    D->>OAPI: 
+    OAPI->>F: Trả đơn hàng và chuyển đến lịch sử đơn

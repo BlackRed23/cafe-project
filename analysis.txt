@@ -1,0 +1,96 @@
+
+Found DANH MỤC TÀI LIỆU THAM KHẢO
+BÁO CÁO TIẾN ĐỘ THỰC HIỆN DỰ ÁN112
+BÁO CÁO TIẾN ĐỘ HÀNG TUẦN 1112
+BÁO CÁO TIẾN ĐỘ HÀNG TUẦN 02121
+BÁO CÁO TIẾN ĐỘ HÀNG TUẦN 03129
+BÁO CÁO TIẾN ĐỘ HÀNG TUẦN 04138
+DANH MỤC BẢNG
+Bảng 1. Bảng mô tả Actor trong hệ thống18
+Bảng 2. Bảng yêu cầu chức năng của hệ thống20
+Bảng 3. Bảng yêu cầu phi chức năng của hệ thống21
+Bảng 4. Bảng quy tắc nghiệp vụ của hệ thống22
+Bảng 5. Bảng danh sách Use Case của hệ thống25
+Bảng 6. Bảng ma trận Actor - Use Case26
+Bảng 7. Bảng quan hệ giữa các Use Case26
+Bảng 8. Bảng Phân chia sơ đồ Use Case trong báo cáo27
+Bảng 9. Bảng mô tả Use Case cho khách hàng29
+Bảng 10. Bảng mô tả Use Case cho quản trị viên31
+Bảng 11. Bảng mô tả Use Case cho AI Agent31
+Bảng 12. Bảng đặc tả Use Case đăng ký tài khoản32
+Bảng 13. Bảng đặc tả Use Case đăng nhập32
+Bảng 14. Bảng đặc tả Use Case xem sản phẩm33
+Bảng 15. Bảng đặc tả Use Case quản lý giỏ hàng33
+Bảng 16. Bảng đặc tả Use Case đặt hàng và thanh toán34
+Bảng 17. Bảng đặc tả Use Case quản lý sản phẩm35
+Bảng 18. Bảng đặc tả Use Case quản lý danh mục sản phẩm35
+Bảng 19. Bảng đặc tả Use Case quản lý đơn hàng36
+Bảng 20. Bảng đặc tả Use Case quản lý tồn kho và gợi ý ngưỡng36
+Bảng 21. Bảng đặc tả Use Case quản lý nhà cung cấp37
+Bảng 22. Bảng đặc tả Use Case quản lý yêu cầu nhập hàng37
+Bảng 23. Bảng đặc tả Use Case mô phỏng bán hàng38
+Bảng 24. Bảng đặc tả Use Case AI Agent quét tồn kho39
+Bảng 25. Bảng đặc tả Use Case xem nhật ký AI Agent39
+Bảng 26. Bảng đặc tả Use Case quản lý người dùng40
+Bảng 27. Bảng ma trận liên kết yêu cầu và Use Case56
+Bảng 28. Bảng tổng quan các thành phần trong thiết kế hệ thống58
+Bảng 29. Bảng phân lớp kiến trúc hệ thống59
+Bảng 30. Bảng thiết kế dữ liệu và quan hệ chính61
+Bảng 31. Bảng quy tắc dữ liệu và nghiệp vụ quan trọng62
+Bảng 32. Bảng thiết kế các API chính của hệ thống64
+Bảng 33. Bảng phân quyền chức năng theo vai trò người dùng64
+Bảng 34. Bảng thiết kế chức năng hệ thống66
+Bảng 35. Bảng tổng hợp các luồng xử lý chính67
+Bảng 36. Bảng thiết kế giao diện theo nhóm chức năng82
+Bảng 37. Bảng mô tả thành phần giao diện khách hàng86
+Bảng 38. Bảng mô tả thành phần giao diện quản lý sản phẩm và danh mục87
+Bảng 39. Bảng mô tả thành phần giao diện quản trị đơn hàng và tồn kho89
+Bảng 40. Bảng mô tả thành phần giao diện nhà cung cấp, yêu cầu nhập hàng và Agen
+Bảng 41. Bảng thiết kế cấu hình môi trường vận hành93
+Bảng 42. Ma trận nhóm test case kiểm thử trọng tâm98
+Bảng 43. Bảng một số test case lõi được kiểm tra sâu100
+Bảng 44. Bảng thống kê nhanh kết quả kiểm thử100
+Bảng 45. Bảng thống kê kết quả kiểm thử theo nhóm chức năng101
+DANH MỤC HÌNH ẢNH
+Hình 1. Giao diện trang chủ The Coffee House12
+Hình 2. Trang chi tiết sản phẩm website The Coffee House12
+Hình 3. Trang thanh toán website The Coffee House13
+Hình 4. Trang chủ website Highlands Coffee13
+Hình 5. Trang chi tiết sản phẩm website Highlands Coffee14
+Hình 6. Trang thanh toán website Highlands Coffee14
+Hình 7. Trang chủ website Phúc Long15
+Hình 8. Trang chi tiết sản phẩm website Phúc Long15
+Hình 9. Trang đăng nhập website Phúc Long16
+Hình 10. Trang thanh toán website Phúc Long16
+Hình 11. Sơ đồ Use Case tổng quát hệ thống Cafe INV29
+Hình 12. Sơ đồ Use Case khách hàng29
+Hình 13. Sơ đồ Use Case quản trị viên31
+Hình 14. Sơ đồ Use Case AI Agent và nhập hàng32
+Hình 15. Biểu đồ hoạt động đăng ký tài khoản42
+Hình 16. Biểu đồ hoạt động đăng nhập43
+Hình 17. Biểu đồ hoạt động xem và tìm kiếm sản phẩm44
+Hình 18. Biểu đồ hoạt động xem chi tiết sản phẩm45
+Hình 19. Biểu đồ hoạt động quản lý giỏ hàng46
+Hình 20. Biểu đồ hoạt động đặt hàng và thanh toán47
+Hình 21. Biểu đồ hoạt động xem lịch sử đơn hàng48
+Hình 22. Biểu đồ hoạt động theo dõi trạng thái đơn hàng48
+Hình 23. Biểu đồ hoạt động quản lý sản phẩm49
+Hình 24. Biểu đồ hoạt động quản lý danh mục sản phẩm49
+Hình 25. Biểu đồ hoạt động quản lý đơn hàng50
+Hình 26. Biểu đồ hoạt động quản lý người dùng51
+Hình 27. Biểu đồ hoạt động quản lý tồn kho52
+Hình 28. Biểu đồ hoạt động quản lý nhà cung cấp53
+Hình 29. Biểu đồ hoạt động quản lý yêu cầu nhập hàng54
+Hình 30. Biểu đồ hoạt động AI Agent quét tồn kho và đề xuất nhập hàng55
+Hình 31. Biểu đồ hoạt động xem dashboard quản trị56
+Hình 32. Sơ đồ kiến trúc tổng quan hệ thống Cafe INV59
+Hình 33. Sơ đồ quan hệ dữ liệu tổng quát của hệ thống62
+Hình 34. Luồng xử lý đăng nhập và phân quyền68
+Hình 35. Luồng quản lý sản phẩm và tải hình ảnh69
+Hình 36. Luồng đặt hàng và kiểm soát tồn kho70
+Hình 37. Luồng quản lý tồn kho, gợi ý ngưỡng và AI Agent71
+Hình 38. Luồng yêu cầu nhập hàng, gửi email và nhận hàng71
+Hình 39. Luồng mô phỏng bán hàng và nhật ký AI Agent72
+
+Found DANH MỤC TÀI LIỆU THAM KHẢO
+Abramov, D. Redux: A predictable state container for JavaScript apps, Redux, 201

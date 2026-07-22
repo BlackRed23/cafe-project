@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant A as Admin
+    participant F as Frontend Admin
+    participant UAPI as Upload API
+    participant API as Product/Category API
+    participant C as Cloudinary
+    participant D as Product Repository
+
+    A->>F: Mở form thêm/sửa sản phẩm hoặc danh mục
+    F->>API: GET /api/categories để load danh mục
+    API->>D: Lấy danh sách Category
+    D->>API: Trả categories
+    API->>F: 
+    A->>F: Chọn file hình ảnh sản phẩm
+    F->>UAPI: POST /api/upload/product-image, field image
+    UAPI->>C: Upload ảnh lên Cloudinary
+    C->>UAPI: Trả imageUrl và imagePublicId
+    UAPI->>F: 
+    F->>API: POST/PUT /api/products với categoryId và imageUrl
+    API->>D: Validate, lưu Product, Inventory liên quan
+    D->>API: 
+    API->>F: Trả kết quả, reload danh sách và toast
+    A->>F: Xóa product có lịch sử liên quan
+    F->>API: DELETE /api/products/:id
+    API->>D: Kiểm tra Order/Inventory/PurchaseRequest
+    D->>API: 
+    API->>F: Nếu bị chặn 409, gợi ý ngưng bán hoặc chờ xóa

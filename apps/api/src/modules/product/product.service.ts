@@ -191,7 +191,7 @@ export const getProducts = async (includeInactive = false): Promise<ProductDto[]
 };
 
 export const getProductById = async (id: string): Promise<ProductDto> => {
-    return toProductDto(await ensureProductExists(id));
+    return toProductDto(await ensureProductExists(id, true));
 };
 
 export const createProduct = async (input: CreateProductInput): Promise<ProductDto> => {

@@ -1,6 +1,7 @@
 import { agentRepository } from '../repositories/agent.repository';
 import { geminiService } from './gemini.service';
 import { calculateReorderPoint } from '../utils/inventory.utils';
+import { SYSTEM_PROMPT_TEMPLATE } from '../config/system-prompt';
 
 const isSupplierActive = (supplier: { status?: string | null; deletedAt?: Date | null }): boolean =>
     supplier.status !== 'INACTIVE' && !supplier.deletedAt;
@@ -237,13 +238,12 @@ export const recommendationService = {
         let errorMessage: string | null = null;
 
         const planningSettings = await this.getPlanningSettings();
-        const promptPrefix = await agentRepository.getSettingValue('ai.promptPrefix');
         const storeNameSetting = await agentRepository.getSettingValue('store.name');
         const storeName = storeNameSetting || 'Cafe Admin';
 
         if (process.env.AGENT_RECOMMENDATION_MODE === 'gemini' && process.env.GEMINI_API_KEY) {
             try {
-                const prompt = this.buildPrompt(product, inventory, sales, suppliers, promptPrefix, storeName);
+                const prompt = SYSTEM_PROMPT_TEMPLATE(storeName, product, inventory, sales, suppliers);
                 const geminiResult = await geminiService.getRecommendation(prompt);
 
                 const supplierExists = suppliers.some((s) => s.supplierId === geminiResult.recommendedSupplierId);
@@ -353,46 +353,5 @@ export const recommendationService = {
             reasoning,
             quantityDisplay
         };
-    },
-
-    buildPrompt(product: any, inventory: any, sales: any, suppliers: any[], promptPrefix: string | null, storeName: string): string {
-        const prefixSection = promptPrefix ? `Định hướng từ admin: ${promptPrefix}\n\n` : '';
-        return `${prefixSection}You are an AI inventory reorder assistant for a cafe product inventory system. Draft emails on behalf of ${storeName}.
-
-Analyze this product:
-
-Product:
-- name: ${product.name}
-- sku: ${product.sku}
-- category: ${product.category?.name || 'Uncategorized'}
-- current quantity: ${inventory.quantity}
-- min threshold: ${inventory.minThreshold}
-
-Sales:
-- sold in last 7 days: ${sales.totalSold7d}
-- sold in last 30 days: ${sales.totalSold30d}
-- sales velocity 7d (average per day): ${sales.salesVelocity7d.toFixed(2)}
-- sales velocity 30d (average per day): ${sales.salesVelocity30d.toFixed(2)}
-
-Suppliers:
-${suppliers.map((s) => `- supplier id: ${s.supplierId}
-  supplier name: ${s.supplierName}
-  supply price: ${s.supplyPrice}
-  min order quantity: ${s.minOrderQuantity}
-  lead time: ${s.leadTimeDays} days
-  is preferred: ${s.isPreferred}`).join('\n')}
-
-Return ONLY valid JSON:
-
-{
-  "recommendedQuantity": number,
-  "recommendedSupplierId": string,
-  "confidence": number,
-  "reasoning": string,
-  "emailDraft": string
-}
-
-Do not include markdown.
-Do not include explanation outside JSON.`;
     }
 };

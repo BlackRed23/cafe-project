@@ -51,9 +51,17 @@ export const ProductDetailPage: React.FC = () => {
     
     // Check inventory stock if available
     const maxQty = product?.inventory?.quantity;
-    if (maxQty !== undefined && num > maxQty) {
-      num = maxQty;
-      toast.warning("Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");
+    const cartQuantity = items.find(item => item.product.id === product?.id)?.quantity || 0;
+    const availableQuantity = maxQty !== undefined ? maxQty - cartQuantity : undefined;
+
+    if (availableQuantity !== undefined && num > availableQuantity) {
+      num = Math.max(1, availableQuantity);
+      if (availableQuantity <= 0) {
+        toast.warning(`Sản phẩm đã đạt giới hạn tồn kho (đã có ${cartQuantity} trong giỏ).`);
+        num = 1; // Keep input at 1, but they won't be able to add
+      } else {
+        toast.warning(`Chỉ còn lại ${availableQuantity} ${product?.unit || "hộp"} có thể thêm (đã có ${cartQuantity} trong giỏ).`);
+      }
     }
     
     setQuantity(num);
@@ -206,7 +214,7 @@ export const ProductDetailPage: React.FC = () => {
                 const didAdd = addToCart(product, quantity);
                 if (!didAdd) {
                   toast.warning(availableQuantity !== undefined
-                    ? `Chỉ còn ${availableQuantity} ${product.unit || "hộp"} có thể thêm vào giỏ.`
+                    ? `Chỉ còn lại ${availableQuantity} ${product.unit || "hộp"} (bạn đã có ${cartQuantity} trong giỏ).`
                     : "Số lượng trong giỏ không được vượt quá tồn kho hiện tại.");
                   return;
                 }

@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant A as Admin
+    participant F as Frontend Admin
+    participant API as Inventory API
+    participant D as Inventory Repository
+    participant S as Agent Service
+
+    A->>F: Mở trang tồn kho và chọn sản phẩm cần xử lý
+    F->>API: GET /api/inventories
+    API->>D: Lấy quantity, reservedStock, minThreshold
+    D->>API: 
+    API->>F: Trả danh sách, FE tính availableStock
+    A->>F: Nhập kho / Điều chỉnh / Cập nhật ngưỡng
+    F->>API: POST /import, /adjust hoặc /threshold
+    API->>D: Cập nhật tồn kho hoặc ngưỡng, ghi transaction
+    D->>API: 
+    API->>S: Nếu sau thao tác vẫn thấp, trigger scanInventory
+    S->>S: Tính reorderPoint từ lịch sử bán, lead time, safety stock
+    S->>S: Tạo AgentLog và PurchaseRequest nếu đủ điều kiện
+    API->>F: Trả stockAfter, warnings và message
+    F->>F: Hiển thị toast, reload danh sách tồn kho

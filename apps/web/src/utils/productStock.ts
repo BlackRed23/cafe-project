@@ -1,9 +1,9 @@
 import type { Product } from "../types/product.types";
 
 export const isProductOutOfStock = (product: Product): boolean => {
-  const quantity = product.inventory?.quantity;
+  const quantity = product.inventory?.quantity ?? 0;
   const isActive = product.isActive !== false && product.is_active !== false;
-  return !isActive || (quantity !== undefined && quantity <= 0);
+  return !isActive || quantity <= 0;
 };
 
 export const sortProductsInStockFirst = (products: Product[]): Product[] => {

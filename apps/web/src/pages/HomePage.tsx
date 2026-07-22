@@ -61,7 +61,7 @@ export const HomePage: React.FC = () => {
     // Nếu trong giỏ đã đủ số lượng tồn kho
     if (availableQuantity <= 0) {
       toast.warning(
-        `Chỉ còn ${stockQuantity} ${product.unit || "hộp"} trong kho.`
+        `Chỉ còn lại ${availableQuantity} ${product.unit || "hộp"} (bạn đã có ${cartQuantity} trong giỏ).`
       );
       return;
     }

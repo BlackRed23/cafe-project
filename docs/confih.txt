@@ -1,0 +1,42 @@
+internal database url
+
+postgresql://cafedb_cr6l_user:1zLOyz42jWNVxN9dluoKil3u6gYzj2od@dpg-d8t5qkpo3t8c73db998g-a/cafedb_cr6l
+
+url của backend
+URL https://cafe-api-9tbe.onrender.com
+
+
+url của agent 
+URL https://cafe-agent-wyhp.onrender.com
+
+
+
+thay đổi admin ở trong render postgress thì thực hiện theo cmd
+
+cd /d D:\1items\wedshite\tieuluanchuyennganh\project\cafe-project-system
+set "DATABASE_URL=postgresql://cafedb_cr6l_user:1zLOyz42jWNVxN9dluoKil3u6gYzj2od@dpg-d8t5qkpo3t8c73db998g-a.virginia-postgres.render.com/cafedb_cr6l" 
+
+
+node -e "const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); prisma.user.update({ where: { email: 'thachdateduy@gmail.com' }, data: { role: 'ADMIN' } }).then(console.log).catch(console.error).finally(() => prisma.$disconnect())"
+
+thay đổi mật khẩu
+Chạy lệnh này trong đúng thư mục project, CMD hiện tại vẫn được:
+
+node -e "const { PrismaClient } = require('@prisma/client'); const bcrypt = require('bcrypt'); const prisma = new PrismaClient(); (async () => { const hash = await bcrypt.hash('Admin@123456', 10); const user = await prisma.user.update({ where: { email: 'thachdateduy@gmail.com' }, data: { password: hash, role: 'ADMIN', isActive: true } }); console.log({ id: user.id, email: user.email, role: user.role, isActive: user.isActive, updatedAt: user.updatedAt }); })().catch(console.error).finally(() => prisma.$disconnect())"
+
+Sau đó đăng nhập bằng:
+
+Email: thachdateduy@gmail.com
+Password: Admin@123456
+
+
+TẠO SERVICE MỚI VỚI DOCKER
+
+
+url của agent mới 
+https://cafe-agent-docker.onrender.com
+
+
+url của api mới 
+https://cafe-api-docker.onrender.com
+

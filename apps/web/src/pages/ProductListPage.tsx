@@ -77,15 +77,16 @@ export const ProductListPage: React.FC = () => {
       return;
     }
 
-    const stockQuantity = product.inventory?.quantity;
+    const stockQuantity = product.inventory?.quantity ?? 0;
+    const cartQuantity = items.find(item => item.product.id === product.id)?.quantity || 0;
+    const availableQuantity = stockQuantity - cartQuantity;
 
-    if (typeof stockQuantity === "number" && stockQuantity <= 0) {
-      toast.warning("Sản phẩm hiện đã hết hàng.");
+    if (availableQuantity <= 0) {
+      toast.warning(
+        `Chỉ còn lại ${availableQuantity} ${product.unit || "hộp"} (bạn đã có ${cartQuantity} trong giỏ).`
+      );
       return;
     }
-
-    const cartQuantity = items.find(item => item.product.id === product.id)?.quantity || 0;
-    const availableQuantity = (stockQuantity ?? 0) - cartQuantity;
 
     const didAdd = addToCart(product, 1);
     if (!didAdd) {
