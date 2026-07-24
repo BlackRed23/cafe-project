@@ -27,6 +27,8 @@ const SERVER_URL = `http://localhost:${PORT}`;
 const allowedOrigins = Array.from(new Set([
     "http://localhost:5173",
     "http://localhost:5174",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
     ...(process.env.CORS_ORIGIN || "").split(","),
     ...(process.env.CLIENT_URL || "").split(","),
     ...(process.env.FRONTEND_URL || "").split(",")

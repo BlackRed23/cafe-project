@@ -23,4 +23,14 @@ export interface Product {
   };
   deletedAt?: Date | string | null;
   pendingDeleteUntil?: Date | string | null;
+  nutritionFacts?: string | null;
+  nutrition_facts?: string | null;
+  usageInstructions?: string | null;
+  usage_instructions?: string | null;
+  storageInstructions?: string | null;
+  storage_instructions?: string | null;
+  origin?: string | null;
+  certifications?: string | null;
+  expiryInfo?: string | null;
+  expiry_info?: string | null;
 }

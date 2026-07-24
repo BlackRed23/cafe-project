@@ -8,7 +8,8 @@
         "build": "tsc",
         "generate": "prisma generate",
         "db:push": "prisma db push",
-        "seed": "tsx prisma/seed.ts"
+        "seed": "tsx prisma/seed_cafe.ts",
+        "fetch-images": "tsx prisma/fetch-product-images.ts"
     },
     "dependencies": {
         "@prisma/client": "^6.19.3",
@@ -20,6 +21,7 @@
         "typescript": "^5.0.0"
     },
     "prisma": {
-        "schema": "prisma/schema"
+        "schema": "prisma/schema",
+        "seed": "tsx prisma/seed_cafe.ts"
     }
 }

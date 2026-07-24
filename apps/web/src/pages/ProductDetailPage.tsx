@@ -6,7 +6,7 @@ import { useCart } from "../contexts/CartContext";
 import { formatCurrency } from "../utils/formatCurrency";
 import { Button } from "../components/common/Button";
 import { Loading } from "../components/common/Loading";
-import { ArrowLeft, ShoppingCart, ShieldCheck, AlertCircle } from "lucide-react";
+import { ArrowLeft, ShoppingCart, ShieldCheck, AlertCircle, Sparkles, BookOpen, Clock, Globe, Award } from "lucide-react";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -19,6 +19,7 @@ export const ProductDetailPage: React.FC = () => {
   const [quantity, setQuantity] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("");
   const { addToCart, items } = useCart();
   const toast = useToast();
 
@@ -93,6 +94,31 @@ export const ProductDetailPage: React.FC = () => {
   const stockCount = product.inventory?.quantity;
   const isOutOfStock = stockCount !== undefined && stockCount <= 0;
   const cartQuantity = items.find(item => item.product.id === product.id)?.quantity || 0;
+
+  const nutrition = product.nutritionFacts || product.nutrition_facts;
+  const usage = product.usageInstructions || product.usage_instructions;
+  const storage = product.storageInstructions || product.storage_instructions;
+  const expiry = product.expiryInfo || product.expiry_info;
+  const origin = product.origin;
+  const certs = product.certifications;
+
+  const availableTabs: { id: string; label: string; icon: React.ReactNode }[] = [];
+  if (nutrition && nutrition.trim()) {
+    availableTabs.push({ id: "nutrition", label: "Thành phần dinh dưỡng", icon: <Sparkles size={16} /> });
+  }
+  if (usage && usage.trim()) {
+    availableTabs.push({ id: "usage", label: "Hướng dẫn sử dụng", icon: <BookOpen size={16} /> });
+  }
+  if ((storage && storage.trim()) || (expiry && expiry.trim())) {
+    availableTabs.push({ id: "storage", label: "Bảo quản & HSD", icon: <Clock size={16} /> });
+  }
+  if ((origin && origin.trim()) || (certs && certs.trim())) {
+    availableTabs.push({ id: "origin", label: "Xuất xứ & Chứng nhận", icon: <Globe size={16} /> });
+  }
+
+  const currentActiveTab = availableTabs.some(t => t.id === activeTab)
+    ? activeTab
+    : (availableTabs[0]?.id || "");
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex flex-col gap-8 pb-24">
@@ -229,6 +255,115 @@ export const ProductDetailPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Product Detail Tabs */}
+      {availableTabs.length > 0 && (
+        <div className="bg-white rounded-3xl border border-amber-900/5 p-6 sm:p-10 shadow-xl flex flex-col gap-6">
+          {/* Tab buttons */}
+          <div className="border-b border-amber-900/10 flex items-center gap-2 sm:gap-4 overflow-x-auto pb-3 scrollbar-none">
+            {availableTabs.map((tab) => {
+              const isActive = currentActiveTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`inline-flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm transition-all whitespace-nowrap ${
+                    isActive
+                      ? "bg-amber-800 text-white shadow-lg shadow-amber-900/15 scale-[1.02]"
+                      : "text-slate-600 hover:text-amber-900 hover:bg-amber-50/60"
+                  }`}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Tab Content */}
+          <div className="pt-2">
+            {currentActiveTab === "nutrition" && nutrition && (
+              <div className="space-y-3">
+                <h3 className="text-lg font-bold text-slate-900 font-serif flex items-center gap-2">
+                  <Sparkles size={18} className="text-amber-700" />
+                  Thành phần dinh dưỡng
+                </h3>
+                <div className="bg-amber-50/30 p-5 rounded-2xl border border-amber-900/5 text-slate-700 text-sm leading-relaxed whitespace-pre-line">
+                  {nutrition}
+                </div>
+              </div>
+            )}
+
+            {currentActiveTab === "usage" && usage && (
+              <div className="space-y-3">
+                <h3 className="text-lg font-bold text-slate-900 font-serif flex items-center gap-2">
+                  <BookOpen size={18} className="text-amber-700" />
+                  Hướng dẫn sử dụng
+                </h3>
+                <div className="bg-amber-50/30 p-5 rounded-2xl border border-amber-900/5 text-slate-700 text-sm leading-relaxed whitespace-pre-line">
+                  {usage}
+                </div>
+              </div>
+            )}
+
+            {currentActiveTab === "storage" && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-slate-900 font-serif flex items-center gap-2">
+                  <Clock size={18} className="text-amber-700" />
+                  Bảo quản & Hạn sử dụng
+                </h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {storage && (
+                    <div className="bg-amber-50/30 p-5 rounded-2xl border border-amber-900/5 space-y-1.5">
+                      <span className="text-xs font-bold text-amber-850 uppercase tracking-wider block">
+                        Hướng dẫn bảo quản
+                      </span>
+                      <p className="text-slate-700 text-sm leading-relaxed">{storage}</p>
+                    </div>
+                  )}
+                  {expiry && (
+                    <div className="bg-amber-50/30 p-5 rounded-2xl border border-amber-900/5 space-y-1.5">
+                      <span className="text-xs font-bold text-amber-850 uppercase tracking-wider block">
+                        Hạn sử dụng & Khuyên dùng
+                      </span>
+                      <p className="text-slate-700 text-sm leading-relaxed">{expiry}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {currentActiveTab === "origin" && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-slate-900 font-serif flex items-center gap-2">
+                  <Globe size={18} className="text-amber-700" />
+                  Xuất xứ & Chứng nhận chất lượng
+                </h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {origin && (
+                    <div className="bg-amber-50/30 p-5 rounded-2xl border border-amber-900/5 space-y-1.5">
+                      <span className="text-xs font-bold text-amber-850 uppercase tracking-wider block flex items-center gap-1.5">
+                        <Globe size={14} /> Nguồn gốc & Xuất xứ
+                      </span>
+                      <p className="text-slate-800 font-medium text-sm leading-relaxed">{origin}</p>
+                    </div>
+                  )}
+                  {certs && (
+                    <div className="bg-amber-50/30 p-5 rounded-2xl border border-amber-900/5 space-y-1.5">
+                      <span className="text-xs font-bold text-amber-850 uppercase tracking-wider block flex items-center gap-1.5">
+                        <Award size={14} /> Tiêu chuẩn & Chứng nhận
+                      </span>
+                      <p className="text-slate-800 font-medium text-sm leading-relaxed">{certs}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

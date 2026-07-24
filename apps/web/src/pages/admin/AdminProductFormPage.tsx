@@ -64,6 +64,12 @@ export const AdminProductFormPage: React.FC = () => {
   const [imageUrl, setImageUrl] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [nutritionFacts, setNutritionFacts] = useState("");
+  const [usageInstructions, setUsageInstructions] = useState("");
+  const [storageInstructions, setStorageInstructions] = useState("");
+  const [origin, setOrigin] = useState("");
+  const [certifications, setCertifications] = useState("");
+  const [expiryInfo, setExpiryInfo] = useState("");
   const [selectedImageName, setSelectedImageName] = useState("");
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -118,6 +124,12 @@ export const AdminProductFormPage: React.FC = () => {
           setImageUploadError(null);
           setCategoryId(product.category_id || product.categoryId || "");
           setIsActive(product.isActive !== false);
+          setNutritionFacts(product.nutrition_facts || product.nutritionFacts || "");
+          setUsageInstructions(product.usage_instructions || product.usageInstructions || "");
+          setStorageInstructions(product.storage_instructions || product.storageInstructions || "");
+          setOrigin(product.origin || "");
+          setCertifications(product.certifications || "");
+          setExpiryInfo(product.expiry_info || product.expiryInfo || "");
         } catch (err) {
           const message = getErrorMessage(err) || "Không thể tải thông tin sản phẩm.";
           setApiError(message);
@@ -227,6 +239,12 @@ export const AdminProductFormPage: React.FC = () => {
       category_id: categoryId || undefined,
       categoryId: categoryId || undefined,
       isActive,
+      nutritionFacts: nutritionFacts.trim() || undefined,
+      usageInstructions: usageInstructions.trim() || undefined,
+      storageInstructions: storageInstructions.trim() || undefined,
+      origin: origin.trim() || undefined,
+      certifications: certifications.trim() || undefined,
+      expiryInfo: expiryInfo.trim() || undefined,
     };
 
     try {
@@ -426,6 +444,99 @@ export const AdminProductFormPage: React.FC = () => {
                 {isActive ? "Đang bán" : "Ngưng bán"}
               </span>
             </div>
+
+            {/* Additional details section */}
+            <div className="pt-6 border-t border-slate-200/80 space-y-5">
+              <div>
+                <h4 className="text-base font-bold text-slate-900 font-serif">
+                  Thông tin chi tiết sản phẩm (không bắt buộc)
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  Bổ sung các thông tin mở rộng giúp khách hàng hiểu rõ hơn về nguồn gốc, cách sử dụng và bảo quản sản phẩm.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Thành phần dinh dưỡng (Nutrition Facts)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="VD: Năng lượng: 120 kcal, Chất béo: 3.5g, Đường: 18g, Protein: 2.1g / lon 240ml..."
+                    value={nutritionFacts}
+                    onChange={(e) => setNutritionFacts(e.target.value)}
+                    className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700 text-slate-900 resize-none transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Hướng dẫn sử dụng (Usage Instructions)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="VD: Khuấy đều cùng đá tươi trước khi uống. Hoặc dùng nóng ở nhiệt độ 90-95°C..."
+                    value={usageInstructions}
+                    onChange={(e) => setUsageInstructions(e.target.value)}
+                    className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700 text-slate-900 resize-none transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Hướng dẫn bảo quản (Storage Instructions)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="VD: Nên dùng ngay sau khi pha chế. Bảo quản trong ngăn mát tủ lạnh 2-8°C không quá 4 giờ..."
+                    value={storageInstructions}
+                    onChange={(e) => setStorageInstructions(e.target.value)}
+                    className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700 text-slate-900 resize-none transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Hạn sử dụng & Khuyên dùng (Expiry Info)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="VD: Sử dụng trong ngày kể từ khi pha chế. Hoặc 12 tháng kể từ ngày sản xuất đối với hạt/lon..."
+                    value={expiryInfo}
+                    onChange={(e) => setExpiryInfo(e.target.value)}
+                    className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700 text-slate-900 resize-none transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Nguồn gốc / Xuất xứ (Place of Origin)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="VD: Đà Lạt, Lâm Đồng, Việt Nam (Nông trại Cầu Đất) hoặc Nhập khẩu Ý/Nhật Bản..."
+                    value={origin}
+                    onChange={(e) => setOrigin(e.target.value)}
+                    className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700 text-slate-900 resize-none transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Tiêu chuẩn & Chứng nhận (Certifications)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="VD: ISO 22000:2018, HACCP, VietGAP, Halal Certified..."
+                    value={certifications}
+                    onChange={(e) => setCertifications(e.target.value)}
+                    className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700 text-slate-900 resize-none transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
+
 
             {/* Actions */}
             <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">

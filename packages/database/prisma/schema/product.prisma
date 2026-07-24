@@ -11,6 +11,13 @@ model Product {
   deletedAt          DateTime?
   pendingDeleteUntil DateTime?
 
+  nutritionFacts      String?
+  usageInstructions   String?
+  storageInstructions String?
+  origin              String?
+  certifications      String?
+  expiryInfo          String?
+
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
 

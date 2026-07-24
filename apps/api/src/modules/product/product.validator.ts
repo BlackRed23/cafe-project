@@ -14,7 +14,17 @@ export const createProductSchema = z.object({
     unit: unitSchema.optional(),
     isActive: z.boolean().optional(),
     categoryId: z.string().trim().min(1, 'Category is required.'),
-    imageUrl: z.string().trim().url('Image URL must be a valid URL.').optional().nullable().or(z.literal(''))
+    imageUrl: z.string().trim().url('Image URL must be a valid URL.').optional().nullable().or(z.literal('')),
+    nutritionFacts: z.string().trim().optional().nullable(),
+    nutrition_facts: z.string().trim().optional().nullable(),
+    usageInstructions: z.string().trim().optional().nullable(),
+    usage_instructions: z.string().trim().optional().nullable(),
+    storageInstructions: z.string().trim().optional().nullable(),
+    storage_instructions: z.string().trim().optional().nullable(),
+    origin: z.string().trim().optional().nullable(),
+    certifications: z.string().trim().optional().nullable(),
+    expiryInfo: z.string().trim().optional().nullable(),
+    expiry_info: z.string().trim().optional().nullable()
 });
 
 export const updateProductSchema = createProductSchema.partial().refine((data) => Object.keys(data).length > 0, {

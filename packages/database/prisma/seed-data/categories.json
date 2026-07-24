@@ -1,0 +1,13 @@
+[
+  { "name": "Cà phê pha máy", "description": "Cà phê nguyên chất pha máy chuẩn vị." },
+  { "name": "Cà phê truyền thống", "description": "Cà phê pha phin truyền thống Việt Nam." },
+  { "name": "Cà phê hạt", "description": "Các dòng cà phê nguyên hạt chất lượng cao cho pha máy và pha phin." },
+  { "name": "Cà phê bột", "description": "Cà phê rang xay đóng gói dùng cho pha phin truyền thống." },
+  { "name": "Cà phê lon", "description": "Đồ uống cà phê đóng lon tiện lợi, uống liền." },
+  { "name": "Trà & Macchiato", "description": "Trà trái cây tươi mát và trà sữa macchiato." },
+  { "name": "Đá xay / Freeze", "description": "Đồ uống đá xay mát lạnh, béo ngậy." },
+  { "name": "Nước ép / Sinh tố", "description": "Trái cây tươi ép và xay sinh tố bổ dưỡng." },
+  { "name": "Bánh ngọt", "description": "Bánh ngọt ăn kèm hoàn hảo cùng trà và cà phê." },
+  { "name": "Đồ ăn vặt", "description": "Món ăn nhẹ nhâm nhi cùng bạn bè." },
+  { "name": "Topping", "description": "Hạt trân châu, thạch, pudding thêm vào đồ uống." }
+]

@@ -40,6 +40,12 @@ export type Product = {
   category: ProductCategory;
   inventory: ProductInventory | null;
   inventoryQuantity: number | null;
+  nutritionFacts?: string | null;
+  usageInstructions?: string | null;
+  storageInstructions?: string | null;
+  origin?: string | null;
+  certifications?: string | null;
+  expiryInfo?: string | null;
   createdAt: string | Date;
   updatedAt: string | Date;
 };
@@ -54,6 +60,12 @@ export type CreateProductPayload = {
   unit?: string;
   isActive?: boolean;
   imageUrl?: string | null;
+  nutritionFacts?: string | null;
+  usageInstructions?: string | null;
+  storageInstructions?: string | null;
+  origin?: string | null;
+  certifications?: string | null;
+  expiryInfo?: string | null;
 };
 
 export type UpdateProductPayload = Partial<CreateProductPayload>;

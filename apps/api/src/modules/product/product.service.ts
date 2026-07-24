@@ -26,6 +26,12 @@ export type ProductDto = {
         unit: string;
     } | null;
     inventoryQuantity: number | null;
+    nutritionFacts: string | null;
+    usageInstructions: string | null;
+    storageInstructions: string | null;
+    origin: string | null;
+    certifications: string | null;
+    expiryInfo: string | null;
     deletedAt: Date | null;
     pendingDeleteUntil: Date | null;
     createdAt: Date;
@@ -61,6 +67,12 @@ const toProductDto = (product: ProductRecord): ProductDto => {
               }
             : null,
         inventoryQuantity: product.inventory?.quantity ?? null,
+        nutritionFacts: (product as any).nutritionFacts ?? null,
+        usageInstructions: (product as any).usageInstructions ?? null,
+        storageInstructions: (product as any).storageInstructions ?? null,
+        origin: (product as any).origin ?? null,
+        certifications: (product as any).certifications ?? null,
+        expiryInfo: (product as any).expiryInfo ?? null,
         deletedAt: (product as any).deletedAt ?? null,
         pendingDeleteUntil: (product as any).pendingDeleteUntil ?? null,
         createdAt: product.createdAt ?? new Date(),
@@ -210,7 +222,13 @@ export const createProduct = async (input: CreateProductInput): Promise<ProductD
             unit: input.unit?.trim() || 'hộp',
             categoryId: input.categoryId,
             imageUrl: normalizeOptionalString(input.imageUrl),
-            isActive: input.isActive ?? true
+            isActive: input.isActive ?? true,
+            nutritionFacts: normalizeOptionalString(input.nutritionFacts ?? input.nutrition_facts),
+            usageInstructions: normalizeOptionalString(input.usageInstructions ?? input.usage_instructions),
+            storageInstructions: normalizeOptionalString(input.storageInstructions ?? input.storage_instructions),
+            origin: normalizeOptionalString(input.origin),
+            certifications: normalizeOptionalString(input.certifications),
+            expiryInfo: normalizeOptionalString(input.expiryInfo ?? input.expiry_info)
         });
 
         return toProductDto(product);
@@ -246,7 +264,13 @@ export const updateProduct = async (id: string, input: UpdateProductInput): Prom
             ...(input.unit !== undefined ? { unit: input.unit.trim() || 'hộp' } : {}),
             ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
             ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
-            ...(input.imageUrl !== undefined ? { imageUrl: normalizeOptionalString(input.imageUrl) } : {})
+            ...(input.imageUrl !== undefined ? { imageUrl: normalizeOptionalString(input.imageUrl) } : {}),
+            ...(input.nutritionFacts !== undefined || input.nutrition_facts !== undefined ? { nutritionFacts: normalizeOptionalString(input.nutritionFacts ?? input.nutrition_facts) } : {}),
+            ...(input.usageInstructions !== undefined || input.usage_instructions !== undefined ? { usageInstructions: normalizeOptionalString(input.usageInstructions ?? input.usage_instructions) } : {}),
+            ...(input.storageInstructions !== undefined || input.storage_instructions !== undefined ? { storageInstructions: normalizeOptionalString(input.storageInstructions ?? input.storage_instructions) } : {}),
+            ...(input.origin !== undefined ? { origin: normalizeOptionalString(input.origin) } : {}),
+            ...(input.certifications !== undefined ? { certifications: normalizeOptionalString(input.certifications) } : {}),
+            ...(input.expiryInfo !== undefined || input.expiry_info !== undefined ? { expiryInfo: normalizeOptionalString(input.expiryInfo ?? input.expiry_info) } : {})
         });
 
         return toProductDto(updatedProduct);

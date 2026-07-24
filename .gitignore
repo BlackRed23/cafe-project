@@ -71,3 +71,8 @@ Thumbs.db
 *.bak
 *.old
 *.orig
+
+# Archive / unused files
+_unused-files/
+_archive/
+
