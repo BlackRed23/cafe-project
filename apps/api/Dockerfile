@@ -20,4 +20,4 @@ WORKDIR /app
 COPY --from=builder /app /app
 
 EXPOSE 5000
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=packages/database/prisma/schema.prisma && npm run start -w @cafe-project/api"]
+CMD ["sh", "-c", "npx prisma migrate deploy --schema=packages/database/prisma/schema && npm run start -w @cafe-project/api"]
