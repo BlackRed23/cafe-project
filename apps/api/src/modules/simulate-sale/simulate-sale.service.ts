@@ -102,6 +102,7 @@ export const simulateSaleService = {
             agentResults: allAgentResults,
             agentWarning: anyWarning,
             scanSessionId: lastScanSessionId,
+            newQuantity: affectedProducts[0]?.stockAfter ?? 0,
         };
     }
     if (input.productId) {
@@ -185,6 +186,7 @@ export const simulateSaleService = {
                 productName: affectedProduct.productName,
                 stockBefore: affectedProduct.stockBefore,
                 stockAfter: affectedProduct.stockAfter,
+                newQuantity: affectedProduct.stockAfter,
                 decreasedQuantity: affectedProduct.decreasedQuantity,
                 createdPurchaseRequests: scan.createdPurchaseRequests,
                 agentLogs: scan.results,
@@ -232,7 +234,7 @@ export const simulateSaleService = {
             }).catch(console.error);
         }
 
-        return { affectedProducts, createdPurchaseRequests: scan.createdPurchaseRequests, agentLogs: scan.results, agentResults: scan.results, agentWarning: scan.agentWarning, scanSessionId: scan.scanSessionId };
+        return { affectedProducts, createdPurchaseRequests: scan.createdPurchaseRequests, agentLogs: scan.results, agentResults: scan.results, agentWarning: scan.agentWarning, scanSessionId: scan.scanSessionId, newQuantity: affectedProducts[0]?.stockAfter ?? 0 };
     },
 
     async restore(transactionId: string, userId: string) {

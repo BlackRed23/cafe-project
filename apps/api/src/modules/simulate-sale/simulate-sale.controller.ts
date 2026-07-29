@@ -1,4 +1,4 @@
-﻿import type { Response } from 'express';
+import type { Response } from 'express';
 import { sendError, sendSuccess } from '../../common/response';
 import type { AuthenticatedRequest } from '../auth/auth.middleware';
 import { simulateSaleService } from './simulate-sale.service';
@@ -7,6 +7,9 @@ import type { SimulateSaleInput } from './simulate-sale.validator';
 export const runSimulateSale = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     if (!req.user) return sendError(res, 401, 'Authentication is required.');
     const result = await simulateSaleService.run(req.body as SimulateSaleInput, req.user.id);
+
+    console.log(`\n⚡ [SIMULATE SALE THÀNH CÔNG] SKU: ${req.body.sku} | Số lượng giảm: ${req.body.quantity} | Tồn kho mới: ${result.newQuantity}\n`);
+
     sendSuccess(res, 200, 'Simulate sale completed.', result);
 };
 

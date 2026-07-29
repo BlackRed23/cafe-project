@@ -9,7 +9,7 @@
         "generate": "prisma generate",
         "db:push": "prisma db push",
         "seed": "tsx prisma/seed_cafe.ts",
-        "fetch-images": "tsx prisma/fetch-product-images.ts"
+        "fetch-images": "tsx prisma/fetch-pexels-images.ts"
     },
     "dependencies": {
         "@prisma/client": "^6.19.3",

@@ -47,6 +47,21 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// HTTP Request & Response Logging Middleware
+app.use((req, res, next) => {
+    const start = Date.now();
+    const { method, originalUrl } = req;
+
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        const status = res.statusCode;
+        const icon = status < 400 ? '✅' : '❌';
+        console.log(`[HTTP] ${icon} ${method} ${originalUrl} -> Status ${status} (${duration}ms)`);
+    });
+
+    next();
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/agent', agentRoutes);
 app.use('/api/categories', categoryRoutes);
