@@ -41,7 +41,7 @@ export const ProductDetailPage: React.FC = () => {
   }, [id]);
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    e.currentTarget.src = "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=600";
+    e.currentTarget.src = "/images/product-fallback.jpg";
   };
 
   const handleQtyChange = (val: number) => {
@@ -90,7 +90,7 @@ export const ProductDetailPage: React.FC = () => {
     );
   }
 
-  const imgUrl = product.imageUrl || product.image_url || "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=600";
+  const imgUrl = product.imageUrl || product.image_url || "/images/product-fallback.jpg";
   const stockCount = product.inventory?.quantity;
   const isOutOfStock = stockCount !== undefined && stockCount <= 0;
   const cartQuantity = items.find(item => item.product.id === product.id)?.quantity || 0;

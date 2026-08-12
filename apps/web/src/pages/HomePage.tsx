@@ -82,7 +82,7 @@ export const HomePage: React.FC = () => {
       <section
         className="relative h-[90vh] flex items-center bg-cover bg-center text-white"
         style={{
-          backgroundImage: "linear-gradient(to right, rgba(0, 0, 0, 0.75) 40%, rgba(0, 0, 0, 0.3)), url('https://images.unsplash.com/photo-1507133750040-4a8f57021571?auto=format&fit=crop&q=80&w=1600')"
+          backgroundImage: "linear-gradient(to right, rgba(0, 0, 0, 0.75) 40%, rgba(0, 0, 0, 0.3)), url('/images/hero-bg.jpg')"
         }}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
@@ -115,7 +115,7 @@ export const HomePage: React.FC = () => {
         {/* Left Side: Mock Video Play */}
         <div
           className="relative aspect-[16/10] w-full bg-cover bg-center shadow-2xl flex items-center justify-center group cursor-pointer overflow-hidden rounded-3xl border border-amber-900/10 bg-black/10"
-          style={{ backgroundImage: "url('https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&q=80&w=800')" }}
+          style={{ backgroundImage: "url('/images/about-video-bg.jpg')" }}
         >
           <div className="absolute inset-0 bg-[#150d0a]/30 group-hover:bg-[#150d0a]/40 transition-colors"></div>
           <div className="relative z-10 w-16 h-16 sm:w-20 sm:h-20 bg-[#c49b76] text-amber-955 rounded-full flex items-center justify-center shadow-2xl group-hover:scale-105 transition-transform">
@@ -214,16 +214,16 @@ export const HomePage: React.FC = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="aspect-[3/4] overflow-hidden shadow-lg rounded-3xl">
-            <img src="https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=400" alt="Gallery 1" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
+            <img src="/images/gallery-1.jpg" alt="Gallery 1" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
           </div>
           <div className="aspect-[3/4] overflow-hidden shadow-lg rounded-3xl">
-            <img src="https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&q=80&w=400" alt="Gallery 2" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
+            <img src="/images/gallery-2.jpg" alt="Gallery 2" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
           </div>
           <div className="aspect-[3/4] overflow-hidden shadow-lg rounded-3xl">
-            <img src="https://images.unsplash.com/photo-1498804103079-a6351b050096?auto=format&fit=crop&q=80&w=400" alt="Gallery 3" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
+            <img src="/images/gallery-3.jpg" alt="Gallery 3" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
           </div>
           <div className="aspect-[3/4] overflow-hidden shadow-lg rounded-3xl">
-            <img src="https://images.unsplash.com/photo-1497515114629-f71d768fd07c?auto=format&fit=crop&q=80&w=400" alt="Gallery 4" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
+            <img src="/images/gallery-4.jpg" alt="Gallery 4" className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
           </div>
         </div>
       </section>

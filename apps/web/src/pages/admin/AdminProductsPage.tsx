@@ -124,7 +124,7 @@ export const AdminProductsPage: React.FC = () => {
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
     e.currentTarget.src =
-      "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=200";
+      "/images/product-fallback.jpg";
   };
 
   const activeProducts = products.filter(p => p.isActive !== false && !p.pendingDeleteUntil);
@@ -155,7 +155,7 @@ export const AdminProductsPage: React.FC = () => {
         const img =
           product.image_url ||
           product.imageUrl ||
-          "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=200";
+          "/images/product-fallback.jpg";
         return (
           <img
             src={img}

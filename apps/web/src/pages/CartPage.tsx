@@ -13,7 +13,7 @@ export const CartPage: React.FC = () => {
   const toast = useToast();
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    e.currentTarget.src = "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=400";
+    e.currentTarget.src = "/images/product-fallback.jpg";
   };
 
   const handleQuantityChange = (productId: string, quantity: number) => {
@@ -40,7 +40,7 @@ export const CartPage: React.FC = () => {
     <div className="flex flex-col gap-12 pb-24">
       {/* Small Hero Header */}
       <section className="relative bg-[#1e130e] text-white py-16 px-4 text-center overflow-hidden">
-        <div className="absolute inset-0 opacity-10 mix-blend-overlay bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1507133750040-4a8f57021571?auto=format&fit=crop&q=80&w=800')" }}></div>
+        <div className="absolute inset-0 opacity-10 mix-blend-overlay bg-cover bg-center" style={{ backgroundImage: "url('/images/page-header-bg.jpg')" }}></div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative z-10 flex flex-col items-center gap-2">
           <span className="text-[#c49b76] text-xs font-bold uppercase tracking-widest flex items-center gap-1">
             <Sparkles size={12} /> Lựa chọn của bạn
@@ -56,7 +56,7 @@ export const CartPage: React.FC = () => {
         <div className="lg:col-span-2 flex flex-col gap-4">
           {items.map((item) => {
             const product = item.product;
-            const imgUrl = product.imageUrl || product.image_url || "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=400";
+            const imgUrl = product.imageUrl || product.image_url || "/images/product-fallback.jpg";
             return (
               <div
                 key={product.id}

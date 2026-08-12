@@ -73,13 +73,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
 
   useEffect(() => {
     let mounted = true;
-    systemSettingsApi.getSetting('store.name').then(setting => {
-      if (mounted && setting && setting.value) {
-        setStoreName(setting.value);
-      }
-    }).catch(() => {
-      if (mounted) setStoreName("Cafe Admin");
-    });
+    if (!isStaff) {
+      systemSettingsApi.getSetting('store.name').then(setting => {
+        if (mounted && setting && setting.value) {
+          setStoreName(setting.value);
+        }
+      }).catch(() => {
+        if (mounted) setStoreName("Cafe Admin");
+      });
+    }
 
     const handleSettingsUpdated = (event: Event) => {
       const customEvent = event as CustomEvent<{ key: string; value: string }>;

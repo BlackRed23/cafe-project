@@ -145,8 +145,10 @@ export const AdminInventoryPage: React.FC = () => {
 
   const fetchSupplierProducts = async () => {
     try {
-      const data = await suppliersApi.getSupplierProducts();
-      setSupplierProducts(data);
+      if (!isStaff) {
+        const data = await suppliersApi.getSupplierProducts();
+        setSupplierProducts(data);
+      }
     } catch { }
   };
 

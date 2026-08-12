@@ -12,12 +12,12 @@ interface ProductCardProps {
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart }) => {
-  const imgUrl = product.imageUrl || product.image_url || "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=400";
+  const imgUrl = product.imageUrl || product.image_url || "/images/product-fallback.jpg";
   const isActive = product.isActive !== false && product.is_active !== false;
   const isOutOfStock = isProductOutOfStock(product);
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    e.currentTarget.src = "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=400";
+    e.currentTarget.src = "/images/product-fallback.jpg";
   };
 
   return (

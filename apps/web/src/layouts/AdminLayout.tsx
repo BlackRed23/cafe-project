@@ -26,7 +26,10 @@ function getTitle(pathname: string): string {
   return "Quản trị hệ thống";
 }
 
+import { useAuth } from "../contexts/AuthContext";
+
 export const AdminLayout: React.FC = () => {
+  const { isStaff } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const currentTitle = getTitle(location.pathname);
@@ -34,13 +37,17 @@ export const AdminLayout: React.FC = () => {
 
   useEffect(() => {
     let mounted = true;
-    systemSettingsApi.getSetting('store.name').then(setting => {
-      if (mounted && setting && setting.value) {
-        setStoreName(setting.value);
-      }
-    }).catch(() => {
-      if (mounted) setStoreName("Cafe Admin");
-    });
+    
+    // Only fetch settings if the user is an admin (not staff) to prevent 403 errors
+    if (!isStaff) {
+      systemSettingsApi.getSetting('store.name').then(setting => {
+        if (mounted && setting && setting.value) {
+          setStoreName(setting.value);
+        }
+      }).catch(() => {
+        if (mounted) setStoreName("Cafe Admin");
+      });
+    }
 
     const handleSettingsUpdated = (event: Event) => {
       const customEvent = event as CustomEvent<{ key: string; value: string }>;

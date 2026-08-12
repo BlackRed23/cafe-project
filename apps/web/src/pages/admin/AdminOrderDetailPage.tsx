@@ -283,7 +283,7 @@ export const AdminOrderDetailPage: React.FC = () => {
             </Button>
 
             {/* Xác nhận đã nhận tiền (chỉ hiện khi thanh toán không phải COD và chưa PAID) */}
-            {(order.paymentMethod === "BANK_TRANSFER" || order.paymentMethod === "VIET_QR") &&
+            {order.paymentMethod === "BANK_TRANSFER" &&
              order.paymentStatus === "PENDING" && (
               <Button
                 onClick={() => setActionType("confirm_payment")}

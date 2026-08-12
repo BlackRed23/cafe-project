@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import * as fs from "fs";
 import * as path from "path";
+import { seedWorkflows } from "./seed_workflows";
 
 // Load env explicitly
 function loadEnvFiles() {
@@ -203,18 +204,30 @@ async function main() {
     if (productRecord) {
       const existingInv = await prisma.inventory.findUnique({ where: { productId: productRecord.id } });
       if (!existingInv) {
+        const expDate = new Date();
+        expDate.setFullYear(expDate.getFullYear() + 1);
         await prisma.inventory.create({
           data: {
             productId: productRecord.id,
             quantity: 50,
             minThreshold: 10,
             unit: prod.unit,
+            batches: {
+              create: {
+                batchCode: `BATCH-SEED-${productRecord.sku}`,
+                quantity: 50,
+                expirationDate: expDate
+              }
+            }
           },
         });
-        log(`    └ Tự động tạo bản ghi Kho (Tồn: 50 ${prod.unit}, Ngưỡng: 10)`);
+        log(`    └ Tự động tạo bản ghi Kho (Tồn: 50 ${prod.unit}) và 1 Lô hàng kèm theo`);
       }
     }
   }
+
+  // 4. Run detailed workflows seed
+  await seedWorkflows(prisma, log);
 
   log("\n==================================================");
   log(`🎉 HOÀN THÀNH SEED DỮ LIỆU CÀ PHÊ THẬT:`);

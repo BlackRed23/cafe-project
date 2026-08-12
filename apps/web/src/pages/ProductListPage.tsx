@@ -178,7 +178,7 @@ export const ProductListPage: React.FC = () => {
     <div className="flex flex-col gap-10 pb-20 bg-slate-50/50">
       {/* Hero Header */}
       <section className="relative bg-[#1e130e] text-white py-20 px-4 text-center overflow-hidden">
-        <div className="absolute inset-0 opacity-15 mix-blend-overlay bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1507133750040-4a8f57021571?auto=format&fit=crop&q=80&w=800')" }}></div>
+        <div className="absolute inset-0 opacity-15 mix-blend-overlay bg-cover bg-center" style={{ backgroundImage: "url('/images/page-header-bg.jpg')" }}></div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative z-10 flex flex-col items-center gap-3">
           <span className="text-[#c49b76] text-sm font-bold uppercase tracking-widest flex items-center gap-1.5 bg-amber-950/40 px-3.5 py-1.5 rounded-full border border-amber-900/30">
             <Sparkles size={14} className="text-[#c49b76]" /> Hương vị nguyên bản

@@ -12,10 +12,12 @@ import { AlertCircle, ArrowLeft, PlusCircle, Sliders, Settings, Package, Info } 
 import { getErrorMessage } from "../../api/client";
 import { Modal } from "../../components/common/Modal";
 import { Input } from "../../components/common/Input";
+import { useAuth } from "../../contexts/AuthContext";
 
 export const AdminInventoryDetailPage: React.FC = () => {
   const { inventoryId } = useParams<{ inventoryId: string }>();
   const navigate = useNavigate();
+  const { isStaff } = useAuth();
   const [inventory, setInventory] = useState<Inventory | null>(null);
   const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,7 +48,7 @@ export const AdminInventoryDetailPage: React.FC = () => {
       // Fallback to getInventories to get all computed fields (safetyStock, PR info, etc.)
       const [inventories, suppliers] = await Promise.all([
         inventoryApi.getInventories(),
-        suppliersApi.getSupplierProducts(),
+        !isStaff ? suppliersApi.getSupplierProducts() : Promise.resolve([]),
       ]);
       const found = inventories.find((i) => i.id === inventoryId || (i as any).inventoryId === inventoryId || i.productId === inventoryId);
       if (!found) {

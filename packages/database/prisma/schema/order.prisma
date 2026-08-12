@@ -15,7 +15,6 @@ enum PaymentStatus {
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
-  VIET_QR
 }
 
 model Order {

@@ -98,7 +98,13 @@ export const productRepository = {
 
     async delete(id: string): Promise<ProductRecord> {
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            await tx.inventory.deleteMany({ where: { productId: id } });
+            const inventory = await tx.inventory.findUnique({ where: { productId: id } });
+            
+            if (inventory) {
+                await tx.inventoryBatch.deleteMany({ where: { inventoryId: inventory.id } });
+                await tx.inventory.delete({ where: { id: inventory.id } });
+            }
+            
             await tx.supplierProduct.deleteMany({ where: { productId: id } });
 
             return tx.product.delete({

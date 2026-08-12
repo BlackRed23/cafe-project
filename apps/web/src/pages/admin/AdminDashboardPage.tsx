@@ -396,7 +396,7 @@ export const AdminDashboardPage: React.FC = () => {
                 const img =
                   prod.imageUrl ||
                   (prod as any).image_url ||
-                  "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=200";
+                  "/images/product-fallback.jpg";
                 return (
                   <div
                     key={prod.id}
@@ -411,7 +411,7 @@ export const AdminDashboardPage: React.FC = () => {
                       className="w-10 h-10 object-cover rounded-lg border border-slate-100 flex-shrink-0"
                       onError={(e) => {
                         e.currentTarget.src =
-                          "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&q=80&w=200";
+                          "/images/product-fallback.jpg";
                       }}
                     />
                     <div className="min-w-0 flex-1">

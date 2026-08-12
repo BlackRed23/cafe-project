@@ -157,7 +157,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
       setPr(data);
       await fetchEmailPreview(data);
 
-      if (data.supplier?.status === 'INACTIVE' && data.items?.[0]?.productId) {
+      if (!isStaff && data.supplier?.status === 'INACTIVE' && data.items?.[0]?.productId) {
         try {
           const [supplierProducts, activeSuppliers] = await Promise.all([
             suppliersApi.getSupplierProducts(),
@@ -200,12 +200,14 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
 
   useEffect(() => {
     fetchPR();
-    systemSettingsApi.getSetting('store.name').then(setting => {
-      if (setting && setting.value) {
-        setStoreName(setting.value);
-      }
-    }).catch(console.error);
-  }, [fetchPR]);
+    if (!isStaff) {
+      systemSettingsApi.getSetting('store.name').then(setting => {
+        if (setting && setting.value) {
+          setStoreName(setting.value);
+        }
+      }).catch(console.error);
+    }
+  }, [fetchPR, isStaff]);
 
   const emailDraft = useMemo(() => {
     if (!pr) return null;

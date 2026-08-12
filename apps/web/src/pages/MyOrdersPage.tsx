@@ -73,7 +73,7 @@ export const MyOrdersPage: React.FC = () => {
     <div className="flex flex-col gap-12 pb-24">
       {/* Small Hero Header */}
       <section className="relative bg-[#1e130e] text-white py-16 px-4 text-center overflow-hidden">
-        <div className="absolute inset-0 opacity-10 mix-blend-overlay bg-cover bg-center" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1507133750040-4a8f57021571?auto=format&fit=crop&q=80&w=800')" }}></div>
+        <div className="absolute inset-0 opacity-10 mix-blend-overlay bg-cover bg-center" style={{ backgroundImage: "url('/images/page-header-bg.jpg')" }}></div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative z-10 flex flex-col items-center gap-2">
           <span className="text-[#c49b76] text-xs font-bold uppercase tracking-widest flex items-center gap-1">
             <Sparkles size={12} /> Lịch sử của bạn
