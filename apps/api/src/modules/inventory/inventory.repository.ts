@@ -1,6 +1,13 @@
 import { InventoryTransactionType, type Category, type Inventory, type InventoryTransaction, type Prisma, type Product, type User } from '@cafe-project/database';
 import { prisma } from '@cafe-project/database';
 import { getOptionalSettingValue } from '../system-setting/system-setting.service';
+import { HttpError } from '../../common/http-error';
+
+const assertStockDelta = (quantity: number, positiveOnly = false): void => {
+    if (!Number.isInteger(quantity) || quantity === 0 || Math.abs(quantity) > 2147483647 || (positiveOnly && quantity < 0)) {
+        throw new HttpError(400, 'Số lượng tồn kho phải là số nguyên hợp lệ khác 0.');
+    }
+};
 
 type ProductWithCategory = Product & {
     category: Category;
@@ -109,36 +116,44 @@ export const inventoryRepository = {
     },
 
     async importStock(inventory: InventoryRecord, quantity: number, note: string | null, userId: string, batchCode?: string, expirationDate?: string): Promise<InventoryRecord> {
+        assertStockDelta(quantity, true);
+        const expiry = expirationDate ? new Date(expirationDate) : null;
+        if (!expiry || !Number.isFinite(expiry.getTime())) {
+            throw new HttpError(400, 'Ngày hết hạn của lô không hợp lệ.');
+        }
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            // Lock the aggregate before batch reads/writes, matching order/receipt write order.
+            await tx.$queryRaw`SELECT "id" FROM "Inventory" WHERE "id" = ${inventory.id} FOR UPDATE`;
+            const current = await tx.inventory.findUnique({ where: { id: inventory.id } });
+            if (!current) throw new HttpError(404, 'Không tìm thấy tồn kho.');
+            const finalBatchCode = batchCode?.trim() || `${current.productId.slice(0, 8)}-${Date.now()}`;
+            if (await tx.inventoryBatch.findFirst({ where: { inventoryId: current.id, batchCode: finalBatchCode } })) {
+                throw new HttpError(409, 'Mã lô đã tồn tại trong kho.');
+            }
             await tx.inventory.update({
                 where: { id: inventory.id },
                 data: {
-                    quantity: inventory.quantity + quantity
+                    quantity: { increment: quantity }
                 }
             });
 
-            let batchId = null;
-            if (expirationDate) {
-                const finalBatchCode = batchCode?.trim() || `${inventory.productId.slice(0, 8)}-${Date.now()}`;
-                const batch = await tx.inventoryBatch.create({
-                    data: {
-                        inventoryId: inventory.id,
-                        batchCode: finalBatchCode,
-                        quantity,
-                        expirationDate: new Date(expirationDate)
-                    }
-                });
-                batchId = batch.id;
-            }
+            const batch = await tx.inventoryBatch.create({
+                data: {
+                    inventoryId: current.id,
+                    batchCode: finalBatchCode,
+                    quantity,
+                    expirationDate: expiry
+                }
+            });
 
             await tx.inventoryTransaction.create({
                 data: {
-                    productId: inventory.productId,
+                    productId: current.productId,
                     userId,
                     type: InventoryTransactionType.IMPORT,
                     quantity,
                     reason: note,
-                    batchId
+                    batchId: batch.id
                 }
             });
 
@@ -155,24 +170,46 @@ export const inventoryRepository = {
         });
     },
 
-    async adjustStock(inventory: InventoryRecord, quantity: number, note: string | null, userId: string): Promise<InventoryRecord> {
-        const newQuantity = inventory.quantity + quantity;
-
+    async adjustStock(inventory: InventoryRecord, quantity: number, note: string | null, userId: string, batchId?: string): Promise<InventoryRecord> {
+        assertStockDelta(quantity);
+        if (!batchId) {
+            throw new HttpError(409, 'Cần chọn lô để điều chỉnh; tồn kho không có lô cần được đối soát trước.');
+        }
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            await tx.inventory.update({
-                where: { id: inventory.id },
-                data: {
-                    quantity: newQuantity
-                }
+            await tx.$queryRaw`SELECT "id" FROM "Inventory" WHERE "id" = ${inventory.id} FOR UPDATE`;
+            const current = await tx.inventory.findUnique({ where: { id: inventory.id } });
+            if (!current) throw new HttpError(404, 'Không tìm thấy tồn kho.');
+            const batch = await tx.inventoryBatch.findFirst({ where: { id: batchId, inventoryId: current.id } });
+            if (!batch) throw new HttpError(400, 'Lô không thuộc tồn kho cần điều chỉnh.');
+            if (!Number.isFinite(new Date(batch.expirationDate).getTime()) || new Date(batch.expirationDate).getTime() <= Date.now()) {
+                throw new HttpError(409, 'Lô đã hết hạn hoặc không có hạn hợp lệ; cần đối soát riêng.');
+            }
+            if (current.quantity + quantity < current.reservedStock || current.quantity + quantity < 0 || batch.quantity + quantity < 0) {
+                throw new HttpError(409, 'Điều chỉnh vượt tồn kho khả dụng hoặc số lượng của lô.');
+            }
+
+            // Evaluate reservation protection in the UPDATE as well as under the row lock.
+            const changed = await tx.$executeRaw`
+                UPDATE "Inventory" SET "quantity" = "quantity" + ${quantity}, "updatedAt" = NOW()
+                WHERE "id" = ${current.id}
+                  AND "quantity" + ${quantity} >= "reservedStock"
+                  AND "quantity" + ${quantity} >= 0
+            `;
+            if (changed !== 1) throw new HttpError(409, 'Tồn kho đã thay đổi, vui lòng kiểm tra lại.');
+            const changedBatch = await tx.inventoryBatch.updateMany({
+                where: { id: batch.id, inventoryId: current.id, quantity: { gte: Math.max(0, -quantity) } },
+                data: { quantity: { increment: quantity } }
             });
+            if (changedBatch.count !== 1) throw new HttpError(409, 'Lô đã thay đổi, vui lòng kiểm tra lại.');
 
             await tx.inventoryTransaction.create({
                 data: {
-                    productId: inventory.productId,
+                    productId: current.productId,
                     userId,
                     type: InventoryTransactionType.ADJUSTMENT,
                     quantity,
-                    reason: note
+                    reason: note,
+                    batchId: batch.id
                 }
             });
 

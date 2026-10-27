@@ -155,7 +155,8 @@ export const registerUser = async (input: RegisterInput): Promise<AuthUser> => {
         password: hashedPassword,
         phone: input.phone,
         provider: 'local',
-        role: input.role
+        // Public registration never trusts a caller-provided role, even without validation.
+        role: 'CUSTOMER'
     });
 
     return toAuthUser(user);

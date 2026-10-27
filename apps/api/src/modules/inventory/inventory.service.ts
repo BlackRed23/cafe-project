@@ -421,11 +421,7 @@ export const adjustInventory = async (input: AdjustInventoryInput, userId: strin
         throw new HttpError(400, 'Số lượng điều chỉnh không được bằng 0.');
     }
 
-    if (inventory.quantity + input.quantity < 0) {
-        throw new HttpError(400, 'Tồn kho không đủ.');
-    }
-
-    const updatedInventory = await inventoryRepository.adjustStock(inventory, input.quantity, normalizeNote(input.note), userId);
+    const updatedInventory = await inventoryRepository.adjustStock(inventory, input.quantity, normalizeNote(input.note), userId, input.batchId);
     const dto = toInventoryDto(updatedInventory);
 
     const availableStockAfter = dto.quantity - dto.reservedStock;

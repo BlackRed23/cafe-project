@@ -1,18 +1,44 @@
 model Supplier {
-  id               String            @id @default(cuid())
-  name             String
-  email            String?
-  contact          String?
-  address          String?
-  status           String            @default("ACTIVE")
-  deletedAt        DateTime?
-  products         SupplierProduct[]
+  id        String    @id @default(cuid())
+  name      String
+  email     String?
+  contact   String?
+  address   String?
+  status    String    @default("ACTIVE")
+  deletedAt DateTime?
+
+  ingredients      SupplierIngredient[]
   purchaseRequests PurchaseRequest[]
+
+  // Chuyển tiếp (Transitional)
+  products SupplierProduct[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
+model SupplierIngredient {
+  id                   String     @id @default(cuid())
+  supplierId           String
+  supplier             Supplier   @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  ingredientId         String
+  ingredient           Ingredient @relation(fields: [ingredientId], references: [id])
+  pricePerBaseUnit     Decimal    @db.Decimal(18, 4)
+  supplierSku          String?
+  purchaseUnit         String
+  conversionQuantity   Decimal    @db.Decimal(14, 3)
+  conversionTargetUnit String     @default("g")
+  minOrderQuantity     Int        @default(1)
+  leadTimeDays         Int        @default(3)
+  isPreferred          Boolean    @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([supplierId, ingredientId])
+}
+
+// Chuyển tiếp (Transitional)
 model SupplierProduct {
   id                   String   @id @default(cuid())
   supplierId           String

@@ -1,3 +1,4 @@
+import { requireAgentUser } from '../internal-auth';
 import { prisma, PurchaseRequestStatus, OrderStatus, type Prisma } from '@cafe-project/database';
 import { fixAgentLogDisplayOutputJson, fixVietnameseMojibakeText } from '../utils/textEncoding';
 
@@ -209,16 +210,6 @@ export const agentRepository = {
         };
     },
 
-    async findFirstAdmin() {
-        return prisma.user.findFirst({
-            where: {
-                role: 'ADMIN',
-                isActive: true
-            },
-            select: { id: true }
-        });
-    },
-
     async getSettingValue(key: string): Promise<string | null> {
         const setting = await prisma.systemSetting.findUnique({
             where: { key },
@@ -235,11 +226,7 @@ export const agentRepository = {
         userId?: string,
         emailDraft?: string
     ) {
-        if (!userId) {
-            const admin = await this.findFirstAdmin();
-            if (!admin) throw new Error('No admin user found to associate with AI Purchase Request');
-            userId = admin.id;
-        }
+        userId = await requireAgentUser(userId);
 
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const converted = convertRecommendedQuantity(inventory, supplierProduct, quantity);
@@ -289,6 +276,7 @@ export const agentRepository = {
         emailDraft?: string | null;
         userId: string;
     }) {
+        await requireAgentUser(data.userId);
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const inventory = await tx.inventory.findUnique({
                 where: { productId: data.productId }

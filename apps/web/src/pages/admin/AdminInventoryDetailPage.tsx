@@ -1,3 +1,4 @@
+import { AdjustmentBatchSelect, eligibleAdjustmentBatches } from "../../components/admin/AdjustmentBatchSelect";
 import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { inventoryApi } from "../../api/inventory.api";
@@ -27,6 +28,7 @@ export const AdminInventoryDetailPage: React.FC = () => {
   const [modalType, setModalType] = useState<"import" | "adjust" | "threshold" | "create_pr" | null>(null);
   const [inputValue, setInputValue] = useState<number>(0);
   const [inputNote, setInputNote] = useState("");
+  const [adjustmentBatchId, setAdjustmentBatchId] = useState("");
   const [batchCode, setBatchCode] = useState("");
   const [expirationDate, setExpirationDate] = useState("");
   const [prQuantity, setPrQuantity] = useState<number>(0);
@@ -119,6 +121,7 @@ export const AdminInventoryDetailPage: React.FC = () => {
 
   const handleCloseModal = () => {
     setModalType(null);
+    setAdjustmentBatchId("");
     setInputValue(0);
     setInputNote("");
     setBatchCode("");
@@ -210,14 +213,17 @@ export const AdminInventoryDetailPage: React.FC = () => {
         await inventoryApi.importInventory({ productId: inventory.productId, quantity: inputValue, note: inputNote.trim() || undefined, batchCode: batchCode.trim() || undefined, expirationDate });
         showToast("Nhập kho thành công.", "success");
       } else if (modalType === "adjust") {
-        const diff = inputValue - inventory.quantity;
+        const batch = eligibleAdjustmentBatches(inventory).find(item => item.id === adjustmentBatchId);
+        if (!batch) throw new Error("Vui lòng chọn lô còn hạn để điều chỉnh.");
+        if (!Number.isInteger(inputValue) || inputValue < 0) throw new Error("Số lượng thực tế của lô phải là số nguyên không âm.");
+        const diff = inputValue - batch.quantity;
         if (diff === 0) {
           showToast("Không có thay đổi.", "success");
           handleCloseModal();
           setModalLoading(false);
           return;
         }
-        await inventoryApi.adjustInventory({ productId: inventory.productId, quantity: diff, note: inputNote.trim() || undefined });
+        await inventoryApi.adjustInventory({ productId: inventory.productId, quantity: diff, batchId: adjustmentBatchId, note: inputNote.trim() || undefined });
         showToast("Điều chỉnh thành công.", "success");
       } else if (modalType === "threshold") {
         await inventoryApi.updateInventory(inventory.productId, { minThreshold: inputValue });
@@ -621,16 +627,17 @@ export const AdminInventoryDetailPage: React.FC = () => {
 
             {(modalType === "import" || modalType === "adjust" || modalType === "threshold") && (
               <>
+                {modalType === "adjust" && <AdjustmentBatchSelect inventory={inventory} value={adjustmentBatchId} onChange={id => { setAdjustmentBatchId(id); setInputValue(inventory.batches?.find(batch => batch.id === id)?.quantity ?? 0); }} />}
                 <Input
                   label={
                     modalType === "import"
                       ? `Số lượng nhập thêm (${inventory.product?.unit || "đơn vị"})`
                       : modalType === "adjust"
-                        ? `Số lượng thực tế mới (${inventory.product?.unit || "đơn vị"})`
+                        ? `Số lượng thực tế của lô (${inventory.product?.unit || "đơn vị"})`
                         : `Ngưỡng tối thiểu mới (${inventory.product?.unit || "đơn vị"})`
                   }
                   type="number"
-                  value={inputValue || ""}
+                  value={inputValue}
                   onChange={(e) => setInputValue(Number(e.target.value))}
                   required
                   min={modalType === "adjust" ? 0 : 1}

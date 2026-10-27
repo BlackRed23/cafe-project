@@ -9,7 +9,15 @@ export type InventoryScanSeverity =
   | "DATA_ISSUE"
   | "ERROR";
 
+export interface InventoryBatch {
+  id: string;
+  batchCode: string;
+  quantity: number;
+  expirationDate: string;
+}
+
 export interface Inventory {
+  batches?: InventoryBatch[];
   id: string;
   productId: string;
   product_id?: string;

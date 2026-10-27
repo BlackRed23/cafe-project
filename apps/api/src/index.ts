@@ -16,8 +16,7 @@ import dashboardRoutes from './modules/dashboard/dashboard.route';
 import uploadRoutes from './modules/upload/upload.route';
 import { env } from './common/env';
 import { errorHandler } from './common/error-handler';
-import { prisma } from '@cafe-project/database';
-import { sendError, sendSuccess } from './common/response';
+import { sendSuccess } from './common/response';
 import { scheduleJobs } from './modules/cron/cron.service';
 
 const app = express();
@@ -82,16 +81,6 @@ app.use('/api/upload', uploadRoutes);
 
 app.get('/health', (_req: Request, res: Response) => {
     sendSuccess(res, 200, 'Cafe API server is running.', { status: 'OK' });
-});
-
-app.get('/test-db', async (_req: Request, res: Response) => {
-    try {
-        const users = await prisma.user.findMany();
-        sendSuccess(res, 200, 'Database connection successful.', users);
-    } catch (error) {
-        console.error('[api] Database connection error:', error);
-        sendError(res, 500, 'Database connection failed.');
-    }
 });
 
 app.use(errorHandler);

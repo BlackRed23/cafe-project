@@ -1,9 +1,20 @@
+enum CategoryKind {
+  PRODUCT
+  INGREDIENT
+}
+
 model Category {
-  id          String    @id @default(cuid())
-  name        String    @unique
+  id          String       @id @default(cuid())
+  name        String
+  kind        CategoryKind @default(PRODUCT)
   description String?
+  sortOrder   Int          @default(0)
+
   products    Product[]
+  ingredients Ingredient[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([name, kind])
 }

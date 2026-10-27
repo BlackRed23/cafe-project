@@ -14,7 +14,7 @@ const messageFromError = (error: any, fallback: string): string => error?.messag
 
 export const getLogs = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-        const result = await getAgentLogsViaAgentService(req.query);
+        const result = await getAgentLogsViaAgentService(req.query, req.user?.id);
         sendSuccess(res, 200, 'Get agent logs successfully.', result);
     } catch (error: any) {
         sendError(res, statusFromError(error), messageFromError(error, 'Unable to retrieve agent logs.'));
@@ -43,7 +43,7 @@ export const recommendReorder = async (req: AuthenticatedRequest, res: Response)
 
 export const getRecommendations = async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
-        const result = await getRecommendationsViaAgentService();
+        const result = await getRecommendationsViaAgentService(_req.user?.id);
         sendSuccess(res, 200, 'Recommendations fetched successfully.', result);
     } catch (error: any) {
         sendError(res, statusFromError(error), messageFromError(error, 'Failed to fetch recommendations.'));

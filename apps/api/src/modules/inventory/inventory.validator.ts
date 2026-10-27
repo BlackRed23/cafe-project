@@ -23,6 +23,7 @@ export const importInventorySchema = z.object({
 
 export const adjustInventorySchema = z.object({
     inventoryId: inventoryIdSchema,
+    batchId: z.string().trim().min(1, 'Mã lô là bắt buộc.').optional(),
     quantity: z.coerce.number().int('Số lượng phải là số nguyên.').refine((value) => value !== 0, 'Số lượng điều chỉnh không được bằng 0.'),
     note: z.string().trim().max(1000, 'Ghi chú tối đa 1000 ký tự.').optional().nullable()
 });

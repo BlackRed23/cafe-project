@@ -1,3 +1,90 @@
+enum ExecutionStatus {
+  RUNNING
+  WAITING_APPROVAL
+  SUCCEEDED
+  FAILED
+  TIMEOUT
+  CANCELLED
+}
+
+enum ToolCallStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  BLOCKED_BY_PERMISSION
+  SKIPPED
+}
+
+model AgentExecution {
+  id              String          @id @default(cuid())
+  goal            String
+  intent          String?
+  status          ExecutionStatus @default(RUNNING)
+  tokenIn         Int             @default(0)
+  tokenOut        Int             @default(0)
+  costUsd         Decimal         @default(0) @db.Decimal(10, 6)
+  fallbackUsed    Boolean         @default(false)
+  triggeredBy     String?
+  triggeredByUser User?           @relation("AgentExecutionTriggeredBy", fields: [triggeredBy], references: [id])
+  startedAt       DateTime        @default(now())
+  endedAt         DateTime?
+  errorMessage    String?
+  idempotencyKey  String?         @unique
+
+  toolCalls   AgentToolCall[]
+  evaluations AgentEvaluation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+model AgentToolCall {
+  id           String         @id @default(cuid())
+  executionId  String
+  execution    AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  stepNo       Int
+  toolName     String
+  arguments    Json
+  result       Json?
+  status       ToolCallStatus @default(PENDING)
+  errorMessage String?
+  latencyMs    Int?
+  startedAt    DateTime       @default(now())
+  completedAt  DateTime?
+
+  @@unique([executionId, stepNo])
+}
+
+model AgentEvaluation {
+  id            String          @id @default(cuid())
+  executionId   String?
+  execution     AgentExecution? @relation(fields: [executionId], references: [id])
+  testCode      String
+  category      String
+  prompt        String
+  expectedTools String[]
+  actualTools   String[]
+  toolMatched   Boolean
+  hallucinated  Boolean         @default(false)
+  latencyMs     Int?
+  passed        Boolean
+  failureNote   String?
+  batchLabel    String
+  evaluatedAt   DateTime        @default(now())
+
+  @@index([batchLabel])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// Chuyển tiếp (Transitional)
 model AgentLog {
   id             String   @id @default(uuid())
   action         String
@@ -12,10 +99,4 @@ model AgentLog {
   triggered_at   DateTime @default(now())
   createdBy      String?
   creator        User?    @relation("AgentLogCreatedBy", fields: [createdBy], references: [id])
-}
-
-model SystemSetting {
-  key       String   @id
-  value     String
-  updatedAt DateTime @updatedAt
 }

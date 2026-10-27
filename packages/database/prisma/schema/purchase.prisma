@@ -7,6 +7,12 @@ enum PurchaseRequestStatus {
   REJECTED
 }
 
+enum GoodsReceiptStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
 model PurchaseRequest {
   id             String                @id @default(cuid())
   requestNumber  String                @unique
@@ -17,9 +23,9 @@ model PurchaseRequest {
   aiGenerated    Boolean               @default(false)
   totalAmount    Decimal               @default(0) @db.Decimal(12, 2)
   requestedBy    String
-  requester      User                  @relation("RequestedBy", fields: [requestedBy], references: [id])
+  requester      User                  @relation("PurchaseRequestRequestedBy", fields: [requestedBy], references: [id])
   approvedBy     String?
-  approver       User?                 @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  approver       User?                 @relation("PurchaseRequestApprovedBy", fields: [approvedBy], references: [id])
   approvedAt     DateTime?
   emailSentAt    DateTime?
   emailContent   String?
@@ -31,7 +37,9 @@ model PurchaseRequest {
   paymentNote    String?
   receivedAmount Decimal               @default(0) @db.Decimal(12, 2)
   amountPaid     Decimal               @default(0) @db.Decimal(12, 2)
-  items          PurchaseRequestItem[]
+
+  items    PurchaseRequestItem[]
+  receipts GoodsReceipt[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -41,17 +49,42 @@ model PurchaseRequestItem {
   id               String          @id @default(cuid())
   requestId        String
   request          PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  inventoryId      String
-  inventory        Inventory       @relation(fields: [inventoryId], references: [id])
-  productId        String
-  product          Product         @relation(fields: [productId], references: [id])
+  ingredientId     String?
+  ingredient       Ingredient?     @relation(fields: [ingredientId], references: [id])
   quantity         Int
   quantityReceived Int             @default(0)
   unitPrice        Decimal?        @db.Decimal(12, 2)
   notes            String?
 
+  receivedBatches IngredientBatch[]
+
+  // Chuyển tiếp (Transitional)
+  inventoryId String?
+  inventory   Inventory? @relation(fields: [inventoryId], references: [id])
+  productId   String?
+  product     Product?   @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GoodsReceipt {
+  id                String             @id @default(cuid())
+  receiptNumber     String             @unique
+  status            GoodsReceiptStatus @default(DRAFT)
+  purchaseRequestId String
+  purchaseRequest   PurchaseRequest    @relation(fields: [purchaseRequestId], references: [id])
+  receivedAt        DateTime           @default(now())
+  receivedBy        String?
+  supplierInvoiceNo String?
+  note              String?
+  idempotencyKey    String?            @unique
+
+  batches IngredientBatch[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([requestId, productId])
+  @@index([purchaseRequestId, receivedAt])
+  @@index([status])
 }

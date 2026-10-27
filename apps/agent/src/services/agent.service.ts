@@ -1,3 +1,4 @@
+import { requireAgentUser, requireInternalSecret } from '../internal-auth';
 import { prisma, InventoryTransactionType } from '@cafe-project/database';
 import { ACTIVE_PURCHASE_REQUEST_MESSAGE, agentRepository, type AgentInventoryRecord } from '../repositories/agent.repository';
 import { recommendationService } from './recommendation.service';
@@ -431,6 +432,7 @@ const MANUAL_SCAN_COOLDOWN_MS = 60 * 1000;
 
 export const agentService = {
     async scanInventory(input: ScanInventoryInput = { triggerType: 'MANUAL_SCAN' }, userId?: string) {
+        userId = await requireAgentUser(userId);
         const triggerType = input.triggerType || 'MANUAL_SCAN';
         const demoFailureMode = getAgentDemoFailureMode();
         if (demoFailureMode) {
@@ -1109,6 +1111,7 @@ export const agentService = {
     },
 
     async recommendReorder(input: RecommendReorderInput = { force: false }, userId: string) {
+        userId = await requireAgentUser(userId);
         const productIds = input.productIds || await agentRepository.findActiveProductIds();
         const recommendations = [];
         const skippedProducts = [];
@@ -1168,6 +1171,7 @@ export const agentService = {
     },
 
     async createPurchaseRequestFromRecommendation(logId: string, userId: string) {
+        userId = await requireAgentUser(userId);
         const log = await agentRepository.findRecommendationLog(logId);
         if (!log) throw new AgentHttpError(404, 'Recommendation log not found.');
         if (log.action !== 'RECOMMEND_REORDER') throw new AgentHttpError(400, 'Invalid log action type.');
@@ -1195,20 +1199,23 @@ export const agentService = {
     },
 
     async runScan(triggerType: 'SCHEDULED' | 'MANUAL' = 'SCHEDULED') {
-        const admin = await agentRepository.findFirstAdmin();
-        if (!admin) {
-            await agentRepository.createLog({
-                action: 'SCAN_INVENTORY',
-                result: 'FAILED',
-                input: JSON.stringify({ triggerType }),
-                reasoning: 'No active ADMIN user found in database to authorize the PurchaseRequest.',
-                error_message: 'No active ADMIN user found.',
-                fallback_used: false
-            });
-            return;
-        }
-
-        await this.scanInventory({ triggerType }, admin.id);
+        // Trusted local worker entry point. Never pass a system actor into a user write path.
+        requireInternalSecret();
+        const inventories = await agentRepository.findInventories();
+        const lowStock = inventories.filter(inventory => inventory.quantity - inventory.reservedStock <= inventory.minThreshold);
+        const summary = {
+            principal: 'system', triggerType, mode: 'LOG_ONLY',
+            totalChecked: inventories.length, lowStockProductIds: lowStock.map(inventory => inventory.productId),
+            purchaseWritesBlocked: true
+        };
+        await agentRepository.createLog({
+            action: 'SCAN_INVENTORY', result: 'SUCCESS',
+            input: JSON.stringify({ principal: 'system', triggerType, mode: 'LOG_ONLY' }),
+            output: JSON.stringify(summary),
+            reasoning: 'Read-only stock threshold analysis; system purchasing disabled pending requester design.',
+            fallback_used: false
+        });
+        return summary;
     },
 
     async createLog(data: Parameters<typeof agentRepository.createLog>[0]) {

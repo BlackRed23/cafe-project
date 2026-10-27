@@ -5,6 +5,12 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum ConsumptionStatus {
+  PENDING
+  COMMITTED
+  VOIDED
+}
+
 enum PaymentStatus {
   PENDING
   PAID
@@ -15,53 +21,155 @@ enum PaymentStatus {
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
+  VIET_QR
+  MOMO
+  VNPAY
+}
+
+enum TransactionStatus {
+  INITIATED
+  PENDING
+  AUTHORIZED
+  PAID
+  FAILED
+  CANCELLED
+  EXPIRED
+  REFUNDED
+}
+
+enum CallbackStatus {
+  RECEIVED
+  VERIFIED
+  APPLIED
+  DUPLICATED
+  REJECTED_INVALID_SIGNATURE
+  FAILED
 }
 
 model Order {
-  id              String      @id @default(cuid())
+  id              String         @id @default(cuid())
   userId          String
-  user            User        @relation(fields: [userId], references: [id])
-  status          OrderStatus @default(PENDING)
-  totalAmount     Decimal     @default(0) @db.Decimal(12, 2)
-  shippingFee     Decimal     @default(0) @db.Decimal(12, 2)
+  user            User           @relation(fields: [userId], references: [id])
+  status          OrderStatus    @default(PENDING)
+  totalAmount     Decimal        @default(0) @db.Decimal(12, 2)
+  shippingFee     Decimal        @default(0) @db.Decimal(12, 2)
   shippingZone    String?
   shippingName    String?
   shippingPhone   String?
   shippingAddress String?
   note            String?
   stockDeductedAt DateTime?
+  paymentMethod   PaymentMethod?
+  paymentStatus   PaymentStatus  @default(PENDING)
+  paidAt          DateTime?
 
-  items   OrderItem[]
-  payment Payment?
+  items    OrderItem[]
+  payments Payment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
-  orderId   String
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-  quantity  Int
-  price     Decimal @db.Decimal(12, 2)
+  id                String            @id @default(cuid())
+  orderId           String
+  order             Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId         String
+  product           Product           @relation(fields: [productId], references: [id])
+  recipeId          String?
+  recipe            Recipe?           @relation(fields: [recipeId], references: [id])
+  recipeVersion     Int?
+  quantity          Int
+  price             Decimal           @db.Decimal(12, 2)
+  consumptionStatus ConsumptionStatus @default(PENDING)
+  startedAt         DateTime?
+  committedAt       DateTime?
+  voidedAt          DateTime?
+  ingredientCost    Decimal           @default(0) @db.Decimal(12, 2)
+  toppingCost       Decimal           @default(0) @db.Decimal(12, 2)
+  totalCost         Decimal           @default(0) @db.Decimal(12, 2)
+  grossProfit       Decimal           @default(0) @db.Decimal(12, 2)
+
+  toppings OrderItemTopping[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
 
-  @@unique([orderId, productId])
+model OrderItemTopping {
+  id           String    @id @default(cuid())
+  orderItemId  String
+  orderItem    OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  toppingId    String
+  topping      Topping   @relation(fields: [toppingId], references: [id])
+  quantity     Int       @default(1)
+  price        Decimal   @default(0) @db.Decimal(12, 2)
+  costSnapshot Decimal   @default(0) @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([orderItemId])
 }
 
 model Payment {
-  id      String        @id @default(cuid())
-  orderId String        @unique
-  order   Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  method  PaymentMethod
-  amount  Decimal       @db.Decimal(12, 2)
-  status  PaymentStatus @default(PENDING)
-  paidAt  DateTime?
+  id              String            @id @default(cuid())
+  orderId         String
+  order           Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method          PaymentMethod
+  providerTxnId   String?           @unique
+  merchantRef     String?
+  amount          Decimal           @db.Decimal(12, 2)
+  currency        String            @default("VND")
+  status          TransactionStatus @default(INITIATED)
+  attemptNo       Int               @default(1)
+  requestPayload  Json?
+  responsePayload Json?
+  failureCode     String?
+  failureMessage  String?
+  paidAt          DateTime?
+  expiresAt       DateTime?
+
+  callbacks PaymentCallback[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+}
+
+model PaymentCallback {
+  id              String         @id @default(cuid())
+  method          PaymentMethod
+  providerEventId String?        @unique
+  eventType       String?
+  paymentId       String?
+  payment         Payment?       @relation(fields: [paymentId], references: [id])
+  signatureValid  Boolean        @default(false)
+  rawPayload      Json
+  headers         Json?
+  receivedAt      DateTime       @default(now())
+  processedAt     DateTime?
+  status          CallbackStatus @default(RECEIVED)
+  errorMessage    String?
+  retryCount      Int            @default(0)
+}
+
+model PaymentReconciliation {
+  id             String        @id @default(cuid())
+  method         PaymentMethod
+  businessDate   DateTime
+  expectedCount  Int           @default(0)
+  expectedAmount Decimal       @default(0) @db.Decimal(14, 2)
+  actualCount    Int           @default(0)
+  actualAmount   Decimal       @default(0) @db.Decimal(14, 2)
+  matchedCount   Int           @default(0)
+  missingCount   Int           @default(0)
+  orphanCount    Int           @default(0)
+  resolvedAt     DateTime?
+  resolvedBy     String?
+  note           String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([method, businessDate])
 }

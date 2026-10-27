@@ -18,17 +18,19 @@ export const simulateSaleRepository = {
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            if (!Number.isInteger(quantity) || quantity <= 0) throw new HttpError(400, 'Số lượng mô phỏng phải là số nguyên dương.');
+            await tx.$queryRaw`SELECT "id" FROM "Inventory" WHERE "id" = ${inventory.id} FOR UPDATE`;
             const current = await tx.inventory.findUnique({ where: { id: inventory.id }, include: inventoryInclude });
             if (!current) throw new HttpError(404, 'Inventory not found for selected product.');
 
             const previousQuantity = current.quantity;
-            if (previousQuantity < quantity) {
+            if (previousQuantity - current.reservedStock < quantity) {
                 throw new HttpError(400, `Not enough inventory for ${current.product.name}. Current stock: ${previousQuantity}, requested: ${quantity}.`);
             }
 
             const newQuantity = previousQuantity - quantity;
 
-            await tx.inventory.update({ where: { id: current.id }, data: { quantity: newQuantity } });
+            await tx.inventory.update({ where: { id: current.id }, data: { quantity: { decrement: quantity } } });
             
             const batches = await tx.inventoryBatch.findMany({
                 where: { inventoryId: current.id, quantity: { gt: 0 }, expirationDate: { gte: startOfToday } },
@@ -80,11 +82,16 @@ export const simulateSaleRepository = {
         startOfToday.setHours(0, 0, 0, 0);
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const affected = [];
-            for (const plan of plans) {
-                const previousQuantity = plan.inventory.quantity;
-                const decreaseQuantity = Math.min(plan.decrease, previousQuantity);
+            for (const plan of [...plans].sort((a, b) => a.inventory.id.localeCompare(b.inventory.id))) {
+                if (!Number.isInteger(plan.decrease) || plan.decrease <= 0) throw new HttpError(400, 'Số lượng mô phỏng phải là số nguyên dương.');
+                await tx.$queryRaw`SELECT "id" FROM "Inventory" WHERE "id" = ${plan.inventory.id} FOR UPDATE`;
+                const current = await tx.inventory.findUnique({ where: { id: plan.inventory.id } });
+                if (!current) throw new HttpError(404, 'Inventory not found.');
+                const previousQuantity = current.quantity;
+                const decreaseQuantity = plan.decrease;
+                if (previousQuantity - current.reservedStock < decreaseQuantity) throw new HttpError(409, 'Mô phỏng vượt tồn kho khả dụng.');
                 const newQuantity = previousQuantity - decreaseQuantity;
-                await tx.inventory.update({ where: { id: plan.inventory.id }, data: { quantity: newQuantity } });
+                await tx.inventory.update({ where: { id: plan.inventory.id }, data: { quantity: { decrement: decreaseQuantity } } });
                 
                 const batches = await tx.inventoryBatch.findMany({
                     where: { inventoryId: plan.inventory.id, quantity: { gt: 0 }, expirationDate: { gte: startOfToday } },
@@ -149,6 +156,12 @@ export const simulateSaleRepository = {
                 throw new HttpError(400, 'Transaction is not a valid simulate sale transaction.');
             }
 
+            const target = await tx.inventory.findUnique({ where: { productId: originalTransaction.productId } });
+            if (!target) throw new HttpError(404, 'Inventory not found.');
+            await tx.$queryRaw`SELECT "id" FROM "Inventory" WHERE "id" = ${target.id} FOR UPDATE`;
+            if (!originalTransaction.batchId) throw new HttpError(409, 'Mô phỏng không có lô nguồn cần được đối soát, không tự tạo lô.');
+            const batch = await tx.inventoryBatch.findFirst({ where: { id: originalTransaction.batchId, inventoryId: target.id } });
+            if (!batch) throw new HttpError(409, 'Không tìm thấy lô nguồn để khôi phục.');
             const marker = restoreMarker(originalTransaction.id);
             const existingRestore = await tx.inventoryTransaction.findFirst({
                 where: {
@@ -178,15 +191,17 @@ export const simulateSaleRepository = {
 
             await tx.inventory.update({
                 where: { id: inventory.id },
-                data: { quantity: restoredStock }
+                data: { quantity: { increment: restoredQuantity } }
             });
 
+            await tx.inventoryBatch.update({ where: { id: batch.id }, data: { quantity: { increment: restoredQuantity } } });
             const restoreTransaction = await tx.inventoryTransaction.create({
                 data: {
                     productId: originalTransaction.productId,
                     userId,
                     type: InventoryTransactionType.ADJUSTMENT,
                     quantity: restoredQuantity,
+                    batchId: batch.id,
                     reason: `Khôi phục mô phỏng bán ${marker}`
                 }
             });

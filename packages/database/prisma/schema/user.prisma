@@ -19,10 +19,15 @@ model User {
   isActive            Boolean   @default(true)
 
   orders                    Order[]
-  inventoryTransactions     InventoryTransaction[]
-  requestedPurchaseRequests PurchaseRequest[]      @relation("RequestedBy")
-  approvedPurchaseRequests  PurchaseRequest[]      @relation("ApprovedBy")
-  agentLogs                 AgentLog[]             @relation("AgentLogCreatedBy")
+  inventoryTransactions     InventoryTransaction[] @relation("InventoryTransactionPerformedBy")
+  requestedPurchaseRequests PurchaseRequest[]      @relation("PurchaseRequestRequestedBy")
+  approvedPurchaseRequests  PurchaseRequest[]      @relation("PurchaseRequestApprovedBy")
+  createdStockCounts        StockCount[]           @relation("StockCountCreatedBy")
+  approvedStockCounts       StockCount[]           @relation("StockCountApprovedBy")
+  agentExecutions           AgentExecution[]       @relation("AgentExecutionTriggeredBy")
+
+  // Quan hệ chuyển tiếp (Transitional legacy support)
+  legacyAgentLogs AgentLog[] @relation("AgentLogCreatedBy")
 
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())

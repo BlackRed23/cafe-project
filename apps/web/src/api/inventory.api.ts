@@ -115,10 +115,10 @@ export const inventoryApi = {
 
   getLowStock: async (): Promise<Inventory[]> => inventoryApi.getLowStockInventories(),
 
-  updateInventory: async (productId: string, payload: { minThreshold?: number; min_threshold?: number; quantity?: number }): Promise<any> => {
+  updateInventory: async (productId: string, payload: { minThreshold?: number; min_threshold?: number; quantity?: number; batchId?: string }): Promise<any> => {
     const inventoryId = await resolveInventoryId(productId);
     if (payload.quantity !== undefined) {
-      return inventoryApi.adjustInventory({ productId, quantity: payload.quantity });
+      return inventoryApi.adjustInventory({ productId, quantity: payload.quantity, batchId: payload.batchId ?? "" });
     }
 
     const minThreshold = payload.minThreshold ?? payload.min_threshold;
@@ -144,8 +144,10 @@ export const inventoryApi = {
     return normalizeInventoryMutation(response.data);
   },
 
-  adjustInventory: async (payload: { productId: string; quantity: number; note?: string }): Promise<any> => {
+  adjustInventory: async (payload: { productId: string; batchId: string; quantity: number; note?: string }): Promise<any> => {
+    if (!payload.batchId) throw new Error("Vui lòng chọn lô còn hạn để điều chỉnh.");
     const response = await apiClient.post("/inventories/adjust", {
+      batchId: payload.batchId,
       inventoryId: await resolveInventoryId(payload.productId),
       quantity: payload.quantity,
       note: payload.note,

@@ -10,7 +10,7 @@ export const registerSchema = z.object({
         .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]+$/, 'Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường, 1 số và 1 ký tự đặc biệt.'),
     name: z.string().trim().min(2, 'Tên phải có ít nhất 2 ký tự.').max(100, 'Tên tối đa 100 ký tự.'),
     phone: z.string().trim().min(10, 'Số điện thoại phải có ít nhất 10 ký tự.').max(15, 'Số điện thoại tối đa 15 ký tự.'),
-    role: z.nativeEnum(UserRole).default(UserRole.CUSTOMER)
+    role: z.literal(UserRole.CUSTOMER).default(UserRole.CUSTOMER)
 });
 
 export const loginSchema = z.object({
