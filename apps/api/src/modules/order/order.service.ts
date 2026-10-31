@@ -7,44 +7,47 @@ import { scanInventoryViaAgentService, createAgentLogViaAgentService } from '../
 
 export type OrderDto = ReturnType<typeof toOrderDto>;
 
-const toOrderDto = (order: OrderRecord) => ({
-    id: order.id,
-    userId: order.userId,
-    customer: order.user,
-    status: order.status,
-    displayStatus: order.status === OrderStatus.PROCESSING ? 'CONFIRMED' : order.status,
-    totalAmount: Number(order.totalAmount),
-    shippingFee: Number(order.shippingFee),
-    shippingZone: order.shippingZone ?? null,
-    paymentStatus: order.payment?.status ?? 'PENDING',
-    paymentMethod: order.payment?.method ?? null,
-    payment: order.payment ? { ...order.payment, amount: Number(order.payment.amount) } : null,
-    shippingName: order.shippingName ?? null,
-    shippingPhone: order.shippingPhone ?? null,
-    shippingAddress: order.shippingAddress ?? null,
-    note: order.note ?? null,
-    stockDeductedAt: order.stockDeductedAt ?? null,
-    items: order.items.map((item) => ({
-        id: item.id,
-        orderId: item.orderId,
-        productId: item.productId,
-        productName: item.product.name,
-        productSku: item.product.sku,
-        quantity: item.quantity,
-        price: Number(item.price),
-        unitPrice: Number(item.price),
-        subtotal: Number(item.price) * item.quantity,
-        product: {
-            id: item.product.id,
-            name: item.product.name,
-            sku: item.product.sku,
-            unit: item.product.unit ?? 'hộp',
-            imageUrl: item.product.imageUrl ?? null
-        }
-    })),
-    createdAt: order.createdAt,
-    updatedAt: order.updatedAt
-});
+const toOrderDto = (order: OrderRecord) => {
+    const latestPayment = order.payments?.[0] ?? null;
+    return {
+        id: order.id,
+        userId: order.userId,
+        customer: order.user,
+        status: order.status,
+        displayStatus: order.status === OrderStatus.PROCESSING ? 'CONFIRMED' : order.status,
+        totalAmount: Number(order.totalAmount),
+        shippingFee: Number(order.shippingFee),
+        shippingZone: order.shippingZone ?? null,
+        paymentStatus: order.paymentStatus ?? PaymentStatus.PENDING,
+        paymentMethod: order.paymentMethod ?? latestPayment?.method ?? null,
+        payment: latestPayment ? { ...latestPayment, amount: Number(latestPayment.amount) } : null,
+        shippingName: order.shippingName ?? null,
+        shippingPhone: order.shippingPhone ?? null,
+        shippingAddress: order.shippingAddress ?? null,
+        note: order.note ?? null,
+        stockDeductedAt: order.stockDeductedAt ?? null,
+        items: order.items.map((item) => ({
+            id: item.id,
+            orderId: item.orderId,
+            productId: item.productId,
+            productName: item.product.name,
+            productSku: item.product.sku,
+            quantity: item.quantity,
+            price: Number(item.price),
+            unitPrice: Number(item.price),
+            subtotal: Number(item.price) * item.quantity,
+            product: {
+                id: item.product.id,
+                name: item.product.name,
+                sku: item.product.sku,
+                unit: item.product.servingUnit ?? 'hộp',
+                imageUrl: item.product.imageUrl ?? null
+            }
+        })),
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt
+    };
+};
 
 const ensureOrderExists = async (id: string): Promise<OrderRecord> => {
     const order = await orderRepository.findById(id);

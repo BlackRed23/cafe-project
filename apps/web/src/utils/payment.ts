@@ -12,6 +12,9 @@ export const STORE_BANK_INFO = {
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CASH: "💵 Tiền mặt (COD)",
   BANK_TRANSFER: "🏦 Chuyển khoản",
+  VIET_QR: "📱 VietQR",
+  MOMO: "🟣 Ví MoMo",
+  VNPAY: "🔵 VNPay",
 };
 
 export function getPaymentMethodLabel(method: PaymentMethod | string | null | undefined): string {

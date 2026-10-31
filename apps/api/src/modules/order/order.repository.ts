@@ -1,4 +1,4 @@
-import { InventoryTransactionType, OrderStatus, type Prisma } from '@cafe-project/database';
+import { InventoryTransactionType, OrderStatus, PaymentMethod, PaymentStatus, TransactionStatus, type Prisma } from '@cafe-project/database';
 import { prisma } from '@cafe-project/database';
 import type { CreateOrderInput, OrderFiltersInput } from './order.validator';
 import { detectShippingZone, calculateShippingFee } from './shipping.service';
@@ -7,7 +7,7 @@ import { scanInventoryViaAgentService } from '../agent/agent.client';
 const orderInclude = {
     user: { select: { id: true, name: true, email: true } },
     items: { include: { product: true } },
-    payment: true
+    payments: { orderBy: [{ attemptNo: 'desc' }, { createdAt: 'desc' }] }
 } satisfies Prisma.OrderInclude;
 
 export type OrderRecord = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
@@ -17,7 +17,7 @@ export const orderRepository = {
         return prisma.order.findMany({
             where: {
                 ...(filters.status ? { status: filters.status } : {}),
-                ...(filters.paymentStatus ? { payment: { status: filters.paymentStatus } } : {})
+                ...(filters.paymentStatus ? { paymentStatus: filters.paymentStatus } : {})
             },
             include: orderInclude,
             orderBy: { createdAt: 'desc' }
@@ -65,6 +65,10 @@ export const orderRepository = {
             const shippingFee = calculateShippingFee(shippingZone, subtotal);
             const grandTotal = subtotal + shippingFee;
 
+            const isOnlineGateway =
+                input.paymentMethod === PaymentMethod.MOMO || input.paymentMethod === PaymentMethod.VNPAY;
+            const initialTxStatus = isOnlineGateway ? TransactionStatus.INITIATED : TransactionStatus.PENDING;
+
             const order = await tx.order.create({
                 data: {
                     userId,
@@ -76,14 +80,21 @@ export const orderRepository = {
                     shippingPhone: input.shippingPhone,
                     shippingAddress: input.shippingAddress,
                     note: input.note,
+                    paymentMethod: input.paymentMethod,
+                    paymentStatus: PaymentStatus.PENDING,
                     items: {
                         create: input.items.map((item) => {
                             const product = productById.get(item.productId)!;
                             return { productId: item.productId, quantity: item.quantity, price: product.price };
                         })
                     },
-                    payment: {
-                        create: { method: input.paymentMethod, amount: grandTotal, status: 'PENDING' }
+                    payments: {
+                        create: {
+                            method: input.paymentMethod,
+                            amount: grandTotal,
+                            status: initialTxStatus,
+                            attemptNo: 1
+                        }
                     }
                 },
                 include: orderInclude
@@ -107,7 +118,7 @@ export const orderRepository = {
                 await tx.inventoryTransaction.create({
                     data: {
                         productId: item.productId,
-                        userId,
+                        performedBy: userId,
                         type: InventoryTransactionType.ORDER,
                         quantity: item.quantity,
                         reason: `Giữ hàng cho đơn ${order.id}`
@@ -196,11 +207,11 @@ export const orderRepository = {
                                 await tx.inventoryTransaction.create({
                                     data: {
                                         productId: item.productId,
-                                        userId,
+                                        performedBy: userId,
                                         type: InventoryTransactionType.ORDER,
                                         quantity: -deduction,
                                         reason: `Trừ kho thật cho đơn ${order.id}`,
-                                        batchId: batch.id
+                                        legacyBatchId: batch.id
                                     }
                                 });
                                 remainingToDeduct -= deduction;
@@ -252,7 +263,7 @@ export const orderRepository = {
                     await tx.inventoryTransaction.create({
                         data: {
                             productId: item.productId,
-                            userId,
+                            performedBy: userId,
                             type: InventoryTransactionType.CANCEL,
                             quantity: -item.quantity,
                             reason: `Nhả giữ hàng cho đơn ${order.id}`
