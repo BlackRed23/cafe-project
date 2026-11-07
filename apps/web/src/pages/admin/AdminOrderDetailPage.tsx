@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ordersApi } from "../../api/orders.api";
+import { ordersApi, getOrderErrorMessage } from "../../api/orders.api";
+import { paymentsApi } from "../../api/payments.api";
 import type { Order } from "../../types/order.types";
 import { formatCurrency } from "../../utils/formatCurrency";
 import { formatDate } from "../../utils/formatDate";
@@ -8,21 +9,38 @@ import { Badge } from "../../components/common/Badge";
 import { Loading } from "../../components/common/Loading";
 import { Button } from "../../components/common/Button";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
-import { ArrowLeft, Check, Ban, ShieldCheck, Mail, User, Phone, MapPin, BadgeCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  Ban,
+  ShieldCheck,
+  Mail,
+  User,
+  Phone,
+  MapPin,
+  BadgeCheck,
+  AlertTriangle,
+  RotateCcw,
+} from "lucide-react";
 import { useToast } from "../../contexts/ToastContext";
-import { getOrderErrorMessage } from "../../api/orders.api";
+import { useAuth } from "../../contexts/AuthContext";
 import { getZoneLabel } from "../../utils/shipping";
 import { getPaymentMethodLabel } from "../../utils/payment";
+
+const MANUAL_CONFIRMABLE_METHODS = new Set(["CASH", "BANK_TRANSFER", "VIET_QR"]);
 
 export const AdminOrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
+  const { isStaff } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Action state managers
-  const [actionType, setActionType] = useState<"confirm" | "processing" | "completed" | "cancel" | "confirm_payment" | null>(null);
+  const [actionType, setActionType] = useState<
+    "confirm" | "processing" | "completed" | "cancel" | "confirm_payment" | "mark_refunded" | null
+  >(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [successInfo, setSuccessInfo] = useState<{ message: string; prId?: string } | null>(null);
 
@@ -32,7 +50,7 @@ export const AdminOrderDetailPage: React.FC = () => {
       setIsLoading(true);
       const data = await ordersApi.getOrderById(id);
       setOrder(data);
-    } catch (err: any) {
+    } catch {
       setError("Không thể tải thông tin chi tiết đơn hàng.");
     } finally {
       setIsLoading(false);
@@ -61,15 +79,25 @@ export const AdminOrderDetailPage: React.FC = () => {
           prId: res?.purchaseRequestId || res?.purchaseRequest?.id || undefined,
         });
       } else if (actionType === "confirm_payment") {
-        await ordersApi.updateOrderStatus(id, { status: order.status, paymentStatus: "PAID" } as any);
+        await ordersApi.confirmPayment(id);
         actionMessage = "Đã xác nhận thanh toán thành công.";
+        setSuccessInfo({ message: actionMessage });
+      } else if (actionType === "mark_refunded") {
+        if (order.payment?.id) {
+          await paymentsApi.markPaymentRefunded(order.payment.id);
+        }
+        actionMessage = "Đã xác nhận hoàn tiền cho khách hàng thành công.";
         setSuccessInfo({ message: actionMessage });
       } else if (actionType === "processing") {
         await ordersApi.updateOrderStatus(id, { status: "PROCESSING" });
         actionMessage = "Đơn hàng đã chuyển sang đang xử lý. Hàng vẫn đang được giữ.";
         setSuccessInfo({ message: actionMessage });
       } else if (actionType === "completed") {
-        await ordersApi.updateOrderStatus(id, { status: "COMPLETED", paymentStatus: "PAID" });
+        const isManualMethod = MANUAL_CONFIRMABLE_METHODS.has(order.paymentMethod || "CASH");
+        await ordersApi.updateOrderStatus(id, {
+          status: "COMPLETED",
+          ...(order.paymentStatus !== "PAID" && isManualMethod ? { paymentStatus: "PAID" } : {}),
+        });
         actionMessage = "Đơn hàng đã hoàn thành. Tồn kho thật đã được trừ.";
         setSuccessInfo({ message: actionMessage });
       } else if (actionType === "cancel") {
@@ -77,7 +105,7 @@ export const AdminOrderDetailPage: React.FC = () => {
         actionMessage = "Đơn hàng đã hủy. Hàng đang giữ đã được hoàn lại vào khả dụng.";
         setSuccessInfo({ message: actionMessage });
       }
-      
+
       const updated = await ordersApi.getOrderById(id);
       setOrder(updated);
       toast.success(actionMessage);
@@ -119,6 +147,20 @@ export const AdminOrderDetailPage: React.FC = () => {
   const isCancelled = order.status === "CANCELLED";
   const isCompleted = order.status === "COMPLETED";
 
+  const canConfirmManualPayment =
+    !isCancelled &&
+    order.paymentStatus === "PENDING" &&
+    MANUAL_CONFIRMABLE_METHODS.has(order.paymentMethod || "CASH");
+
+  const needsManualRefund = order.payment?.failureCode === "REFUND_REQUIRED";
+
+  const hasCostData = order.items?.some(
+    (item) => item.totalCost != null || item.ingredientCost != null || item.grossProfit != null
+  );
+
+  const totalOrderCogs = order.items?.reduce((sum, item) => sum + (item.totalCost ?? 0), 0) ?? 0;
+  const totalOrderProfit = order.items?.reduce((sum, item) => sum + (item.grossProfit ?? 0), 0) ?? 0;
+
   return (
     <div className="flex flex-col gap-6 max-w-4xl mx-auto">
       {/* Back link */}
@@ -143,6 +185,30 @@ export const AdminOrderDetailPage: React.FC = () => {
                 <Mail size={12} /> Xem Purchase Request đề xuất từ AI Agent
               </Link>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* BUG-3: Banner cảnh báo cần hoàn tiền thủ công */}
+      {needsManualRefund && (
+        <div className="p-4 bg-rose-50 border border-rose-300 text-rose-900 rounded-2xl flex flex-wrap items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={20} className="text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-bold text-sm text-rose-800">Cần hoàn tiền cho khách</h4>
+              <p className="text-xs text-rose-700 mt-0.5">
+                {order.payment?.failureMessage ||
+                  "Đơn hàng đã bị hủy nhưng giao dịch thanh toán đã trừ tiền khách hàng. Vui lòng hoàn tiền thủ công."}
+              </p>
+            </div>
+          </div>
+          {!isStaff && order.payment?.id && (
+            <Button
+              onClick={() => setActionType("mark_refunded")}
+              className="bg-rose-600 hover:bg-rose-700 text-white text-xs"
+            >
+              <RotateCcw size={14} className="mr-1.5" /> Đã hoàn tiền
+            </Button>
           )}
         </div>
       )}
@@ -219,22 +285,68 @@ export const AdminOrderDetailPage: React.FC = () => {
         <div>
           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Sản phẩm chi tiết</h4>
           <div className="border border-slate-100 rounded-2xl divide-y divide-slate-100 overflow-hidden">
-            {order.items?.map((item) => (
-              <div key={item.id} className="p-4 flex items-center justify-between text-sm gap-4">
-                <div>
-                  <p className="font-bold text-slate-800">{item.product?.name || (item as any).Product?.name || "Sản phẩm"}</p>
-                  <p className="text-slate-400 text-xs mt-0.5">
-                    Đơn giá: {formatCurrency(item.price || (item as any).Price || 0)} / {item.product?.unit || (item as any).Product?.unit || "hộp"}
-                  </p>
+            {order.items?.map((item) => {
+              const unitPrice = item.unitPrice ?? item.price ?? (item as any).Price ?? 0;
+              const lineSubtotal = item.subtotal ?? unitPrice * item.quantity;
+              return (
+                <div key={item.id} className="p-4 flex flex-col gap-2 text-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-bold text-slate-800">{item.product?.name || (item as any).Product?.name || "Sản phẩm"}</p>
+                      <p className="text-slate-400 text-xs mt-0.5">
+                        Đơn giá: {formatCurrency(unitPrice)} / {item.product?.unit || (item as any).Product?.unit || "ly"}
+                      </p>
+                      {item.toppings && item.toppings.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {item.toppings.map((t) => (
+                            <span
+                              key={t.id}
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-amber-50 text-amber-800 border border-amber-200 font-medium"
+                            >
+                              + {t.toppingName || "Topping"} x{t.quantity} ({formatCurrency((t.unitPrice ?? t.price ?? 0) * t.quantity)})
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-slate-700">x {item.quantity}</p>
+                      <p className="font-black text-amber-800 text-sm mt-0.5">
+                        {formatCurrency(lineSubtotal)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Cost & Gross Profit Snapshot (visible to Admin/Staff when recorded) */}
+                  {(item.totalCost != null || item.ingredientCost != null || item.grossProfit != null) && (
+                    <div className="pt-2 border-t border-slate-100/80 flex flex-wrap items-center justify-between gap-2 text-xs bg-slate-50/70 px-3 py-1.5 rounded-xl">
+                      <div className="flex flex-wrap items-center gap-3 text-slate-500">
+                        {item.ingredientCost != null && (
+                          <span>
+                            Nguyên liệu: <strong className="text-slate-700">{formatCurrency(item.ingredientCost)}</strong>
+                          </span>
+                        )}
+                        {item.toppingCost != null && item.toppingCost > 0 && (
+                          <span>
+                            Giá vốn Topping: <strong className="text-slate-700">{formatCurrency(item.toppingCost)}</strong>
+                          </span>
+                        )}
+                        {item.totalCost != null && (
+                          <span>
+                            Tổng giá vốn (COGS): <strong className="text-rose-700">{formatCurrency(item.totalCost)}</strong>
+                          </span>
+                        )}
+                      </div>
+                      {item.grossProfit != null && (
+                        <span className={`font-bold ${item.grossProfit >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                          Lợi nhuận gộp: {formatCurrency(item.grossProfit)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="text-right">
-                  <p className="font-semibold text-slate-700">x {item.quantity}</p>
-                  <p className="font-black text-amber-800 text-sm mt-0.5">
-                    {formatCurrency((item.price || (item as any).Price || 0) * item.quantity)}
-                  </p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -265,6 +377,18 @@ export const AdminOrderDetailPage: React.FC = () => {
             <span>Phương thức</span>
             <span className="font-semibold text-slate-700">{getPaymentMethodLabel(order.paymentMethod)}</span>
           </div>
+          {hasCostData && (
+            <>
+              <div className="flex justify-between text-sm text-rose-700 pt-1 border-t border-dashed border-slate-200">
+                <span>Tổng giá vốn (COGS)</span>
+                <span className="font-bold">{formatCurrency(totalOrderCogs)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-emerald-700">
+                <span>Lợi nhuận gộp đơn hàng</span>
+                <span className="font-bold">{formatCurrency(totalOrderProfit)}</span>
+              </div>
+            </>
+          )}
           <div className="flex justify-between text-base font-black text-slate-800 border-t border-slate-100 pt-3">
             <span>Tổng thanh toán</span>
             <span className="text-amber-800 text-lg">{formatCurrency(order.totalAmount || (order as any).total_amount || 0)}</span>
@@ -272,19 +396,20 @@ export const AdminOrderDetailPage: React.FC = () => {
         </div>
 
         {/* Processing Actions */}
-        {!isCancelled && !isCompleted && (
+        {(!isCancelled && !isCompleted) || canConfirmManualPayment ? (
           <div className="border-t border-slate-100 pt-6 mt-4 flex flex-wrap gap-3 justify-end">
-            <Button
-              onClick={() => setActionType("cancel")}
-              variant="outline"
-              className="text-rose-600 border-rose-250 hover:bg-rose-50/50"
-            >
-              <Ban size={14} className="mr-1.5" /> Hủy đơn hàng
-            </Button>
+            {!isCancelled && !isCompleted && (
+              <Button
+                onClick={() => setActionType("cancel")}
+                variant="outline"
+                className="text-rose-600 border-rose-250 hover:bg-rose-50/50"
+              >
+                <Ban size={14} className="mr-1.5" /> Hủy đơn hàng
+              </Button>
+            )}
 
-            {/* Xác nhận đã nhận tiền (chỉ hiện khi thanh toán không phải COD và chưa PAID) */}
-            {order.paymentMethod === "BANK_TRANSFER" &&
-             order.paymentStatus === "PENDING" && (
+            {/* BUG-1: Xác nhận đã nhận tiền cho CASH / BANK_TRANSFER / VIET_QR khi đang PENDING */}
+            {canConfirmManualPayment && (
               <Button
                 onClick={() => setActionType("confirm_payment")}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -311,7 +436,7 @@ export const AdminOrderDetailPage: React.FC = () => {
               </Button>
             )}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Confirmation Modal */}
@@ -324,6 +449,8 @@ export const AdminOrderDetailPage: React.FC = () => {
             ? "Xác nhận xử lý"
             : actionType === "confirm_payment"
             ? "Xác nhận đã nhận tiền"
+            : actionType === "mark_refunded"
+            ? "Xác nhận đã hoàn tiền cho khách"
             : actionType === "processing"
             ? "Chuyển trạng thái chế biến"
             : actionType === "completed"
@@ -334,7 +461,9 @@ export const AdminOrderDetailPage: React.FC = () => {
           actionType === "confirm"
             ? "Đơn hàng sẽ chuyển sang Đang xử lý. Hàng vẫn được giữ trong reservedStock và chưa trừ tồn kho thật."
             : actionType === "confirm_payment"
-            ? "Xác nhận đã nhận được tiền chuyển khoản từ khách hàng. Trạng thái thanh toán sẽ được cập nhật thành ĐÃ THANH TOÁN."
+            ? "Xác nhận đã nhận được tiền từ khách hàng. Trạng thái thanh toán của đơn hàng sẽ được cập nhật thành ĐÃ THANH TOÁN."
+            : actionType === "mark_refunded"
+            ? "Xác nhận bạn đã hoàn trả lại tiền cho khách hàng. Trạng thái thanh toán sẽ chuyển sang ĐÃ HOÀN TIỀN (REFUNDED)."
             : actionType === "cancel"
             ? "Bạn có chắc chắn muốn hủy đơn hàng này?"
             : "Bạn có muốn thay đổi trạng thái đơn hàng này?"

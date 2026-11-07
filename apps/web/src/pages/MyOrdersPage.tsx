@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ordersApi } from "../api/orders.api";
+import { ordersApi, getOrderErrorMessage } from "../api/orders.api";
+import { paymentsApi } from "../api/payments.api";
 import type { Order } from "../types/order.types";
 import { formatCurrency } from "../utils/formatCurrency";
 import { getZoneLabel } from "../utils/shipping";
@@ -10,15 +11,31 @@ import { Badge } from "../components/common/Badge";
 import { Loading } from "../components/common/Loading";
 import { EmptyState } from "../components/common/EmptyState";
 import { Button } from "../components/common/Button";
-import { CheckCircle2, ChevronDown, ChevronUp, Package, Calendar, CreditCard, DollarSign, Sparkles, User, Phone, MapPin, MessageSquare } from "lucide-react";
+import { useToast } from "../contexts/ToastContext";
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Package,
+  Calendar,
+  CreditCard,
+  DollarSign,
+  Sparkles,
+  User,
+  Phone,
+  MapPin,
+  MessageSquare,
+} from "lucide-react";
 
 export const MyOrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
+  const toast = useToast();
   const showSuccessBanner = searchParams.get("success") === "true";
-  
+
   // State to toggle expanded order items view
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
 
@@ -34,7 +51,7 @@ export const MyOrdersPage: React.FC = () => {
           return new Date(d2).getTime() - new Date(d1).getTime();
         });
         setOrders(sorted);
-      } catch (err: any) {
+      } catch {
         setError("Không thể tải danh sách đơn hàng của bạn. Vui lòng tải lại.");
       } finally {
         setIsLoading(false);
@@ -51,6 +68,27 @@ export const MyOrdersPage: React.FC = () => {
     }
   };
 
+  const handleRetryOnlinePayment = async (
+    e: React.MouseEvent,
+    order: Order
+  ) => {
+    e.stopPropagation();
+    if (retryingOrderId) return;
+    const method = order.paymentMethod === "VNPAY" ? "VNPAY" : "MOMO";
+    setRetryingOrderId(order.id);
+    try {
+      toast.info(`Đang chuyển hướng sang cổng thanh toán ${method}...`);
+      const res = await paymentsApi.createPaymentUrl(order.id, method);
+      window.location.assign(res.payUrl);
+    } catch (err: any) {
+      toast.error(
+        getOrderErrorMessage(err, "Không thể tạo liên kết thanh toán lại. Vui lòng thử lại.")
+      );
+    } finally {
+      setRetryingOrderId(null);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-[50vh] flex items-center justify-center">
@@ -64,7 +102,9 @@ export const MyOrdersPage: React.FC = () => {
       <div className="max-w-xl mx-auto my-20 text-center p-8 bg-rose-50 border border-rose-100 text-rose-800 rounded-2xl shadow-sm">
         <p className="font-bold mb-2">Đã xảy ra lỗi</p>
         <p className="text-sm mb-6">{error}</p>
-        <Button onClick={() => window.location.reload()} size="sm">Tải lại</Button>
+        <Button onClick={() => window.location.reload()} size="sm">
+          Tải lại
+        </Button>
       </div>
     );
   }
@@ -73,13 +113,18 @@ export const MyOrdersPage: React.FC = () => {
     <div className="flex flex-col gap-12 pb-24">
       {/* Small Hero Header */}
       <section className="relative bg-[#1e130e] text-white py-16 px-4 text-center overflow-hidden">
-        <div className="absolute inset-0 opacity-10 mix-blend-overlay bg-cover bg-center" style={{ backgroundImage: "url('/images/page-header-bg.jpg')" }}></div>
+        <div
+          className="absolute inset-0 opacity-10 mix-blend-overlay bg-cover bg-center"
+          style={{ backgroundImage: "url('/images/page-header-bg.jpg')" }}
+        ></div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative z-10 flex flex-col items-center gap-2">
           <span className="text-[#c49b76] text-xs font-bold uppercase tracking-widest flex items-center gap-1">
             <Sparkles size={12} /> Lịch sử của bạn
           </span>
           <h1 className="text-3xl sm:text-4xl font-extrabold font-serif">Đơn Hàng Của Tôi</h1>
-          <p className="text-sm text-amber-200/60 font-light max-w-md">Theo dõi chi tiết trạng thái giao nhận và thanh toán</p>
+          <p className="text-sm text-amber-200/60 font-light max-w-md">
+            Theo dõi chi tiết trạng thái giao nhận và thanh toán
+          </p>
         </div>
       </section>
 
@@ -112,6 +157,11 @@ export const MyOrdersPage: React.FC = () => {
               const isExpanded = expandedOrderId === order.id;
               const orderIdStr = order.id.slice(-8).toUpperCase();
               const dateVal = order.createdAt || (order as any).created_at || "";
+              const method = order.paymentMethod || (order as any).payment_method;
+              const canRetryOnline =
+                (method === "MOMO" || method === "VNPAY") &&
+                order.paymentStatus === "PENDING" &&
+                order.status !== "CANCELLED";
 
               return (
                 <div
@@ -126,7 +176,9 @@ export const MyOrdersPage: React.FC = () => {
                     <div className="grid grid-cols-2 md:flex md:items-center gap-4 md:gap-8 flex-1">
                       {/* Order ID */}
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Mã đơn</span>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                          Mã đơn
+                        </span>
                         <span className="text-sm font-bold text-slate-800 truncate">
                           #{orderIdStr}
                         </span>
@@ -158,14 +210,26 @@ export const MyOrdersPage: React.FC = () => {
                           <CreditCard size={10} /> Thanh toán
                         </span>
                         <span className="text-xs text-slate-700 font-bold">
-                          {getPaymentMethodLabel(order.paymentMethod || (order as any).payment_method)}
+                          {getPaymentMethodLabel(method)}
                         </span>
                       </div>
                     </div>
 
-                    {/* Badges & Arrow */}
-                    <div className="flex items-center gap-3.5 justify-between md:justify-end border-t border-slate-100 pt-3 md:border-t-0 md:pt-0">
-                      <Badge status={order.status} />
+                    {/* Badges & Retry Button & Arrow */}
+                    <div className="flex items-center gap-2.5 justify-between md:justify-end border-t border-slate-100 pt-3 md:border-t-0 md:pt-0">
+                      {canRetryOnline && (
+                        <Button
+                          size="sm"
+                          disabled={retryingOrderId === order.id}
+                          isLoading={retryingOrderId === order.id}
+                          onClick={(e) => handleRetryOnlinePayment(e, order)}
+                          className="bg-amber-800 hover:bg-amber-900 text-white text-xs px-3 py-1.5"
+                        >
+                          Thanh toán lại
+                        </Button>
+                      )}
+                      <Badge status={order.paymentStatus} context="payment" />
+                      <Badge status={order.status} context="order" />
                       <div className="text-slate-400">
                         {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                       </div>
@@ -175,7 +239,6 @@ export const MyOrdersPage: React.FC = () => {
                   {/* Expanded Details */}
                   {isExpanded && (
                     <div className="border-t border-amber-900/5 bg-[#faf6f0]/50 p-5 sm:p-6 space-y-4">
-
                       {/* Shipping Info */}
                       {(order.shippingName || order.shippingPhone || order.shippingAddress) && (
                         <div>
@@ -186,22 +249,34 @@ export const MyOrdersPage: React.FC = () => {
                             {order.shippingName && (
                               <div className="flex items-center gap-2.5 text-sm">
                                 <User size={14} className="text-amber-700 shrink-0" />
-                                <span className="text-slate-500 font-medium w-28 shrink-0">Người nhận:</span>
-                                <span className="font-bold text-slate-800">{order.shippingName}</span>
+                                <span className="text-slate-500 font-medium w-28 shrink-0">
+                                  Người nhận:
+                                </span>
+                                <span className="font-bold text-slate-800">
+                                  {order.shippingName}
+                                </span>
                               </div>
                             )}
                             {order.shippingPhone && (
                               <div className="flex items-center gap-2.5 text-sm">
                                 <Phone size={14} className="text-amber-700 shrink-0" />
-                                <span className="text-slate-500 font-medium w-28 shrink-0">Số điện thoại:</span>
-                                <span className="font-bold text-slate-800">{order.shippingPhone}</span>
+                                <span className="text-slate-500 font-medium w-28 shrink-0">
+                                  Số điện thoại:
+                                </span>
+                                <span className="font-bold text-slate-800">
+                                  {order.shippingPhone}
+                                </span>
                               </div>
                             )}
                             {order.shippingAddress && (
                               <div className="flex items-start gap-2.5 text-sm">
                                 <MapPin size={14} className="text-amber-700 shrink-0 mt-0.5" />
-                                <span className="text-slate-500 font-medium w-28 shrink-0">Địa chỉ:</span>
-                                <span className="font-bold text-slate-800 leading-relaxed">{order.shippingAddress}</span>
+                                <span className="text-slate-500 font-medium w-28 shrink-0">
+                                  Địa chỉ:
+                                </span>
+                                <span className="font-bold text-slate-800 leading-relaxed">
+                                  {order.shippingAddress}
+                                </span>
                               </div>
                             )}
                           </div>
@@ -221,7 +296,8 @@ export const MyOrdersPage: React.FC = () => {
                                   {item.product?.name || (item as any).Product?.name || "Sản phẩm"}
                                 </p>
                                 <p className="text-slate-400 text-xs mt-0.5 font-light">
-                                  Số lượng: {item.quantity} {item.product?.unit || (item as any).Product?.unit || "hộp"}
+                                  Số lượng: {item.quantity}{" "}
+                                  {item.product?.unit || (item as any).Product?.unit || "hộp"}
                                 </p>
                               </div>
                               <span className="font-bold text-slate-800">

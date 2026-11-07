@@ -11,7 +11,17 @@ export const paymentStatusSchema = z.object({
         'CANCELLED',
         'EXPIRED',
         'REFUNDED'
-    ])
+    ]),
+    note: z.string().trim().optional()
+});
+
+export const markRefundedSchema = z.object({
+    note: z.string().trim().optional()
+});
+
+export const simulateMoMoIpnSchema = z.object({
+    paymentId: z.string().trim().min(1, 'paymentId là bắt buộc.'),
+    success: z.boolean().default(true)
 });
 
 export const createPaymentUrlSchema = z.object({
@@ -38,5 +48,7 @@ export const momoWebhookSchema = z
     .passthrough();
 
 export type PaymentStatusInput = z.infer<typeof paymentStatusSchema>;
+export type MarkRefundedInput = z.infer<typeof markRefundedSchema>;
+export type SimulateMoMoIpnInput = z.infer<typeof simulateMoMoIpnSchema>;
 export type CreatePaymentUrlInput = z.infer<typeof createPaymentUrlSchema>;
 export type MoMoWebhookInput = z.infer<typeof momoWebhookSchema>;

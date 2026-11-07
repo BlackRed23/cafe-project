@@ -7,11 +7,23 @@ import {
     TransactionStatus
 } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
+import { createAgentLogViaAgentService } from '../agent/agent.client';
 import type { JwtUserPayload } from '../auth/auth.service';
-import { createMoMoPayUrl, verifyMoMoSignature, type MoMoIpnPayload } from './momo.gateway';
+import {
+    createMoMoPayUrl,
+    signMoMoIpnPayload,
+    verifyMoMoSignature,
+    type MoMoIpnPayload
+} from './momo.gateway';
+import { getMoMoConfig } from './payment-gateway.config';
 import { createVNPayUrl, verifyVNPaySignature, type VNPayIpnQuery } from './vnpay.gateway';
 import { paymentRepository, type PaymentRecord } from './payment.repository';
-import type { CreatePaymentUrlInput, PaymentStatusInput } from './payment.validator';
+import type {
+    CreatePaymentUrlInput,
+    MarkRefundedInput,
+    PaymentStatusInput,
+    SimulateMoMoIpnInput
+} from './payment.validator';
 
 export type PaymentDto = ReturnType<typeof toPaymentDto>;
 
@@ -27,6 +39,29 @@ export interface VNPayIpnResponse {
     Message: string;
 }
 
+export const MANUAL_CONFIRMABLE_METHODS = new Set<PaymentMethod>([
+    PaymentMethod.CASH,
+    PaymentMethod.BANK_TRANSFER,
+    PaymentMethod.VIET_QR
+]);
+
+/**
+ * Tách orderId từ merchantRef có dạng `${orderId}_${attemptNo}`.
+ * Nếu phần sau dấu `_` cuối cùng là số nguyên dương thì cắt bỏ hậu tố `_${attemptNo}`,
+ * ngược lại giữ nguyên chuỗi.
+ */
+export const extractOrderIdFromMerchantRef = (merchantRef: string | null | undefined): string => {
+    const raw = String(merchantRef ?? '').trim();
+    if (!raw) return '';
+    const lastUnderscore = raw.lastIndexOf('_');
+    if (lastUnderscore <= 0) return raw;
+    const suffix = raw.slice(lastUnderscore + 1);
+    if (/^\d+$/.test(suffix)) {
+        return raw.slice(0, lastUnderscore);
+    }
+    return raw;
+};
+
 const toPaymentDto = (payment: PaymentRecord) => ({
     id: payment.id,
     orderId: payment.orderId,
@@ -36,6 +71,8 @@ const toPaymentDto = (payment: PaymentRecord) => ({
     attemptNo: payment.attemptNo,
     amount: Number(payment.amount),
     status: payment.status,
+    failureCode: payment.failureCode ?? null,
+    failureMessage: payment.failureMessage ?? null,
     paidAt: payment.paidAt,
     expiresAt: payment.expiresAt,
     customer: payment.order.user,
@@ -49,7 +86,7 @@ const normalizeStatus = (status: PaymentStatusInput['status']): TransactionStatu
 };
 
 const ensurePayment = async (payment: PaymentRecord | null): Promise<PaymentRecord> => {
-    if (!payment) throw new HttpError(404, 'Payment not found.');
+    if (!payment) throw new HttpError(404, 'Không tìm thấy giao dịch thanh toán.');
     return payment;
 };
 
@@ -60,21 +97,118 @@ const isPrismaUniqueError = (error: unknown): boolean => {
     return typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';
 };
 
+/**
+ * BUG-4: Kiểm tra state machine khi cập nhật trạng thái thanh toán thủ công
+ */
+export const assertManualPaymentTransition = (
+    currentStatus: TransactionStatus,
+    nextStatus: TransactionStatus,
+    method: PaymentMethod,
+    userRole: string
+): void => {
+    if (currentStatus === TransactionStatus.INITIATED || currentStatus === TransactionStatus.PENDING) {
+        const allowedFromPending = new Set<TransactionStatus>([
+            TransactionStatus.PAID,
+            TransactionStatus.FAILED,
+            TransactionStatus.CANCELLED
+        ]);
+        if (!allowedFromPending.has(nextStatus)) {
+            throw new HttpError(
+                409,
+                `Không thể chuyển trạng thái thanh toán từ ${currentStatus} sang ${nextStatus}.`
+            );
+        }
+        if (nextStatus === TransactionStatus.PAID && !MANUAL_CONFIRMABLE_METHODS.has(method)) {
+            throw new HttpError(
+                409,
+                'Đơn đang chờ cổng thanh toán xác nhận, không thể xác nhận thủ công.'
+            );
+        }
+        return;
+    }
+
+    if (currentStatus === TransactionStatus.PAID) {
+        if (nextStatus === TransactionStatus.REFUNDED) {
+            if (userRole !== 'ADMIN') {
+                throw new HttpError(
+                    403,
+                    'Chỉ Quản trị viên (ADMIN) mới có quyền hoàn tiền giao dịch.'
+                );
+            }
+            return;
+        }
+        throw new HttpError(
+            409,
+            `Không thể chuyển trạng thái thanh toán từ ${currentStatus} sang ${nextStatus}.`
+        );
+    }
+
+    throw new HttpError(
+        409,
+        `Không thể chuyển trạng thái thanh toán từ ${currentStatus} sang ${nextStatus}.`
+    );
+};
+
 export const getPaymentByOrderId = async (orderId: string, user: JwtUserPayload): Promise<PaymentDto> => {
-    const payment = await ensurePayment(await paymentRepository.findLatestByOrderId(orderId));
+    const cleanOrderId = extractOrderIdFromMerchantRef(orderId) || orderId;
+    const payment = await ensurePayment(await paymentRepository.findLatestByOrderId(cleanOrderId));
     if (user.role === 'CUSTOMER' && payment.order.userId !== user.id) throw new HttpError(403, 'Forbidden.');
     return toPaymentDto(payment);
 };
 
-export const updatePaymentStatus = async (id: string, input: PaymentStatusInput): Promise<PaymentDto> => {
+export const updatePaymentStatus = async (
+    id: string,
+    input: PaymentStatusInput,
+    user?: JwtUserPayload
+): Promise<PaymentDto> => {
     const payment = await ensurePayment(await paymentRepository.findById(id));
     const nextStatus = normalizeStatus(input.status);
+    const role = user?.role ?? 'ADMIN';
 
-    if (payment.status === TransactionStatus.PAID && nextStatus === TransactionStatus.PAID) {
-        throw new HttpError(400, 'Đơn hàng đã được thanh toán trước đó.');
+    assertManualPaymentTransition(payment.status, nextStatus, payment.method, role);
+
+    const updated = await paymentRepository.updateStatus(id, nextStatus, {
+        by: user?.id ?? 'system',
+        note: input.note
+    });
+    return toPaymentDto(updated);
+};
+
+export const markPaymentRefunded = async (
+    id: string,
+    input: MarkRefundedInput,
+    user: JwtUserPayload
+): Promise<PaymentDto> => {
+    if (user.role !== 'ADMIN') {
+        throw new HttpError(403, 'Chỉ Quản trị viên (ADMIN) mới có quyền xác nhận hoàn tiền.');
     }
 
-    return toPaymentDto(await paymentRepository.updateStatus(id, nextStatus));
+    const payment = await ensurePayment(await paymentRepository.findById(id));
+    if (payment.status === TransactionStatus.REFUNDED) {
+        throw new HttpError(409, 'Giao dịch này đã được hoàn tiền trước đó.');
+    }
+    if (payment.status !== TransactionStatus.PAID || payment.failureCode !== 'REFUND_REQUIRED') {
+        throw new HttpError(
+            409,
+            'Chỉ có thể xác nhận hoàn tiền cho giao dịch đã thanh toán có đánh dấu cần hoàn tiền (REFUND_REQUIRED).'
+        );
+    }
+
+    const updated = await paymentRepository.markRefunded(id, user.id, input.note);
+
+    createAgentLogViaAgentService({
+        action: 'PAYMENT_REFUNDED_MANUAL',
+        result: 'SUCCESS',
+        reasoning: `Admin đã xác nhận hoàn tiền thủ công cho đơn hàng ${payment.orderId}.`,
+        input: {
+            orderId: payment.orderId,
+            paymentId: payment.id,
+            confirmedBy: user.id,
+            note: input.note ?? null
+        }
+    }).catch(() => {});
+
+    return toPaymentDto(updated);
 };
 
 export const createPaymentUrl = async (
@@ -283,6 +417,23 @@ export const processMoMoWebhook = async (
                 return { status: 'FAILED' };
             }
 
+            if (txResult.outcome === 'PAID_AFTER_CANCEL') {
+                console.warn(
+                    `[PAYMENT][MOMO] PAID_AFTER_CANCEL warning: Order ${payment.orderId} was CANCELLED before PAID IPN arrived (paymentId=${payment.id}, transId=${transIdStr}). Flagged REFUND_REQUIRED.`
+                );
+                createAgentLogViaAgentService({
+                    action: 'PAYMENT_PAID_AFTER_CANCEL',
+                    result: 'WARNING',
+                    reasoning: `Đơn hàng ${payment.orderId} đã hủy nhưng nhận được IPN thanh toán MoMo thành công. Cần hoàn tiền thủ công.`,
+                    input: {
+                        orderId: payment.orderId,
+                        paymentId: payment.id,
+                        providerTxnId: transIdStr
+                    }
+                }).catch(() => {});
+                return { status: 'APPLIED' };
+            }
+
             if (txResult.outcome === 'ALREADY_PAID_SAME_ATTEMPT') {
                 return { status: 'ALREADY_PROCESSED' };
             }
@@ -451,6 +602,23 @@ export const processVNPayIpn = async (
                 return { RspCode: '02', Message: 'Order already confirmed' };
             }
 
+            if (txResult.outcome === 'PAID_AFTER_CANCEL') {
+                console.warn(
+                    `[PAYMENT][VNPAY] PAID_AFTER_CANCEL warning: Order ${payment.orderId} was CANCELLED before PAID IPN arrived (paymentId=${payment.id}, vnp_TransactionNo=${vnpTxnNo}). Flagged REFUND_REQUIRED.`
+                );
+                createAgentLogViaAgentService({
+                    action: 'PAYMENT_PAID_AFTER_CANCEL',
+                    result: 'WARNING',
+                    reasoning: `Đơn hàng ${payment.orderId} đã hủy nhưng nhận được IPN thanh toán VNPay thành công. Cần hoàn tiền thủ công.`,
+                    input: {
+                        orderId: payment.orderId,
+                        paymentId: payment.id,
+                        providerTxnId: vnpTxnNo
+                    }
+                }).catch(() => {});
+                return { RspCode: '00', Message: 'Confirm Success' };
+            }
+
             return { RspCode: '00', Message: 'Confirm Success' };
         }
 
@@ -478,4 +646,45 @@ export const processVNPayIpn = async (
         });
         return { RspCode: '99', Message: 'Unknown error' };
     }
+};
+
+/**
+ * BUG-7: Giả lập IPN MoMo cho môi trường Dev khi Sandbox không truy cập được
+ */
+export const simulateDevMoMoIpn = async (
+    input: SimulateMoMoIpnInput
+): Promise<{ status: 'APPLIED' | 'ALREADY_PROCESSED' | 'FAILED'; payment: PaymentDto }> => {
+    if (process.env.NODE_ENV === 'production') {
+        throw new HttpError(404, 'Not found.');
+    }
+
+    const payment = await ensurePayment(await paymentRepository.findById(input.paymentId));
+    const config = getMoMoConfig();
+    const merchantRef = payment.merchantRef ?? `${payment.orderId}_${payment.attemptNo}`;
+    const transId = `${Date.now()}`;
+
+    const unsignedPayload: MoMoIpnPayload = {
+        partnerCode: config.partnerCode,
+        orderId: merchantRef,
+        requestId: `${merchantRef}_sim_${transId}`,
+        amount: Math.round(Number(payment.amount)),
+        orderInfo: `Thanh toan don hang ${payment.orderId}`,
+        orderType: 'momo_wallet',
+        transId,
+        resultCode: input.success ? 0 : 1006,
+        message: input.success ? 'Giao dịch thành công (Dev Simulated)' : 'Giao dịch bị hủy (Dev Simulated)',
+        payType: 'qr',
+        responseTime: Date.now(),
+        extraData: '',
+        signature: ''
+    };
+
+    unsignedPayload.signature = signMoMoIpnPayload(unsignedPayload, config.accessKey, config.secretKey);
+    const result = await processMoMoWebhook(unsignedPayload, { 'x-dev-simulated-ipn': '1' });
+    const updated = await ensurePayment(await paymentRepository.findById(payment.id));
+
+    return {
+        status: result.status,
+        payment: toPaymentDto(updated)
+    };
 };

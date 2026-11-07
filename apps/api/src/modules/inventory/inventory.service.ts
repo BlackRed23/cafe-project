@@ -121,11 +121,11 @@ const toInventoryDto = (inventory: InventoryRecord): InventoryDto => {
 
 const toTransactionDto = (transaction: InventoryTransactionRecord): InventoryTransactionDto => ({
     id: transaction.id,
-    productId: transaction.productId,
-    productName: transaction.product.name,
-    productSku: transaction.product.sku,
+    productId: transaction.productId ?? transaction.ingredientId ?? '',
+    productName: transaction.product?.name ?? 'Nguyên liệu / Sản phẩm',
+    productSku: transaction.product?.sku ?? '',
     type: transaction.type === 'ADJUSTMENT' ? 'ADJUST' : transaction.type,
-    quantity: transaction.quantity,
+    quantity: Number(transaction.quantity),
     previousQty: null,
     newQty: null,
     note: transaction.reason,
@@ -253,7 +253,7 @@ export const getInventories = async (): Promise<InventoryDto[]> => {
         _sum: { quantity: true }
     });
 
-    const salesMap = new Map<string, number>(salesGroups.map((g: any) => [g.productId, Math.abs(g._sum.quantity ?? 0)]));
+    const salesMap = new Map<string, number>(salesGroups.map((g: any) => [g.productId, Math.abs(Number(g._sum.quantity ?? 0))]));
 
     const supplierProducts = await prisma.supplierProduct.findMany({
         where: {
@@ -521,7 +521,7 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string) => {
         _sum: { quantity: true }
     });
 
-    const totalSalesInWindow = Math.abs(salesTransactions._sum.quantity ?? 0);
+    const totalSalesInWindow = Math.abs(Number(salesTransactions._sum.quantity ?? 0));
     const avgDailySales = totalSalesInWindow / salesWindowDays;
     const baseDailySales = avgDailySales > 0 ? avgDailySales : 1;
     

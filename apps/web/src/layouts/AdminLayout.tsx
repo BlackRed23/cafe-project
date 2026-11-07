@@ -8,6 +8,7 @@ const TITLE_MAP: Record<string, string> = {
   "/admin/dashboard": "Dashboard",
   "/admin/products": "Danh sách sản phẩm",
   "/admin/products/create": "Thêm sản phẩm mới",
+  "/admin/ingredients": "Nguyên liệu & Giá vốn",
   "/admin/inventory": "Quản lý tồn kho",
   "/admin/inventory/transactions": "Lịch sử giao dịch kho",
   "/admin/suppliers": "Nhà cung cấp",
@@ -21,6 +22,7 @@ const TITLE_MAP: Record<string, string> = {
 function getTitle(pathname: string): string {
   if (TITLE_MAP[pathname]) return TITLE_MAP[pathname];
   if (pathname.startsWith("/admin/products/") && pathname.includes("/edit")) return "Chỉnh sửa sản phẩm";
+  if (pathname.startsWith("/admin/ingredients/")) return "Chi tiết nguyên liệu & Giá vốn";
   if (pathname.startsWith("/admin/orders/")) return "Chi tiết đơn hàng";
   if (pathname.startsWith("/admin/purchase-requests/")) return "Chi tiết yêu cầu mua hàng";
   return "Quản trị hệ thống";

@@ -17,6 +17,7 @@ import {
   Users,
   LayoutGrid,
   Settings,
+  FlaskConical,
 } from "lucide-react";
 import logoInventory from "../../assets/logo-inventory1.png";
 
@@ -44,6 +45,7 @@ const MENU_GROUPS = [
     items: [
       { label: "Danh mục", path: "/admin/categories", icon: LayoutGrid },
       { label: "Sản phẩm", path: "/admin/products", icon: Coffee },
+      { label: "Nguyên liệu & Giá vốn", path: "/admin/ingredients", icon: FlaskConical },
       { label: "Tồn kho", path: "/admin/inventory", icon: Boxes },
       { label: "Lịch sử kho", path: "/admin/inventory/transactions", icon: History },
       { label: "Nhà cung cấp", path: "/admin/suppliers", icon: Truck },

@@ -16,6 +16,7 @@ import { ProductListPage } from "../pages/ProductListPage";
 import { ProductDetailPage } from "../pages/ProductDetailPage";
 import { CartPage } from "../pages/CartPage";
 import { CheckoutPage } from "../pages/CheckoutPage";
+import { PaymentResultPage } from "../pages/PaymentResultPage";
 import { MyOrdersPage } from "../pages/MyOrdersPage";
 import { ChangePasswordPage } from "../pages/ChangePasswordPage";
 import { ProfilePage } from "../pages/ProfilePage";
@@ -24,6 +25,8 @@ import { ProfilePage } from "../pages/ProfilePage";
 import { AdminDashboardPage } from "../pages/admin/AdminDashboardPage";
 import { AdminProductsPage } from "../pages/admin/AdminProductsPage";
 import { AdminProductFormPage } from "../pages/admin/AdminProductFormPage";
+import { AdminIngredientsPage } from "../pages/admin/AdminIngredientsPage";
+import { AdminIngredientDetailPage } from "../pages/admin/AdminIngredientDetailPage";
 import { AdminInventoryPage } from "../pages/admin/AdminInventoryPage";
 import { AdminInventoryDetailPage } from "../pages/admin/AdminInventoryDetailPage";
 import { AdminInventoryTransactionsPage } from "../pages/admin/AdminInventoryTransactionsPage";
@@ -75,6 +78,14 @@ export const AppRoutes: React.FC = () => {
             }
           />
           <Route
+            path="payment/result"
+            element={
+              <ProtectedRoute>
+                <PaymentResultPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="my-orders"
             element={
               <ProtectedRoute>
@@ -115,6 +126,8 @@ export const AppRoutes: React.FC = () => {
           <Route path="products" element={<AdminProductsPage />} />
           <Route path="products/create" element={<AdminProductFormPage />} />
           <Route path="products/:id/edit" element={<AdminProductFormPage />} />
+          <Route path="ingredients" element={<AdminIngredientsPage />} />
+          <Route path="ingredients/:id" element={<AdminIngredientDetailPage />} />
           <Route path="categories" element={<AdminCategoriesPage />} />
           <Route path="inventory" element={<AdminInventoryPage />} />
           <Route path="inventory/transactions" element={<AdminInventoryTransactionsPage />} />

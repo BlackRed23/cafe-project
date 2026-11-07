@@ -51,7 +51,7 @@ export const simulateSaleService = {
             }
             const available = (inv.quantity ?? 0) - (inv.reservedStock ?? 0);
             if (available < it.quantity) {
-                const unit = inv.product?.unit || 'đơn vị';
+                const unit = inv.product?.servingUnit || 'đơn vị';
                 throw new HttpError(400, `Không đủ tồn kho để mô phỏng bán hàng cho sản phẩm ${it.productId}. Tồn kho hiện tại: ${available} ${unit}, yêu cầu: ${it.quantity} ${unit}.`);
             }
             return { inventory: inv, decrease: it.quantity };
@@ -140,7 +140,7 @@ export const simulateSaleService = {
             }
 
             if (inventory.quantity < quantity) {
-                let unit = inventory.product?.unit || 'đơn vị';
+                let unit = inventory.product?.servingUnit || 'đơn vị';
                 if (unit.toLowerCase() === 'ly') unit = 'đơn vị';
                 throw new HttpError(400, `Không đủ tồn kho để mô phỏng bán hàng. Tồn kho hiện tại: ${inventory.quantity} ${unit}, yêu cầu: ${quantity} ${unit}.`);
             }

@@ -6,8 +6,10 @@ export interface Category {
 export interface Product {
   id: string;
   name: string;
+  sku?: string;
   description?: string;
   price: number;
+  costPrice?: number;
   unit: string;
   imageUrl?: string;
   image_url?: string;

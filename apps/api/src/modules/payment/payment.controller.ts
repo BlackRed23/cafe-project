@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { HttpError } from '../../common/http-error';
 import { sendError, sendSuccess } from '../../common/response';
 import type { AuthenticatedRequest } from '../auth/auth.middleware';
 import type { MoMoIpnPayload } from './momo.gateway';
@@ -6,11 +7,18 @@ import type { VNPayIpnQuery } from './vnpay.gateway';
 import {
     createPaymentUrl,
     getPaymentByOrderId,
+    markPaymentRefunded,
     processMoMoWebhook,
     processVNPayIpn,
+    simulateDevMoMoIpn,
     updatePaymentStatus
 } from './payment.service';
-import type { CreatePaymentUrlInput, PaymentStatusInput } from './payment.validator';
+import type {
+    CreatePaymentUrlInput,
+    MarkRefundedInput,
+    PaymentStatusInput,
+    SimulateMoMoIpnInput
+} from './payment.validator';
 
 const resolveClientIp = (req: Request): string => {
     const forwarded = req.headers['x-forwarded-for'];
@@ -30,8 +38,24 @@ export const findPaymentByOrder = async (req: AuthenticatedRequest, res: Respons
 };
 
 export const patchPaymentStatus = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    const payment = await updatePaymentStatus(req.params.id, req.body as PaymentStatusInput);
+    if (!req.user) return sendError(res, 401, 'Authentication is required.');
+    const payment = await updatePaymentStatus(req.params.id, req.body as PaymentStatusInput, req.user);
     sendSuccess(res, 200, 'Update payment successfully.', { payment });
+};
+
+export const markPaymentRefundedHandler = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    if (!req.user) return sendError(res, 401, 'Authentication is required.');
+    const payment = await markPaymentRefunded(req.params.id, req.body as MarkRefundedInput, req.user);
+    sendSuccess(res, 200, 'Đã xác nhận hoàn tiền thành công.', { payment });
+};
+
+export const simulateMoMoIpnHandler = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    if (process.env.NODE_ENV === 'production') {
+        throw new HttpError(404, 'Not found.');
+    }
+    if (!req.user) return sendError(res, 401, 'Authentication is required.');
+    const result = await simulateDevMoMoIpn(req.body as SimulateMoMoIpnInput);
+    sendSuccess(res, 200, 'Đã giả lập IPN MoMo thành công.', result);
 };
 
 export const createPaymentUrlHandler = async (req: AuthenticatedRequest, res: Response): Promise<void> => {

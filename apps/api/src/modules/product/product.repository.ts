@@ -61,7 +61,7 @@ export const productRepository = {
                     productId: product.id,
                     quantity: 0,
                     minThreshold: 10,
-                    unit: product.unit
+                    unit: product.servingUnit
                 }
             });
 

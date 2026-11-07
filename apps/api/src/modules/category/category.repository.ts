@@ -25,7 +25,7 @@ export const categoryRepository = {
     },
 
     async findByName(name: string): Promise<CategoryRecord | null> {
-        return prisma.category.findUnique({ where: { name } });
+        return prisma.category.findFirst({ where: { name } });
     },
 
     async create(data: Prisma.CategoryCreateInput): Promise<CategoryRecord> {

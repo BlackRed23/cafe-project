@@ -5,11 +5,19 @@ import { authenticate, requireRole } from '../auth/auth.middleware';
 import {
     createPaymentUrlHandler,
     findPaymentByOrder,
+    markPaymentRefundedHandler,
     momoWebhookHandler,
     patchPaymentStatus,
+    simulateMoMoIpnHandler,
     vnpayIpnHandler
 } from './payment.controller';
-import { createPaymentUrlSchema, momoWebhookSchema, paymentStatusSchema } from './payment.validator';
+import {
+    createPaymentUrlSchema,
+    markRefundedSchema,
+    momoWebhookSchema,
+    paymentStatusSchema,
+    simulateMoMoIpnSchema
+} from './payment.validator';
 
 const router = Router();
 
@@ -18,9 +26,25 @@ const router = Router();
 router.post('/webhook/momo', validateBody(momoWebhookSchema), asyncHandler(momoWebhookHandler));
 router.get('/webhook/vnpay-ipn', asyncHandler(vnpayIpnHandler));
 
+// Dev-only IPN simulator (returns 404 in production)
+router.post(
+    '/dev/simulate-ipn',
+    authenticate,
+    requireRole(['ADMIN']),
+    validateBody(simulateMoMoIpnSchema),
+    asyncHandler(simulateMoMoIpnHandler)
+);
+
 // Authenticated routes
 router.post('/create-url', authenticate, validateBody(createPaymentUrlSchema), asyncHandler(createPaymentUrlHandler));
 router.get('/order/:orderId', authenticate, asyncHandler(findPaymentByOrder));
+router.post(
+    '/:id/mark-refunded',
+    authenticate,
+    requireRole(['ADMIN']),
+    validateBody(markRefundedSchema),
+    asyncHandler(markPaymentRefundedHandler)
+);
 router.patch(
     '/:id/status',
     authenticate,

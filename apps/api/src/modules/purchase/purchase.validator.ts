@@ -6,10 +6,21 @@ export const createPurchaseRequestSchema = z.object({
     notes: z.string().trim().max(1000, 'Notes must be at most 1000 characters.').optional().nullable(),
     aiGenerated: z.coerce.boolean().optional().default(false),
     items: z.array(z.object({
-        inventoryId: z.string().trim().min(1, 'Inventory is required.'),
+        inventoryId: z.string().trim().optional(),
+        ingredientId: z.string().trim().optional(),
         quantity: z.coerce.number().int('Quantity must be an integer.').positive('Quantity must be greater than 0.'),
         unitPrice: z.coerce.number().min(0, 'Unit price must be greater than or equal to 0.').optional().nullable(),
         notes: z.string().trim().max(1000, 'Item notes must be at most 1000 characters.').optional().nullable()
+    }).superRefine((item, ctx) => {
+        const hasInventory = Boolean(item.inventoryId && item.inventoryId.length > 0);
+        const hasIngredient = Boolean(item.ingredientId && item.ingredientId.length > 0);
+        if (hasInventory === hasIngredient) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Mỗi dòng yêu cầu nhập hàng phải chọn đúng 1 trong inventoryId hoặc ingredientId.',
+                path: ['inventoryId']
+            });
+        }
     })).min(1, 'Items cannot be empty.')
 });
 
@@ -18,10 +29,13 @@ export const rejectPurchaseRequestSchema = z.object({
 });
 
 export const receivePurchaseRequestSchema = z.object({
+    idempotencyKey: z.string().trim().max(200).optional(),
+    supplierInvoiceNo: z.string().trim().max(200).optional().nullable(),
     note: z.string().trim().max(1000, 'Note must be at most 1000 characters.').optional().nullable(),
     items: z.array(z.object({
         purchaseRequestItemId: z.string().trim().min(1, 'Purchase request item is required.'),
         receivedQuantity: z.coerce.number().int('Received quantity must be an integer.').min(0, 'Received quantity must be greater than or equal to 0.'),
+        unitPrice: z.coerce.number().min(0).optional(),
         batches: z.array(z.object({
             batchCode: z.string().trim().optional().nullable(),
             expirationDate: z.string().trim().min(1, 'Expiration date is required.'),

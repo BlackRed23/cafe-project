@@ -54,7 +54,7 @@ export const simulateSaleRepository = {
                 });
                 
                 const txn = await tx.inventoryTransaction.create({
-                    data: { productId: current.productId, userId, type: InventoryTransactionType.SIMULATE_SALE, quantity: -deduction, reason: note ?? 'Simulate sale', batchId: batch.id }
+                    data: { productId: current.productId, performedBy: userId, type: InventoryTransactionType.SIMULATE_SALE, quantity: -deduction, reason: note ?? 'Simulate sale', legacyBatchId: batch.id }
                 });
                 deductionTransactions.push(txn);
                 remainingToDeduct -= deduction;
@@ -115,7 +115,7 @@ export const simulateSaleRepository = {
                     });
                     
                     const txn = await tx.inventoryTransaction.create({
-                        data: { productId: plan.inventory.productId, userId, type: InventoryTransactionType.SIMULATE_SALE, quantity: -deduction, reason: note ?? 'Simulate sale', batchId: batch.id }
+                        data: { productId: plan.inventory.productId, performedBy: userId, type: InventoryTransactionType.SIMULATE_SALE, quantity: -deduction, reason: note ?? 'Simulate sale', legacyBatchId: batch.id }
                     });
                     deductionTransactions.push(txn);
                     remainingToDeduct -= deduction;
@@ -144,30 +144,31 @@ export const simulateSaleRepository = {
     async restoreSale(transactionId: string, userId: string) {
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const originalTransaction = await tx.inventoryTransaction.findUnique({
-                where: { id: transactionId },
-                include: { product: true }
+                where: { id: transactionId }
             });
 
-            if (!originalTransaction) {
+            if (!originalTransaction || !originalTransaction.productId) {
                 throw new HttpError(404, 'Simulation transaction not found.');
             }
 
-            if (originalTransaction.type !== InventoryTransactionType.SIMULATE_SALE || originalTransaction.quantity >= 0) {
+            if (originalTransaction.type !== InventoryTransactionType.SIMULATE_SALE || Number(originalTransaction.quantity) >= 0) {
                 throw new HttpError(400, 'Transaction is not a valid simulate sale transaction.');
             }
 
             const target = await tx.inventory.findUnique({ where: { productId: originalTransaction.productId } });
             if (!target) throw new HttpError(404, 'Inventory not found.');
             await tx.$queryRaw`SELECT "id" FROM "Inventory" WHERE "id" = ${target.id} FOR UPDATE`;
-            if (!originalTransaction.batchId) throw new HttpError(409, 'Mô phỏng không có lô nguồn cần được đối soát, không tự tạo lô.');
-            const batch = await tx.inventoryBatch.findFirst({ where: { id: originalTransaction.batchId, inventoryId: target.id } });
+            const sourceBatchId = originalTransaction.legacyBatchId ?? originalTransaction.batchId;
+            if (!sourceBatchId) throw new HttpError(409, 'Mô phỏng không có lô nguồn cần được đối soát, không tự tạo lô.');
+            const batch = await tx.inventoryBatch.findFirst({ where: { id: sourceBatchId, inventoryId: target.id } });
             if (!batch) throw new HttpError(409, 'Không tìm thấy lô nguồn để khôi phục.');
             const marker = restoreMarker(originalTransaction.id);
+            const restoredQuantity = Math.abs(Number(originalTransaction.quantity));
             const existingRestore = await tx.inventoryTransaction.findFirst({
                 where: {
                     productId: originalTransaction.productId,
                     type: InventoryTransactionType.ADJUSTMENT,
-                    quantity: Math.abs(originalTransaction.quantity),
+                    quantity: restoredQuantity,
                     reason: { contains: marker }
                 }
             });
@@ -185,7 +186,6 @@ export const simulateSaleRepository = {
                 throw new HttpError(404, 'Inventory not found for simulation transaction.');
             }
 
-            const restoredQuantity = Math.abs(originalTransaction.quantity);
             const stockBeforeRestore = inventory.quantity;
             const restoredStock = stockBeforeRestore + restoredQuantity;
 
@@ -198,10 +198,10 @@ export const simulateSaleRepository = {
             const restoreTransaction = await tx.inventoryTransaction.create({
                 data: {
                     productId: originalTransaction.productId,
-                    userId,
+                    performedBy: userId,
                     type: InventoryTransactionType.ADJUSTMENT,
                     quantity: restoredQuantity,
-                    batchId: batch.id,
+                    legacyBatchId: batch.id,
                     reason: `Khôi phục mô phỏng bán ${marker}`
                 }
             });
@@ -225,44 +225,54 @@ export const simulateSaleRepository = {
 
         const transactions = await prisma.inventoryTransaction.findMany({
             where: {
-                userId,
+                performedBy: userId,
                 type: InventoryTransactionType.SIMULATE_SALE,
                 quantity: { lt: 0 },
-                createdAt: { gte: createdAfter }
+                createdAt: { gte: createdAfter },
+                productId: { not: null }
             },
-            include: { product: { include: { inventory: true } } },
             orderBy: { createdAt: 'desc' },
             take: 25
         });
 
+        const productIds = Array.from(new Set(transactions.map((t) => t.productId).filter((id): id is string => Boolean(id))));
+        const products = productIds.length > 0
+            ? await prisma.product.findMany({ where: { id: { in: productIds } }, include: { inventory: true } })
+            : [];
+        const productById = new Map(products.map((p) => [p.id, p]));
+
         const pendingRestores = [];
 
         for (const transaction of transactions) {
+            if (!transaction.productId) continue;
+            const product = productById.get(transaction.productId);
+            if (!product) continue;
+
             const marker = restoreMarker(transaction.id);
+            const decreasedQuantity = Math.abs(Number(transaction.quantity));
             const existingRestore = await prisma.inventoryTransaction.findFirst({
                 where: {
                     productId: transaction.productId,
                     type: InventoryTransactionType.ADJUSTMENT,
-                    quantity: Math.abs(transaction.quantity),
+                    quantity: decreasedQuantity,
                     reason: { contains: marker }
                 },
                 select: { id: true }
             });
 
             if (!existingRestore) {
-                const inventory = transaction.product.inventory;
-                const decreasedQuantity = Math.abs(transaction.quantity);
+                const inventory = product.inventory;
                 const stockAfter = inventory?.quantity;
 
                 pendingRestores.push({
                     transactionId: transaction.id,
                     inventoryId: inventory?.id ?? '',
                     productId: transaction.productId,
-                    productName: transaction.product.name,
+                    productName: product.name,
                     stockBefore: typeof stockAfter === 'number' ? stockAfter + decreasedQuantity : undefined,
                     stockAfter,
                     decreasedQuantity,
-                    unit: transaction.product.unit || 'đơn vị',
+                    unit: product.servingUnit || 'đơn vị',
                     createdAt: transaction.createdAt,
                     type: transaction.type,
                     restored: false

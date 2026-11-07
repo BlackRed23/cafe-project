@@ -1,6 +1,5 @@
 import { PurchaseRequestStatus } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
-import { inventoryRepository } from '../inventory/inventory.repository';
 
 const serializeAgentLogField = (value: unknown): string | null => {
     if (value === undefined || value === null) return null;
@@ -20,20 +19,63 @@ import { getOptionalSettingValue } from '../system-setting/system-setting.servic
 import { prisma } from '@cafe-project/database';
 const totalForItem = (quantity: number, unitPrice: number | null): number => quantity * (unitPrice ?? 0);
 
+const getItemDisplayName = (item: PurchaseRequestRecord['items'][number]): string => {
+    return item.product?.name ?? item.ingredient?.name ?? 'Mặt hàng';
+};
+
+const getItemDisplaySku = (item: PurchaseRequestRecord['items'][number]): string => {
+    return item.product?.sku ?? item.ingredient?.sku ?? '';
+};
+
+const getItemDisplayUnit = (item: PurchaseRequestRecord['items'][number]): string => {
+    return item.inventory?.unit ?? item.ingredient?.baseUnit ?? 'đơn vị';
+};
+
 const purchaseConversionForItem = (request: PurchaseRequestRecord, item: PurchaseRequestRecord['items'][number]) => {
+    if (item.ingredientId && item.ingredient) {
+        const supIng = request.supplier.ingredients?.find((mapping) => mapping.ingredientId === item.ingredientId);
+        const conversionQuantity = supIng ? Number(supIng.conversionQuantity) : null;
+        const purchaseUnit = supIng?.purchaseUnit ?? null;
+        const conversionTargetUnit = supIng?.conversionTargetUnit ?? item.ingredient.baseUnit;
+        const baseUnit = item.ingredient.baseUnit;
+
+        if (!purchaseUnit || !conversionQuantity) {
+            return {
+                purchaseQuantity: null,
+                purchaseUnit,
+                conversionQuantity,
+                conversionTargetUnit,
+                convertedQuantity: item.quantity,
+                inventoryUnit: baseUnit,
+                conversionMissing: true
+            };
+        }
+
+        return {
+            purchaseQuantity: item.quantity,
+            purchaseUnit,
+            conversionQuantity,
+            conversionTargetUnit,
+            convertedQuantity: Math.ceil(item.quantity * conversionQuantity),
+            inventoryUnit: baseUnit,
+            conversionMissing: false
+        };
+    }
+
     const supplierProduct = request.supplier.products.find((mapping) => mapping.productId === item.productId);
     const conversionQuantity = supplierProduct?.conversionQuantity ?? null;
     const purchaseUnit = supplierProduct?.purchaseUnit ?? null;
     const conversionTargetUnit = supplierProduct?.conversionTargetUnit ?? null;
+    const invUnit = item.inventory?.unit ?? 'đơn vị';
 
-    if (!purchaseUnit || !conversionQuantity || !conversionTargetUnit || conversionTargetUnit !== item.inventory.unit) {
+    if (!purchaseUnit || !conversionQuantity || !conversionTargetUnit || conversionTargetUnit !== invUnit) {
         return {
             purchaseQuantity: null,
             purchaseUnit,
             conversionQuantity,
             conversionTargetUnit,
             convertedQuantity: item.quantity,
-            inventoryUnit: item.inventory.unit,
+            inventoryUnit: invUnit,
             conversionMissing: true
         };
     }
@@ -46,7 +88,7 @@ const purchaseConversionForItem = (request: PurchaseRequestRecord, item: Purchas
         conversionQuantity,
         conversionTargetUnit,
         convertedQuantity: Math.ceil(purchaseQuantity * conversionQuantity),
-        inventoryUnit: item.inventory.unit,
+        inventoryUnit: invUnit,
         conversionMissing: false
     };
 };
@@ -88,8 +130,8 @@ const isSupplierEmailContentUsable = (value?: string | null): value is string =>
 
 const buildSupplierEmailItemLine = (request: PurchaseRequestRecord, item: PurchaseRequestRecord['items'][number]): string => {
     const conversion = purchaseConversionForItem(request, item);
-    const productName = item.product.name;
-    const inventoryUnit = conversion.inventoryUnit || item.inventory.unit || '';
+    const productName = getItemDisplayName(item);
+    const inventoryUnit = conversion.inventoryUnit || getItemDisplayUnit(item) || '';
 
     if (!conversion.conversionMissing && conversion.purchaseQuantity && conversion.purchaseUnit && conversion.conversionQuantity && conversion.conversionTargetUnit) {
         return [
@@ -103,15 +145,15 @@ const buildSupplierEmailItemLine = (request: PurchaseRequestRecord, item: Purcha
 
 const buildSupplierEmailSubject = async (request: PurchaseRequestRecord): Promise<string> => {
     if (request.items.length === 1) {
-        const item = request.items[0];
+        const item = request.items[0]!;
         const conversion = purchaseConversionForItem(request, item);
-        const inventoryUnit = conversion.inventoryUnit || item.inventory.unit || '';
+        const inventoryUnit = conversion.inventoryUnit || getItemDisplayUnit(item) || '';
         const quantityDisplay =
             !conversion.conversionMissing && conversion.purchaseQuantity && conversion.purchaseUnit && inventoryUnit
                 ? `${conversion.purchaseQuantity} ${conversion.purchaseUnit} = ${conversion.convertedQuantity} ${inventoryUnit}`
                 : formatQuantity(item.quantity, inventoryUnit);
 
-        return `Yêu cầu báo giá/đặt hàng ${item.product.name} - ${quantityDisplay}`;
+        return `Yêu cầu báo giá/đặt hàng ${getItemDisplayName(item)} - ${quantityDisplay}`;
     }
 
     const storeName = await getOptionalSettingValue('store.name') || 'Cafe Admin';
@@ -125,10 +167,12 @@ export const buildPurchaseRequestAgentExplanation = (request: PurchaseRequestRec
 
     const explanations = request.items.map((item) => {
         const conversion = purchaseConversionForItem(request, item);
-        const productName = item.product.name;
-        const inventoryUnit = conversion.inventoryUnit || item.inventory.unit || '';
-        const stockText = formatQuantity(item.inventory.quantity, inventoryUnit);
-        const thresholdText = formatQuantity(item.inventory.minThreshold, inventoryUnit);
+        const productName = getItemDisplayName(item);
+        const inventoryUnit = conversion.inventoryUnit || getItemDisplayUnit(item) || '';
+        const currentQty = item.inventory ? item.inventory.quantity : Number(item.ingredient?.quantity ?? 0);
+        const currentThreshold = item.inventory ? item.inventory.minThreshold : Number(item.ingredient?.minThreshold ?? 0);
+        const stockText = formatQuantity(currentQty, inventoryUnit);
+        const thresholdText = formatQuantity(currentThreshold, inventoryUnit);
 
         if (!conversion.conversionMissing && conversion.purchaseQuantity && conversion.purchaseUnit && conversion.conversionQuantity && conversion.conversionTargetUnit) {
             const neededQuantity = item.quantity;
@@ -219,22 +263,24 @@ const toDto = async (request: PurchaseRequestRecord) => ({
     receivedAmount: Number(request.receivedAmount),
     amountPaid: Number(request.amountPaid),
     emailDraft: await buildPurchaseRequestEmailDraft(request),
+    receipts: request.receipts ?? [],
     items: request.items.map((item) => {
         const conversion = purchaseConversionForItem(request, item);
 
         return {
             id: item.id,
             inventoryId: item.inventoryId,
+            ingredientId: item.ingredientId,
             productId: item.productId,
-            productName: item.product.name,
-            productSku: item.product.sku,
-            categoryName: item.inventory.product.category.name,
+            productName: getItemDisplayName(item),
+            productSku: getItemDisplaySku(item),
+            categoryName: item.inventory?.product?.category?.name ?? item.ingredient?.category?.name ?? '',
             quantity: item.quantity,
             quantityReceived: item.quantityReceived,
             unitPrice: item.unitPrice ? Number(item.unitPrice) : 0,
             subtotal: totalForItem(item.quantity, item.unitPrice ? Number(item.unitPrice) : 0),
             notes: item.notes,
-            productPendingDelete: !!item.product.pendingDeleteUntil,
+            productPendingDelete: Boolean(item.product?.pendingDeleteUntil || item.ingredient?.deletedAt),
             ...conversion
         };
     }),
@@ -272,7 +318,10 @@ export const purchaseService = {
     async create(input: CreatePurchaseRequestInput, userId: string) {
         if (!(await purchaseRepository.supplierExists(input.supplierId))) throw new HttpError(404, 'Không thể tạo yêu cầu nhập hàng với nhà cung cấp đang ngưng hoạt động hoặc không tồn tại.');
         for (const item of input.items) {
-            if (await purchaseRepository.hasActiveRequestForInventory(item.inventoryId)) {
+            if (item.inventoryId && (await purchaseRepository.hasActiveRequestForInventory(item.inventoryId))) {
+                throw new HttpError(400, ACTIVE_PURCHASE_REQUEST_MESSAGE);
+            }
+            if (item.ingredientId && (await purchaseRepository.hasActiveRequestForIngredient(item.ingredientId))) {
                 throw new HttpError(400, ACTIVE_PURCHASE_REQUEST_MESSAGE);
             }
         }
@@ -287,7 +336,7 @@ export const purchaseService = {
         const request = await ensureRequest(id);
         ensureStatus(request, PurchaseRequestStatus.PENDING, 'Only pending requests can be approved.');
 
-        const isPendingDelete = request.items.some(item => item.product.pendingDeleteUntil);
+        const isPendingDelete = request.items.some(item => item.product?.pendingDeleteUntil || item.ingredient?.deletedAt);
         if (isPendingDelete) {
             await prisma.agentLog.create({
                 data: {
@@ -339,7 +388,7 @@ export const purchaseService = {
             throw new HttpError(400, 'Không thể huỷ/từ chối yêu cầu đã nhận hàng hoặc hoàn thành.');
         }
 
-        const isPendingDelete = request.items.some(item => item.product.pendingDeleteUntil);
+        const isPendingDelete = request.items.some(item => item.product?.pendingDeleteUntil || item.ingredient?.deletedAt);
         if (isPendingDelete) {
             await prisma.agentLog.create({
                 data: {
@@ -369,11 +418,20 @@ export const purchaseService = {
 
     async receive(id: string, input: ReceivePurchaseRequestInput, userId: string) {
         const request = await ensureRequest(id);
+        if (input.idempotencyKey) {
+            const existingReceipt = await prisma.goodsReceipt.findUnique({
+                where: { idempotencyKey: input.idempotencyKey }
+            });
+            if (existingReceipt && existingReceipt.purchaseRequestId === id) {
+                return { purchaseRequest: await toDto(request), isStockSafe: true };
+            }
+        }
+
         if ((request.status as PurchaseRequestStatus) === PurchaseRequestStatus.RECEIVED || (request.status as PurchaseRequestStatus) === PurchaseRequestStatus.COMPLETED) {
             throw new HttpError(400, 'Yêu cầu nhập hàng này đã được nhận hàng trước đó.');
         }
 
-        const isPendingDelete = request.items.some(item => item.product.pendingDeleteUntil);
+        const isPendingDelete = request.items.some(item => item.product?.pendingDeleteUntil || item.ingredient?.deletedAt);
         if (isPendingDelete) {
             await prisma.agentLog.create({
                 data: {
@@ -393,9 +451,6 @@ export const purchaseService = {
             throw new HttpError(400, 'Không thể nhận hàng vì sản phẩm đang chờ xoá. Vui lòng khôi phục sản phẩm trước khi nhận hàng.');
         }
 
-        if ((request.status as PurchaseRequestStatus) === PurchaseRequestStatus.RECEIVED || (request.status as PurchaseRequestStatus) === PurchaseRequestStatus.COMPLETED) {
-            throw new HttpError(400, 'Yêu cầu nhập hàng này đã được nhận trước đó, không thể cộng kho lần nữa.');
-        }
         if (request.status !== PurchaseRequestStatus.SENT && !request.emailSentAt) {
             throw new HttpError(400, 'Chỉ có thể nhận hàng sau khi đã gửi email đặt hàng cho nhà cung cấp.');
         }
@@ -404,20 +459,25 @@ export const purchaseService = {
 
             let isStockSafe = true;
             for (const item of received.items) {
-                const inventory = await prisma.inventory.findUnique({ where: { productId: item.productId } });
-                const minThreshold = inventory?.minThreshold || 0;
-                // For a more accurate check, we ideally would compute the reorderPoint,
-                // but checking against minThreshold as a base fallback is acceptable here for the flag.
-                // In a real scenario, we might just check if it's > minThreshold.
-                if (inventory && inventory.quantity <= minThreshold) {
-                    isStockSafe = false;
-                    break;
+                if (item.productId) {
+                    const inventory = await prisma.inventory.findUnique({ where: { productId: item.productId } });
+                    const minThreshold = inventory?.minThreshold || 0;
+                    if (inventory && inventory.quantity <= minThreshold) {
+                        isStockSafe = false;
+                        break;
+                    }
+                } else if (item.ingredientId) {
+                    const ing = await prisma.ingredient.findUnique({ where: { id: item.ingredientId } });
+                    if (ing && Number(ing.quantity) <= Number(ing.minThreshold)) {
+                        isStockSafe = false;
+                        break;
+                    }
                 }
             }
 
             const isPartial = received.status !== PurchaseRequestStatus.RECEIVED && received.status !== PurchaseRequestStatus.COMPLETED;
             
-            const productNames = received.items.map(item => item.product.name).join(', ');
+            const productNames = received.items.map(getItemDisplayName).join(', ');
             await prisma.agentLog.create({
                 data: {
                     action: 'RECEIVE_PURCHASE_REQUEST',
@@ -440,16 +500,18 @@ export const purchaseService = {
                 }
             });
 
-            const productIds = received.items.map((item) => item.productId);
-            scanInventoryViaAgentService({
-                productIds,
-                triggerType: 'PURCHASE_RECEIVED',
-                sourceType: 'PURCHASE_REQUEST',
-                sourceId: id,
-                note: 'Purchase request received'
-            }, userId).catch((error) => {
-                console.error('[AI_AGENT] Failed to scan inventory after purchase receive', error);
-            });
+            const productIds = received.items.map((item) => item.productId).filter((pid): pid is string => Boolean(pid));
+            if (productIds.length > 0) {
+                scanInventoryViaAgentService({
+                    productIds,
+                    triggerType: 'PURCHASE_RECEIVED',
+                    sourceType: 'PURCHASE_REQUEST',
+                    sourceId: id,
+                    note: 'Purchase request received'
+                }, userId).catch((error) => {
+                    console.error('[AI_AGENT] Failed to scan inventory after purchase receive', error);
+                });
+            }
             return { purchaseRequest: await toDto(received), isStockSafe };
         } catch (error) {
             throw new HttpError(400, error instanceof Error ? error.message : 'Unable to receive purchase request.');
