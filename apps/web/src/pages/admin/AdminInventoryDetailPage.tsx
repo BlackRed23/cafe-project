@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import { AdjustmentBatchSelect, eligibleAdjustmentBatches } from "../../components/admin/AdjustmentBatchSelect";
 import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
@@ -15,7 +17,9 @@ import { Modal } from "../../components/common/Modal";
 import { Input } from "../../components/common/Input";
 import { useAuth } from "../../contexts/AuthContext";
 
-export const AdminInventoryDetailPage: React.FC = () => {
+export const AdminInventoryDetailPage: React.FC = () => mockEnabled ? <MockWorkspace area="inventory" /> : <LegacyAdminInventoryDetailPage />;
+
+const LegacyAdminInventoryDetailPage: React.FC = () => {
   const { inventoryId } = useParams<{ inventoryId: string }>();
   const navigate = useNavigate();
   const { isStaff } = useAuth();

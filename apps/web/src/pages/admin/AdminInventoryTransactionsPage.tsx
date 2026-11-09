@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useState, useEffect } from "react";
 import { inventoryApi } from "../../api/inventory.api";
 import type { InventoryTransaction } from "../../types/inventory.types";
@@ -9,7 +11,9 @@ import { Modal } from "../../components/common/Modal";
 import { Button } from "../../components/common/Button";
 import { Eye, User as UserIcon } from "lucide-react";
 
-export const AdminInventoryTransactionsPage: React.FC = () => {
+export const AdminInventoryTransactionsPage: React.FC = () => mockEnabled ? <MockWorkspace area="inventory" /> : <LegacyAdminInventoryTransactionsPage />;
+
+const LegacyAdminInventoryTransactionsPage: React.FC = () => {
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

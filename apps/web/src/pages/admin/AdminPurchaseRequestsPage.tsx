@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, FileSpreadsheet, MailWarning, Plus, X } from "lucide-react";
@@ -28,7 +30,9 @@ const FILTER_OPTIONS = [
   { label: "Đã từ chối", value: "REJECTED" },
 ];
 
-export const AdminPurchaseRequestsPage: React.FC = () => {
+export const AdminPurchaseRequestsPage: React.FC = () => mockEnabled ? <MockWorkspace area="purchases" /> : <LegacyAdminPurchaseRequestsPage />;
+
+const LegacyAdminPurchaseRequestsPage: React.FC = () => {
   const navigate = useNavigate();
   const { isStaff } = useAuth();
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);

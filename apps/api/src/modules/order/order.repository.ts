@@ -122,7 +122,7 @@ export const orderRepository = {
     async updateStatus(order: OrderRecord, nextStatus: OrderStatus, userId: string): Promise<OrderRecord> {
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);
-        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const updatedOrder = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const shouldFinalizeStock = !order.stockDeductedAt && nextStatus === OrderStatus.COMPLETED;
             const shouldReleaseReserved =
                 !order.stockDeductedAt &&
@@ -223,16 +223,6 @@ export const orderRepository = {
                     }
                 }
 
-                const productIds = order.items.map(item => item.productId);
-                scanInventoryViaAgentService({
-                    productIds,
-                    triggerType: 'ORDER_COMPLETED',
-                    sourceType: 'ORDER',
-                    sourceId: order.id,
-                    note: 'Order completed, stock finalized'
-                }, userId).catch((error) => {
-                    console.error('[AI_AGENT] Failed to scan inventory after order completion', error);
-                });
             }
 
             if (shouldReleaseReserved) {
@@ -270,5 +260,20 @@ export const orderRepository = {
 
             return updatedOrder!;
         });
+
+        // The transaction promise resolves only after commit. Do not start remote work
+        // from its callback: callback success can still be followed by a commit failure.
+        if (!order.stockDeductedAt && nextStatus === OrderStatus.COMPLETED) {
+            scanInventoryViaAgentService({
+                productIds: order.items.map(item => item.productId),
+                triggerType: 'ORDER_COMPLETED',
+                sourceType: 'ORDER',
+                sourceId: order.id,
+                note: 'Order completed, stock finalized'
+            }, userId).catch(() => {
+                console.error('[AI_AGENT] Failed to scan inventory after order completion');
+            });
+        }
+        return updatedOrder;
     }
 };

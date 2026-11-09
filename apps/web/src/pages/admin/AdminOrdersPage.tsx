@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ordersApi } from "../../api/orders.api";
@@ -19,7 +21,9 @@ const FILTER_OPTIONS = [
   { label: "Đã hủy", value: "CANCELLED" },
 ];
 
-export const AdminOrdersPage: React.FC = () => {
+export const AdminOrdersPage: React.FC = () => mockEnabled ? <MockWorkspace area="orders" /> : <LegacyAdminOrdersPage />;
+
+const LegacyAdminOrdersPage: React.FC = () => {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);

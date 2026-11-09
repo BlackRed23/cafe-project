@@ -1,3 +1,6 @@
+import { mockEnabled, mockApi, mockTokenKey, mockUserKey } from '../mock/config';
+const tokenStorageKey = mockEnabled ? mockTokenKey : 'access_token';
+const userStorageKey = mockEnabled ? mockUserKey : 'user';
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { authApi } from "../api/auth.api";
 import type { User, LoginPayload, RegisterPayload } from "../types/auth.types";
@@ -20,16 +23,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem("access_token"));
+  const [token, setToken] = useState<string | null>(localStorage.getItem(tokenStorageKey));
   const [loading, setLoading] = useState<boolean>(true);
 
   const loadMe = async () => {
     try {
       setLoading(true);
-      const data = await authApi.getMe();
+      const data = mockEnabled ? { user: await mockApi!.request<User>('/session') } : await authApi.getMe();
       if (data.user) {
         setUser(data.user);
-        localStorage.setItem("user", JSON.stringify(data.user));
+        localStorage.setItem(userStorageKey, JSON.stringify(data.user));
       } else {
         logout();
       }
@@ -51,12 +54,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const persistAuth = (data: { accessToken?: string; token?: string; user?: User }) => {
     const receivedToken = data.accessToken || data.token;
     if (receivedToken) {
-      localStorage.setItem("access_token", receivedToken);
+      localStorage.setItem(tokenStorageKey, receivedToken);
       setToken(receivedToken);
     }
     if (data.user) {
       setUser(data.user);
-      localStorage.setItem("user", JSON.stringify(data.user));
+      localStorage.setItem(userStorageKey, JSON.stringify(data.user));
     }
   };
 
@@ -77,7 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       persistAuth(data);
 
       // Xác nhận token đã thực sự nằm trong localStorage trước khi điều hướng
-      const savedToken = localStorage.getItem("access_token");
+      const savedToken = localStorage.getItem(tokenStorageKey);
       if (!savedToken) {
         throw new Error("Token không được lưu thành công sau khi login");
       }
@@ -118,8 +121,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user");
+    localStorage.removeItem(tokenStorageKey);
+    localStorage.removeItem(userStorageKey);
     setUser(null);
     setToken(null);
     window.location.href = "/login";

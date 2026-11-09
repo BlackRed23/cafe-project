@@ -1,0 +1,133 @@
+{
+  "verified_at_utc": "2026-11-05T16:03:10.826Z",
+  "display_timezone": "Asia/Saigon",
+  "revision": "r2",
+  "required_reports": [
+    "BACKLOG_W01_W04.md",
+    "DEPENDENCY_MATRIX.md",
+    "RECOVERY_EXECUTION.md",
+    "TEST_EVIDENCE.md",
+    "ACCEPTANCE_STATUS.md"
+  ],
+  "task_counts": {
+    "VERIFIED_COMPLETE": 2,
+    "PARTIAL": 5,
+    "BLOCKED": 9
+  },
+  "remaining": 14,
+  "source_hashes_verified": 151,
+  "historical_weekly_and_audit_hashes_unchanged_since_snapshot": true,
+  "markdown_links": "PASS",
+  "database_access": "BLOCKED_BY_USER_CHOICE; NOT_ATTEMPTED",
+  "runs": [
+    {
+      "id": "R-BASELINE",
+      "file": "regression-before.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "tests": 72,
+      "failures": 0,
+      "log_written_at_utc": "2026-11-05T15:40:07.933Z",
+      "sha256": "12363ddda5d0ef7ef9b837b1f8d2f98df91438a752d211f41817fd982fa3264b"
+    },
+    {
+      "id": "R-INTERMEDIATE",
+      "file": "regression-after.log",
+      "exit_code_observed_in_tool_execution": 1,
+      "tests": 73,
+      "failures": 1,
+      "log_written_at_utc": "2026-11-05T15:41:15.153Z",
+      "sha256": "ec1899823c02f8b8ad57108c5647411ff77a9cd80ce676fd9c05b136da78f506"
+    },
+    {
+      "id": "R-FINAL",
+      "file": "regression-final.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "tests": 73,
+      "failures": 0,
+      "log_written_at_utc": "2026-11-05T15:42:06.657Z",
+      "sha256": "0001b000d2437ea419b495415904040b1a5c4a9bf0c01d5959ca7b046c6c6226"
+    },
+    {
+      "id": "R-API-TYPES",
+      "file": "api-typecheck.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "log_written_at_utc": "2026-11-05T15:41:16.307Z",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "R-AGENT-TYPES",
+      "file": "agent-typecheck.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "log_written_at_utc": "2026-11-05T15:42:07.792Z",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "R2-TARGETED-BEFORE",
+      "file": "r2-targeted-before.log",
+      "exit_code_observed_in_tool_execution": 1,
+      "tests": 11,
+      "failures": 9,
+      "log_written_at_utc": "2026-11-05T15:55:01.771Z",
+      "sha256": "f61a53527ad8be66de5ae8dbcd0f76ab0c99be9b6ee85bf58df4d74ef6fac065"
+    },
+    {
+      "id": "R2-TARGETED-AFTER",
+      "file": "r2-targeted-after.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "tests": 11,
+      "failures": 0,
+      "log_written_at_utc": "2026-11-05T15:55:33.858Z",
+      "sha256": "996739b257ae9779e2b48e205b63d25af22df2aef033d4b19a350eb2bc198135"
+    },
+    {
+      "id": "R2-REGRESSION-84",
+      "file": "r2-regression-84.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "tests": 84,
+      "failures": 0,
+      "log_written_at_utc": "2026-11-05T15:56:21.991Z",
+      "sha256": "f7be36f70a822c0c2aafaa90ef955e2063d2443da726f3182bcda9a14f00b156"
+    },
+    {
+      "id": "R2-SIDE-EFFECTS-INTERMEDIATE",
+      "file": "r2-side-effects.log",
+      "exit_code_observed_in_tool_execution": 1,
+      "tests": 31,
+      "failures": 1,
+      "log_written_at_utc": "2026-11-05T15:57:35.269Z",
+      "sha256": "c9732e580872fa1836a3095daa386275184ae7ce2e1b48af6ca44410cfd61705"
+    },
+    {
+      "id": "R2-FINAL",
+      "file": "r2-regression-final.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "tests": 90,
+      "failures": 0,
+      "log_written_at_utc": "2026-11-05T16:02:43.499Z",
+      "sha256": "223247ba5ea1bcf7ad41908dfaa1da84e51165c82fdadc01dc1339329d54924f"
+    },
+    {
+      "id": "R2-API-TYPES",
+      "file": "r2-api-typecheck.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "log_written_at_utc": "2026-11-05T15:58:10.096Z",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "R2-AGENT-TYPES",
+      "file": "r2-agent-typecheck.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "log_written_at_utc": "2026-11-05T15:58:16.380Z",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "artifact_sha256": {
+    "ACCEPTANCE_STATUS.md": "bd533bf5e1d3f8d51bf9157b53c26d29b36d7c68850ab35919a082e3b2713ac0",
+    "BACKLOG_W01_W04.md": "8bf8a236ff99f726eba54afe0f639bc5f20f3f490c5d8c9f71ca0939291dd09e",
+    "DEPENDENCY_MATRIX.md": "a8e31b4e405ae2291e53d1a2942d010e74ecb3e81044b3c5d67c8ab5a3c3eb08",
+    "INVENTORY_AND_DRIFT.md": "1e45cda8845e686fb8a4d9d3235f65da2207974a27fb04d891e08914c258c878",
+    "RECOVERY_EXECUTION.md": "52696bd81af32969ad8e14abd15f431616857cf9fc82efbf7a97091b1b8bdf8d",
+    "REQUIREMENTS_AND_INVENTORY_DESIGN.md": "be5188df5ea0b9b5ea74a7f503d68fe5c5e4d3375770b7861efaa670946e2041",
+    "TEST_EVIDENCE.md": "3aeecaa7482291f35cd315671e3ad96e2681180c4011fea1c73b724343994874"
+  }
+}

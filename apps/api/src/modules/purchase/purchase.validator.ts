@@ -1,5 +1,6 @@
 import { PurchaseRequestStatus } from '@cafe-project/database';
 import { z } from 'zod';
+import { duplicateReceiptItemIndex } from './purchase.receipt-validation';
 
 export const createPurchaseRequestSchema = z.object({
     supplierId: z.string().trim().min(1, 'Supplier is required.'),
@@ -8,7 +9,7 @@ export const createPurchaseRequestSchema = z.object({
     items: z.array(z.object({
         inventoryId: z.string().trim().min(1, 'Inventory is required.'),
         quantity: z.coerce.number().int('Quantity must be an integer.').positive('Quantity must be greater than 0.'),
-        unitPrice: z.coerce.number().min(0, 'Unit price must be greater than or equal to 0.').optional().nullable(),
+        unitPrice: z.coerce.number().finite().min(0, 'Unit price must be greater than or equal to 0.').optional().nullable(),
         notes: z.string().trim().max(1000, 'Item notes must be at most 1000 characters.').optional().nullable()
     })).min(1, 'Items cannot be empty.')
 });
@@ -39,6 +40,15 @@ export const receivePurchaseRequestSchema = z.object({
             }
         }
     })).min(1, 'Receive items cannot be empty.')
+}).superRefine((data, ctx) => {
+    const duplicateIndex = duplicateReceiptItemIndex(data.items);
+    if (duplicateIndex !== -1) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Each purchase request item can appear only once per receipt.',
+            path: ['items', duplicateIndex, 'purchaseRequestItemId']
+        });
+    }
 });
 
 export const markPurchaseRequestPaidSchema = z.object({

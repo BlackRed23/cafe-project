@@ -1,0 +1,38 @@
+{
+  "version": 3,
+  "status": "MOCK_PHASE_3_VERIFIED_POSTGRES_NOT_VERIFIED",
+  "scope": [
+    "apps/api/src/workflows",
+    "apps/agent/src/workflows/agent-workflow.ts",
+    "apps/web/src/mock",
+    "apps/web/src/api/mock-client.ts",
+    "apps/web/src/pages/admin",
+    "apps/web/src/routes/AppRoutes.tsx",
+    "apps/web/tests",
+    "apps/api/tests/mock-phase3.test.cjs"
+  ],
+  "verified": [
+    "182/182 tests pass; new 23; failed 0; skipped 0; cancelled 0",
+    "Agent/API/Web builds pass; Agent/API typechecks pass; Web tsc included in build",
+    "Mock browser workflows and frozen pending-command replay across reload verified",
+    "No PostgreSQL, migrations, live payment/LLM calls; original uncommitted changes retained"
+  ],
+  "checks": {
+    "baseline": "159/159 PASS",
+    "full": "182/182 PASS",
+    "build": "PASS all three workspaces",
+    "types": "PASS",
+    "diff": "PASS"
+  },
+  "artifacts": ".task-artifacts/phase3/",
+  "rollback": ".task-artifacts/phase3/rollback.json",
+  "next": [
+    "Resolve/review U1–U6 and approved 27-table/16-enum physical mappings",
+    "Complete approved private-variant/published-child ownership contract",
+    "PostgreSQL adapter/locking/grants/durability acceptance remains blocked; no database work authorized in this phase"
+  ],
+  "invalidation": [
+    "Source/dependency changes invalidate tests and builds",
+    "Mocks/browser snapshots do not prove durable or real provider behavior"
+  ]
+}

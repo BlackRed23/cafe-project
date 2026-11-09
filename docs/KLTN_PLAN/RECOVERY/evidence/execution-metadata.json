@@ -1,0 +1,73 @@
+{
+  "verified_at_utc": "2026-11-05T15:50:18.058Z",
+  "display_timezone": "Asia/Saigon",
+  "required_reports": [
+    "BACKLOG_W01_W04.md",
+    "DEPENDENCY_MATRIX.md",
+    "RECOVERY_EXECUTION.md",
+    "TEST_EVIDENCE.md",
+    "ACCEPTANCE_STATUS.md"
+  ],
+  "task_counts": {
+    "VERIFIED_COMPLETE": 2,
+    "PARTIAL": 5,
+    "BLOCKED": 9
+  },
+  "remaining": 14,
+  "source_hashes_verified": 147,
+  "historical_weekly_and_audit_hashes_unchanged_since_snapshot": true,
+  "markdown_links": "PASS",
+  "database_access": "NOT_ATTEMPTED",
+  "runs": [
+    {
+      "id": "R-BASELINE",
+      "file": "regression-before.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "tests": 72,
+      "failures": 0,
+      "log_written_at_utc": "2026-11-05T15:40:07.933Z",
+      "sha256": "12363ddda5d0ef7ef9b837b1f8d2f98df91438a752d211f41817fd982fa3264b"
+    },
+    {
+      "id": "R-INTERMEDIATE",
+      "file": "regression-after.log",
+      "exit_code_observed_in_tool_execution": 1,
+      "tests": 73,
+      "failures": 1,
+      "log_written_at_utc": "2026-11-05T15:41:15.153Z",
+      "sha256": "ec1899823c02f8b8ad57108c5647411ff77a9cd80ce676fd9c05b136da78f506"
+    },
+    {
+      "id": "R-FINAL",
+      "file": "regression-final.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "tests": 73,
+      "failures": 0,
+      "log_written_at_utc": "2026-11-05T15:42:06.657Z",
+      "sha256": "0001b000d2437ea419b495415904040b1a5c4a9bf0c01d5959ca7b046c6c6226"
+    },
+    {
+      "id": "R-API-TYPES",
+      "file": "api-typecheck.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "log_written_at_utc": "2026-11-05T15:41:16.307Z",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "R-AGENT-TYPES",
+      "file": "agent-typecheck.log",
+      "exit_code_observed_in_tool_execution": 0,
+      "log_written_at_utc": "2026-11-05T15:42:07.792Z",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "artifact_sha256": {
+    "ACCEPTANCE_STATUS.md": "a1e13a49260888bf453e33fd23395d136a16b43c07ee397d85dbe9bf55bfff5c",
+    "BACKLOG_W01_W04.md": "b4d20bf56fc1e8a1c121134d126dd98e93ddaf2fc7d8ec7c120c648a8d3b43e5",
+    "DEPENDENCY_MATRIX.md": "60afffa9463ee939db0a97803e420a0c17736061efc894d71520a6ec19efb225",
+    "INVENTORY_AND_DRIFT.md": "e166541da74040bd6ae1d20ff21f74209243a7481d6775045dbfa7ff3c92f42f",
+    "RECOVERY_EXECUTION.md": "d133445ab781dd74225e6b9a6beb7459b13c463d7c851c9ddbbf3ab2a0d9aba4",
+    "REQUIREMENTS_AND_INVENTORY_DESIGN.md": "ef7806135c7d60f5bad9738b239926cb4a47c5ee59995bb4aa7c328f244042f5",
+    "TEST_EVIDENCE.md": "8eb9fc71e0392f4697dbccd5b416c319ef1aacff676d4236e6373ef3253406b5"
+  }
+}

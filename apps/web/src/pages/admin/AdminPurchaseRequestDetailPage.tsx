@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, Ban, CheckCircle, Mail, Sparkles, PackageCheck, Send, X } from "lucide-react";
@@ -102,7 +104,9 @@ Trân trọng,
 ${storeName}`;
 };
 
-export const AdminPurchaseRequestDetailPage: React.FC = () => {
+export const AdminPurchaseRequestDetailPage: React.FC = () => mockEnabled ? <MockWorkspace area="purchases" /> : <LegacyAdminPurchaseRequestDetailPage />;
+
+const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { isStaff } = useAuth();
   const globalToast = useToast();

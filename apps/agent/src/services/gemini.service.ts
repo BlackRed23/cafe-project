@@ -16,26 +16,38 @@ export const geminiService = {
             throw new Error('GEMINI_API_KEY is not configured in environment variables.');
         }
 
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: modelName });
-
-        const result = await model.generateContent(prompt);
-        const response = result.response;
-        const text = response.text();
+        let text: string;
+        try {
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: modelName });
+            const result = await model.generateContent(prompt);
+            text = result.response.text();
+        } catch {
+            // SDK errors can contain request URLs, credentials or provider content.
+            throw new Error('Gemini request failed.');
+        }
 
         // Parse JSON from text
-        const cleanedText = this.cleanJsonText(text);
         try {
+            const cleanedText = this.cleanJsonText(text);
             const data = JSON.parse(cleanedText);
+            if (!data || typeof data !== 'object' || Array.isArray(data)
+                || typeof data.recommendedQuantity !== 'number' || !Number.isFinite(data.recommendedQuantity) || data.recommendedQuantity <= 0
+                || typeof data.confidence !== 'number' || !Number.isFinite(data.confidence) || data.confidence < 0 || data.confidence > 1
+                || typeof data.recommendedSupplierId !== 'string' || !data.recommendedSupplierId.trim()
+                || typeof data.reasoning !== 'string' || !data.reasoning.trim()
+                || typeof data.emailDraft !== 'string') {
+                throw new Error('Invalid recommendation shape.');
+            }
             return {
-                recommendedQuantity: Number(data.recommendedQuantity),
-                recommendedSupplierId: String(data.recommendedSupplierId),
-                confidence: Number(data.confidence),
-                reasoning: String(data.reasoning),
-                emailDraft: String(data.emailDraft)
+                recommendedQuantity: data.recommendedQuantity,
+                recommendedSupplierId: data.recommendedSupplierId.trim(),
+                confidence: data.confidence,
+                reasoning: data.reasoning,
+                emailDraft: data.emailDraft
             };
-        } catch (err) {
-            throw new Error(`Gemini response was not valid JSON. Response text: ${text}`);
+        } catch {
+            throw new Error('Gemini response was not a valid recommendation.');
         }
     },
 

@@ -1,0 +1,658 @@
+TAP version 13
+# Subtest: valid structured response and fenced JSON retain typed values
+ok 1 - valid structured response and fenced JSON retain typed values
+  ---
+  duration_ms: 927.4765
+  type: 'test'
+  ...
+# Subtest: invalid recommendedQuantity types/ranges fail without exposing provider content
+ok 2 - invalid recommendedQuantity types/ranges fail without exposing provider content
+  ---
+  duration_ms: 1334.8947
+  type: 'test'
+  ...
+# Subtest: invalid confidence types/ranges fail without exposing provider content
+ok 3 - invalid confidence types/ranges fail without exposing provider content
+  ---
+  duration_ms: 566.0516
+  type: 'test'
+  ...
+# Subtest: invalid recommendedSupplierId types/ranges fail without exposing provider content
+ok 4 - invalid recommendedSupplierId types/ranges fail without exposing provider content
+  ---
+  duration_ms: 537.3067
+  type: 'test'
+  ...
+# Subtest: invalid reasoning types/ranges fail without exposing provider content
+ok 5 - invalid reasoning types/ranges fail without exposing provider content
+  ---
+  duration_ms: 473.4832
+  type: 'test'
+  ...
+# Subtest: invalid emailDraft types/ranges fail without exposing provider content
+ok 6 - invalid emailDraft types/ranges fail without exposing provider content
+  ---
+  duration_ms: 301.6446
+  type: 'test'
+  ...
+# Subtest: malformed JSON, nonobjects and missing fields reject with sanitized errors
+ok 7 - malformed JSON, nonobjects and missing fields reject with sanitized errors
+  ---
+  duration_ms: 600.7188
+  type: 'test'
+  ...
+# Subtest: SDK failure details are not propagated to callers
+ok 8 - SDK failure details are not propagated to callers
+  ---
+  duration_ms: 88.8653
+  type: 'test'
+  ...
+# Subtest: missing/weak/malformed internal secret fails closed on both sides
+ok 9 - missing/weak/malformed internal secret fails closed on both sides
+  ---
+  duration_ms: 1217.5405
+  type: 'test'
+  ...
+# Subtest: all internal endpoints reject missing and incorrect token with zero operations
+ok 10 - all internal endpoints reject missing and incorrect token with zero operations
+  ---
+  duration_ms: 14.8798
+  type: 'test'
+  ...
+# Subtest: body identity/role cannot authorize; inactive/customer/missing principals create zero records
+ok 11 - body identity/role cannot authorize; inactive/customer/missing principals create zero records
+  ---
+  duration_ms: 54.9805
+  type: 'test'
+  ...
+# Subtest: operation-specific staff and system permissions
+ok 12 - operation-specific staff and system permissions
+  ---
+  duration_ms: 272.6851
+  type: 'test'
+  ...
+# Subtest: authorized API-to-Agent flows retain verified identity, including reads
+ok 13 - authorized API-to-Agent flows retain verified identity, including reads
+  ---
+  duration_ms: 63.9422
+  type: 'test'
+  ...
+# Subtest: API denies invalid principals before transport or fallback writes
+ok 14 - API denies invalid principals before transport or fallback writes
+  ---
+  duration_ms: 10.5753
+  type: 'test'
+  ...
+# Subtest: unexpected service errors do not disclose tokens or identity
+ok 15 - unexpected service errors do not disclose tokens or identity
+  ---
+  duration_ms: 31.0725
+  type: 'test'
+  ...
+# Subtest: Agent server defaults to loopback and ignores generic HOST
+ok 16 - Agent server defaults to loopback and ignores generic HOST
+  ---
+  duration_ms: 23.6626
+  type: 'test'
+  ...
+# Subtest: MOCK_E2E: purchase timeout remains uncertain and is never retried automatically
+ok 17 - MOCK_E2E: purchase timeout remains uncertain and is never retried automatically
+  ---
+  duration_ms: 45.1403
+  type: 'test'
+  ...
+# Subtest: API-to-Agent E2E: JWT/validation/controller/client and Agent gate verify mock audit; denied requests do zero work
+ok 18 - API-to-Agent E2E: JWT/validation/controller/client and Agent gate verify mock audit; denied requests do zero work
+  ---
+  duration_ms: 13692.3069
+  type: 'test'
+  ...
+# Subtest: worker scheduled/manual scans perform read-only analysis and system logs with zero purchase writes
+ok 19 - worker scheduled/manual scans perform read-only analysis and system logs with zero purchase writes
+  ---
+  duration_ms: 30.2192
+  type: 'test'
+  ...
+# Subtest: system scan requires configured identity before reading inventory
+ok 20 - system scan requires configured identity before reading inventory
+  ---
+  duration_ms: 1.7017
+  type: 'test'
+  ...
+# Subtest: direct service writes reject unauthorized identities before dependencies
+ok 21 - direct service writes reject unauthorized identities before dependencies
+  ---
+  duration_ms: 33.5946
+  type: 'test'
+  ...
+# Subtest: repository cannot fallback to ADMIN or write as customer
+ok 22 - repository cannot fallback to ADMIN or write as customer
+  ---
+  duration_ms: 6.1818
+  type: 'test'
+  ...
+# Subtest: authorized real service operations pass with mocked recommendation/persistence
+ok 23 - authorized real service operations pass with mocked recommendation/persistence
+  ---
+  duration_ms: 1.4354
+  type: 'test'
+  ...
+# Subtest: real recommendation service produces traceable rule-based results without external services
+ok 24 - real recommendation service produces traceable rule-based results without external services
+  ---
+  duration_ms: 36.1593
+  type: 'test'
+  ...
+# Subtest: mock Gemini failure falls back to rules and preserves actor in audit
+ok 25 - mock Gemini failure falls back to rules and preserves actor in audit
+  ---
+  duration_ms: 1.1984
+  type: 'test'
+  ...
+# Subtest: issued ADMIN token loses write access after disable, demotion or deletion; account lookup fails closed
+ok 26 - issued ADMIN token loses write access after disable, demotion or deletion; account lookup fails closed
+  ---
+  duration_ms: 767.3841
+  type: 'test'
+  ...
+# Subtest: valid registration (omitted role) stores CUSTOMER and hashes password
+ok 27 - valid registration (omitted role) stores CUSTOMER and hashes password
+  ---
+  duration_ms: 1601.8756
+  type: 'test'
+  ...
+# Subtest: valid registration (CUSTOMER) stores CUSTOMER and hashes password
+ok 28 - valid registration (CUSTOMER) stores CUSTOMER and hashes password
+  ---
+  duration_ms: 4013.1788
+  type: 'test'
+  ...
+# Subtest: registration rejects role="ADMIN" with no user creation
+ok 29 - registration rejects role="ADMIN" with no user creation
+  ---
+  duration_ms: 25.2161
+  type: 'test'
+  ...
+# Subtest: registration rejects role="STAFF" with no user creation
+ok 30 - registration rejects role="STAFF" with no user creation
+  ---
+  duration_ms: 30.6553
+  type: 'test'
+  ...
+# Subtest: registration rejects role="OWNER" with no user creation
+ok 31 - registration rejects role="OWNER" with no user creation
+  ---
+  duration_ms: 11.7408
+  type: 'test'
+  ...
+# Subtest: registration rejects role="customer" with no user creation
+ok 32 - registration rejects role="customer" with no user creation
+  ---
+  duration_ms: 16.2082
+  type: 'test'
+  ...
+# Subtest: registration rejects role="" with no user creation
+ok 33 - registration rejects role="" with no user creation
+  ---
+  duration_ms: 14.2943
+  type: 'test'
+  ...
+# Subtest: registration rejects role=null with no user creation
+ok 34 - registration rejects role=null with no user creation
+  ---
+  duration_ms: 30.8388
+  type: 'test'
+  ...
+# Subtest: registration rejects role=1 with no user creation
+ok 35 - registration rejects role=1 with no user creation
+  ---
+  duration_ms: 2.6273
+  type: 'test'
+  ...
+# Subtest: registration rejects role={} with no user creation
+ok 36 - registration rejects role={} with no user creation
+  ---
+  duration_ms: 13.6306
+  type: 'test'
+  ...
+# Subtest: registration rejects role=["CUSTOMER"] with no user creation
+ok 37 - registration rejects role=["CUSTOMER"] with no user creation
+  ---
+  duration_ms: 48.277
+  type: 'test'
+  ...
+# Subtest: direct service input role=ADMIN cannot persist a privileged role
+ok 38 - direct service input role=ADMIN cannot persist a privileged role
+  ---
+  duration_ms: 901.5004
+  type: 'test'
+  ...
+# Subtest: direct service input role=STAFF cannot persist a privileged role
+ok 39 - direct service input role=STAFF cannot persist a privileged role
+  ---
+  duration_ms: 604.2746
+  type: 'test'
+  ...
+# Subtest: direct service input role=OWNER cannot persist a privileged role
+ok 40 - direct service input role=OWNER cannot persist a privileged role
+  ---
+  duration_ms: 451.5741
+  type: 'test'
+  ...
+# Subtest: direct service input role=undefined cannot persist a privileged role
+ok 41 - direct service input role=undefined cannot persist a privileged role
+  ---
+  duration_ms: 516.8333
+  type: 'test'
+  ...
+# Subtest: duplicate email remains 409 and creates no second user
+ok 42 - duplicate email remains 409 and creates no second user
+  ---
+  duration_ms: 599.4545
+  type: 'test'
+  ...
+# Subtest: database unique-email race remains 409
+ok 43 - database unique-email race remains 409
+  ---
+  duration_ms: 478.9061
+  type: 'test'
+  ...
+# Subtest: new customer login issues a verified CUSTOMER JWT and is forbidden on ADMIN-only route
+ok 44 - new customer login issues a verified CUSTOMER JWT and is forbidden on ADMIN-only route
+  ---
+  duration_ms: 902.6367
+  type: 'test'
+  ...
+# Subtest: wrong password and unknown email remain 401 without updating last login
+ok 45 - wrong password and unknown email remain 401 without updating last login
+  ---
+  duration_ms: 1136.4094
+  type: 'test'
+  ...
+# Subtest: existing ADMIN can still log in and access ADMIN-only route; unauthenticated access is 401
+ok 46 - existing ADMIN can still log in and access ADMIN-only route; unauthenticated access is 401
+  ---
+  duration_ms: 1044.8362
+  type: 'test'
+  ...
+# Subtest: D02 exact dimensional conversion and canonical strings
+ok 47 - D02 exact dimensional conversion and canonical strings
+  ---
+  duration_ms: 2.9833
+  type: 'test'
+  ...
+# Subtest: D02/D03 rejects invalid, cross-dimension, fractional-piece and overflow input
+ok 48 - D02/D03 rejects invalid, cross-dimension, fractional-piece and overflow input
+  ---
+  duration_ms: 1.1898
+  type: 'test'
+  ...
+# Subtest: D04 supplier date uses next café midnight including leap day
+ok 49 - D04 supplier date uses next café midnight including leap day
+  ---
+  duration_ms: 27.0992
+  type: 'test'
+  ...
+# Subtest: D04 expiry boundary, quarantine and deterministic FEFO without input mutation
+ok 50 - D04 expiry boundary, quarantine and deterministic FEFO without input mutation
+  ---
+  duration_ms: 3.0233
+  type: 'test'
+  ...
+# Subtest: import increments current stock and records batch/history inside transaction, ignoring stale input
+ok 51 - import increments current stock and records batch/history inside transaction, ignoring stale input
+  ---
+  duration_ms: 424.1058
+  type: 'test'
+  ...
+# Subtest: successive imports using the same stale snapshot accumulate (sequential mock only)
+ok 52 - successive imports using the same stale snapshot accumulate (sequential mock only)
+  ---
+  duration_ms: 238.8934
+  type: 'test'
+  ...
+# Subtest: adjust 4 changes selected batch, total and history, preserving reservation
+ok 53 - adjust 4 changes selected batch, total and history, preserving reservation
+  ---
+  duration_ms: 130.601
+  type: 'test'
+  ...
+# Subtest: adjust -4 changes selected batch, total and history, preserving reservation
+ok 54 - adjust -4 changes selected batch, total and history, preserving reservation
+  ---
+  duration_ms: 139.7092
+  type: 'test'
+  ...
+# Subtest: adjust -15 changes selected batch, total and history, preserving reservation
+ok 55 - adjust -15 changes selected batch, total and history, preserving reservation
+  ---
+  duration_ms: 184.0711
+  type: 'test'
+  ...
+# Subtest: adjust rejects reserved stock would be consumed without committed mock writes
+ok 56 - adjust rejects reserved stock would be consumed without committed mock writes
+  ---
+  duration_ms: 200.514
+  type: 'test'
+  ...
+# Subtest: adjust rejects negative total without committed mock writes
+ok 57 - adjust rejects negative total without committed mock writes
+  ---
+  duration_ms: 207.3263
+  type: 'test'
+  ...
+# Subtest: adjust rejects insufficient selected batch without committed mock writes
+ok 58 - adjust rejects insufficient selected batch without committed mock writes
+  ---
+  duration_ms: 904.6065
+  type: 'test'
+  ...
+# Subtest: adjust rejects unknown/foreign batch without committed mock writes
+ok 59 - adjust rejects unknown/foreign batch without committed mock writes
+  ---
+  duration_ms: 320.9705
+  type: 'test'
+  ...
+# Subtest: adjust rejects missing batch, including legacy caller without committed mock writes
+ok 60 - adjust rejects missing batch, including legacy caller without committed mock writes
+  ---
+  duration_ms: 304.1224
+  type: 'test'
+  ...
+# Subtest: legacy aggregate/batch discrepancy is not backfilled or silently erased
+ok 61 - legacy aggregate/batch discrepancy is not backfilled or silently erased
+  ---
+  duration_ms: 498.3087
+  type: 'test'
+  ...
+# Subtest: invalid import quantities, absent/invalid expiry fail before persistence
+ok 62 - invalid import quantities, absent/invalid expiry fail before persistence
+  ---
+  duration_ms: 274.5165
+  type: 'test'
+  ...
+# Subtest: invalid adjustment delta fails before persistence
+ok 63 - invalid adjustment delta fails before persistence
+  ---
+  duration_ms: 197.3205
+  type: 'test'
+  ...
+# Subtest: existing batch code import is rejected without a second batch
+ok 64 - existing batch code import is rejected without a second batch
+  ---
+  duration_ms: 205.6575
+  type: 'test'
+  ...
+# Subtest: import: injected batch-write rejects transaction; mock discards draft
+ok 65 - import: injected batch-write rejects transaction; mock discards draft
+  ---
+  duration_ms: 135.5528
+  type: 'test'
+  ...
+# Subtest: import: injected history rejects transaction; mock discards draft
+ok 66 - import: injected history rejects transaction; mock discards draft
+  ---
+  duration_ms: 170.5946
+  type: 'test'
+  ...
+# Subtest: adjust: injected batch-write rejects transaction; mock discards draft
+ok 67 - adjust: injected batch-write rejects transaction; mock discards draft
+  ---
+  duration_ms: 303.4865
+  type: 'test'
+  ...
+# Subtest: adjust: injected history rejects transaction; mock discards draft
+ok 68 - adjust: injected history rejects transaction; mock discards draft
+  ---
+  duration_ms: 204.6815
+  type: 'test'
+  ...
+# Subtest: adjust aggregate-conflict is controlled 409 without committed mock movement
+ok 69 - adjust aggregate-conflict is controlled 409 without committed mock movement
+  ---
+  duration_ms: 258.0556
+  type: 'test'
+  ...
+# Subtest: adjust batch-conflict is controlled 409 without committed mock movement
+ok 70 - adjust batch-conflict is controlled 409 without committed mock movement
+  ---
+  duration_ms: 265.4996
+  type: 'test'
+  ...
+# Subtest: adjust validator preserves explicit batch selection and rejects empty ID
+ok 71 - adjust validator preserves explicit batch selection and rejects empty ID
+  ---
+  duration_ms: 2279.049
+  type: 'test'
+  ...
+# Subtest: service passes batch ID and leaves stale-snapshot rejection to repository; effects follow success
+ok 72 - service passes batch ID and leaves stale-snapshot rejection to repository; effects follow success
+  ---
+  duration_ms: 898.8246
+  type: 'test'
+  ...
+# Subtest: service emits no Agent effects when repository transaction rejects
+ok 73 - service emits no Agent effects when repository transaction rejects
+  ---
+  duration_ms: 3522.0294
+  type: 'test'
+  ...
+# Subtest: inventory listing never provisions missing inventory or emits Agent writes
+ok 74 - inventory listing never provisions missing inventory or emits Agent writes
+  ---
+  duration_ms: 513.3324
+  type: 'test'
+  ...
+# Subtest: inventory HTTP routes preserve ADMIN-only writes before persistence (in-process, JWT and persistence mocked)
+ok 75 - inventory HTTP routes preserve ADMIN-only writes before persistence (in-process, JWT and persistence mocked)
+  ---
+  duration_ms: 5846.1761
+  type: 'test'
+  ...
+# Subtest: adjust rejects an expired batch without committed writes
+ok 76 - adjust rejects an expired batch without committed writes
+  ---
+  duration_ms: 124.0126
+  type: 'test'
+  ...
+# Subtest: D01 recipe yield and explicit optional omission; snapshot detached from inputs
+ok 77 - D01 recipe yield and explicit optional omission; snapshot detached from inputs
+  ---
+  duration_ms: 41.5553
+  type: 'test'
+  ...
+# Subtest: D01 selection boundary, ambiguity and invalid selections fail closed
+ok 78 - D01 selection boundary, ambiguity and invalid selections fail closed
+  ---
+  duration_ms: 24.7962
+  type: 'test'
+  ...
+# Subtest: D01/D03 aggregate recipe and selected ADD line quantities before rounding once
+ok 79 - D01/D03 aggregate recipe and selected ADD line quantities before rounding once
+  ---
+  duration_ms: 5.1283
+  type: 'test'
+  ...
+# Subtest: D03 half-up boundary, piece integrality and capacity
+ok 80 - D03 half-up boundary, piece integrality and capacity
+  ---
+  duration_ms: 0.7868
+  type: 'test'
+  ...
+# Subtest: D03 exact costs, round once; unknown differs from known zero
+ok 81 - D03 exact costs, round once; unknown differs from known zero
+  ---
+  duration_ms: 5.6528
+  type: 'test'
+  ...
+# Subtest: D04/D05 FEFO plans exact remaining target and subtracts reservations without mutation
+ok 82 - D04/D05 FEFO plans exact remaining target and subtracts reservations without mutation
+  ---
+  duration_ms: 26.1157
+  type: 'test'
+  ...
+# Subtest: D05 insufficient, expired, foreign, duplicate and invalid balances reject entire plan
+ok 83 - D05 insufficient, expired, foreign, duplicate and invalid balances reject entire plan
+  ---
+  duration_ms: 16.5171
+  type: 'test'
+  ...
+# Subtest: D09 canonical keys stable across object ordering; changed payload conflicts by hash
+ok 84 - D09 canonical keys stable across object ordering; changed payload conflicts by hash
+  ---
+  duration_ms: 16.9873
+  type: 'test'
+  ...
+# Subtest: D09 refuses lossy/unsupported JSON values and preserves array order
+ok 85 - D09 refuses lossy/unsupported JSON values and preserves array order
+  ---
+  duration_ms: 23.6209
+  type: 'test'
+  ...
+# Subtest: D02/D09 explicit quantity adapter canonicalizes equivalent units and unordered rows
+ok 86 - D02/D09 explicit quantity adapter canonicalizes equivalent units and unordered rows
+  ---
+  duration_ms: 1.2866
+  type: 'test'
+  ...
+# Subtest: batch selector excludes expired/invalid batches, permits counted zero batch and requires explicit selection
+ok 87 - batch selector excludes expired/invalid batches, permits counted zero batch and requires explicit selection
+  ---
+  duration_ms: 845.2849
+  type: 'test'
+  ...
+# Subtest: web API sends explicit batch ID and signed delta; missing batch never posts
+ok 88 - web API sends explicit batch ID and signed delta; missing batch never posts
+  ---
+  duration_ms: 4083.2725
+  type: 'test'
+  ...
+# Subtest: AdminInventoryPage connects batch selector and submits batch count delta
+ok 89 - AdminInventoryPage connects batch selector and submits batch count delta
+  ---
+  duration_ms: 12.6859
+  type: 'test'
+  ...
+# Subtest: AdminInventoryDetailPage connects batch selector and submits batch count delta
+ok 90 - AdminInventoryDetailPage connects batch selector and submits batch count delta
+  ---
+  duration_ms: 1.0865
+  type: 'test'
+  ...
+# Subtest: simulation uses fresh quantity, preserves reservations and restores original batch exactly once (mock)
+ok 91 - simulation uses fresh quantity, preserves reservations and restores original batch exactly once (mock)
+  ---
+  duration_ms: 1119.5047
+  type: 'test'
+  ...
+# Subtest: simulation cannot consume reserved stock or restore a legacy movement with no source batch
+ok 92 - simulation cannot consume reserved stock or restore a legacy movement with no source batch
+  ---
+  duration_ms: 1209.9267
+  type: 'test'
+  ...
+# Subtest: multi-product simulation reads fresh stock rather than stale plan quantities
+ok 93 - multi-product simulation reads fresh stock rather than stale plan quantities
+  ---
+  duration_ms: 343.5976
+  type: 'test'
+  ...
+# Subtest: order COMPLETED uses atomic reserved/stock deltas and rejects stale status (mock)
+ok 94 - order COMPLETED uses atomic reserved/stock deltas and rejects stale status (mock)
+  ---
+  duration_ms: 394.4902
+  type: 'test'
+  ...
+# Subtest: order CANCELLED uses atomic reserved/stock deltas and rejects stale status (mock)
+ok 95 - order CANCELLED uses atomic reserved/stock deltas and rejects stale status (mock)
+  ---
+  duration_ms: 471.4201
+  type: 'test'
+  ...
+# Subtest: completion dispatches one Agent scan after transaction commit with original actor/order
+ok 96 - completion dispatches one Agent scan after transaction commit with original actor/order
+  ---
+  duration_ms: 1311.1752
+  type: 'test'
+  ...
+# Subtest: failLedger leaves no remote scan
+ok 97 - failLedger leaves no remote scan
+  ---
+  duration_ms: 518.2413
+  type: 'test'
+  ...
+# Subtest: failCommit leaves no remote scan
+ok 98 - failCommit leaves no remote scan
+  ---
+  duration_ms: 706.7704
+  type: 'test'
+  ...
+# Subtest: postcommit Agent failure does not undo order success or log private provider detail
+ok 99 - postcommit Agent failure does not undo order success or log private provider detail
+  ---
+  duration_ms: 842.1794
+  type: 'test'
+  ...
+# Subtest: cancellation or already-finalized completion does not dispatch a completion scan
+ok 100 - cancellation or already-finalized completion does not dispatch a completion scan
+  ---
+  duration_ms: 1544.0457
+  type: 'test'
+  ...
+# Subtest: receipt schema rejects duplicate item IDs including whitespace-normalized aliases
+ok 101 - receipt schema rejects duplicate item IDs including whitespace-normalized aliases
+  ---
+  duration_ms: 69.6763
+  type: 'test'
+  ...
+# Subtest: distinct partial receipt items and matching batch quantities remain accepted
+ok 102 - distinct partial receipt items and matching batch quantities remain accepted
+  ---
+  duration_ms: 22.0231
+  type: 'test'
+  ...
+# Subtest: direct receipt repository rejects duplicate payload before any transaction or persistence
+ok 103 - direct receipt repository rejects duplicate payload before any transaction or persistence
+  ---
+  duration_ms: 1331.9764
+  type: 'test'
+  ...
+# Subtest: purchase price rejects non-finite values and numeric overflow strings
+ok 104 - purchase price rejects non-finite values and numeric overflow strings
+  ---
+  duration_ms: 30.7598
+  type: 'test'
+  ...
+# Subtest: purchase price retains zero, decimal, numeric-string and omitted prices
+ok 105 - purchase price retains zero, decimal, numeric-string and omitted prices
+  ---
+  duration_ms: 11.8858
+  type: 'test'
+  ...
+# Subtest: inventory purchase quantity rejects non-finite values before service dispatch
+ok 106 - inventory purchase quantity rejects non-finite values before service dispatch
+  ---
+  duration_ms: 19.3974
+  type: 'test'
+  ...
+# Subtest: inventory purchase quantity retains finite fractional conversion input
+ok 107 - inventory purchase quantity retains finite fractional conversion input
+  ---
+  duration_ms: 3.5907
+  type: 'test'
+  ...
+# Subtest: bootstrap preserves health and route mounting; unauthenticated /test-db is 404 without database access
+ok 108 - bootstrap preserves health and route mounting; unauthenticated /test-db is 404 without database access
+  ---
+  duration_ms: 3529.1552
+  type: 'test'
+  ...
+1..108
+# tests 108
+# suites 0
+# pass 108
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 49054.985

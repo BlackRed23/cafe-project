@@ -19,6 +19,7 @@ const writes = [];
 const loginUpdates = [];
 let users = [];
 let createError;
+let lookupError;
 const testSecret = 'isolated-registration-test-secret';
 class KnownRequestError extends Error {
     constructor(code) { super(code); this.code = code; }
@@ -29,6 +30,7 @@ const unexpectedPersistence = new Proxy({}, {
 const prismaMock = new Proxy({
     user: new Proxy({
         async findUnique({ where }) {
+            if (lookupError) throw lookupError;
             return users.find(user => where.email ? user.email === where.email : user.id === where.id) ?? null;
         },
         async create({ data }) {
@@ -107,8 +109,40 @@ before(async () => {
 after(async () => {
     if (server) await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
 });
-beforeEach(() => { users = []; writes.length = 0; loginUpdates.length = 0; createError = undefined; });
+beforeEach(() => { users = []; writes.length = 0; loginUpdates.length = 0; createError = undefined; lookupError = undefined; });
 const input = () => ({ email: 'customer@example.test', password: 'SecurePass1!', name: 'Customer', phone: '0901234567' });
+let protectedWrites = 0;
+app.post('/protected-write', authenticate, requireRole(['ADMIN']), (_req, res) => {
+    protectedWrites++;
+    res.json({ ok: true });
+});
+
+test('issued ADMIN token loses write access after disable, demotion or deletion; account lookup fails closed', async () => {
+    const admin = { id: 'revoked-admin', email: 'admin@example.test', name: 'Admin', role: 'ADMIN', isActive: true };
+    users.push(admin);
+    const token = jwt.sign({ id: admin.id, email: admin.email, role: 'ADMIN' }, testSecret, { expiresIn: '1h' });
+    protectedWrites = 0;
+    assert.equal((await request('/protected-write', {}, token)).status, 200);
+    assert.equal(protectedWrites, 1);
+    admin.isActive = false;
+    assert.equal((await request('/protected-write', {}, token)).status, 403);
+    admin.isActive = true;
+    for (const role of ['STAFF', 'CUSTOMER']) {
+        admin.role = role;
+        assert.equal((await request('/protected-write', {}, token)).status, 403);
+    }
+    users = [];
+    assert.equal((await request('/protected-write', {}, token)).status, 401);
+    users = [admin];
+    admin.role = 'ADMIN';
+    lookupError = new Error('private persistence detail');
+    const unavailable = await request('/protected-write', {}, token);
+    assert.equal(unavailable.status, 503);
+    assert.equal(JSON.stringify(unavailable.body).includes('private persistence detail'), false);
+    lookupError = undefined;
+    assert.equal(protectedWrites, 1);
+    assert.equal(writes.length, 0);
+});
 async function request(route, body, token) {
     const options = {
         method: body === undefined ? 'GET' : 'POST',

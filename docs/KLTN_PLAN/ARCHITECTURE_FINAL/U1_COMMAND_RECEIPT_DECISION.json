@@ -1,0 +1,1303 @@
+{
+  "STATUS": "ARCHITECTURE_DECISION_REQUIRED",
+  "U1_DECISION": {
+    "date": "2026-11-07",
+    "scope": "U1 only; no U2-U6 design changes, application changes, PostgreSQL connection, migration or provider execution",
+    "conclusion": "No responsibility-preserving owner exists in the currently fixed identity/responsibility manifest for all D09 receipts. Exact count alone is not a general impossibility theorem: count plus all 27 fixed responsibilities, no embedded generic history and no additional persistence is the conflicting constraint set.",
+    "options": [
+      {
+        "option": "A",
+        "decision": "REJECT_AS_COMPLETE_SOLUTION",
+        "reason": "A natural Recipe version, Payment attempt, receipt document or actual Agent run can retain its own genuine creation result. Ingredient rename, rejected create and arbitrary rejected siblings are none of these domain rows. User/Category/Supplier/composition rows are also identities/composition, not arbitrary operations."
+      },
+      {
+        "option": "B",
+        "decision": "REJECT_AS_COMPLETE_SOLUTION",
+        "reason": "Distributing fixed receipt slots across aggregate roots is finite and loses N+1. Variable history collections would be prohibited entity journal storage. Missing-target creation has no child root; assigning every failure to actor User or an unrelated Supplier/Product broadens responsibility. Splitting child receipts still needs one immutable multi-resource root result and authoritative cross-owner uniqueness."
+      },
+      {
+        "option": "C",
+        "decision": "NOT_SUPPORTED_BY_BINDING_MANIFEST",
+        "reason": "All 27 identities already have mandatory domain responsibilities; no reserved CommandReceipt identity. Four transitional source models are not spare target identities. Renaming/replacing an identity or combining two responsibilities requires explicit architecture change; none is silently selected."
+      },
+      {
+        "option": "D",
+        "decision": "SELECT_ARCHITECTURE_DECISION_REQUIRED",
+        "reason": "Under fixed responsibilities, exhaustive owner classes below cannot host required non-domain command rows. A new receipt responsibility or approved reallocation is necessary; D09 is not weakened."
+      }
+    ],
+    "owner_exhaustion": [
+      {
+        "tables": [
+          "User",
+          "Category",
+          "Product",
+          "Ingredient",
+          "Supplier",
+          "SystemSetting"
+        ],
+        "failure": "Principal/classification/menu/ingredient/counterparty/configuration rows; neither K1/K2 rename events nor missing-target rejected commands are new instances. Per-entity journal prohibited."
+      },
+      {
+        "tables": [
+          "IngredientBatch",
+          "InventoryTransaction",
+          "StockCount",
+          "StockCountItem"
+        ],
+        "failure": "Physical origin/event/count evidence; rename/rejected create does not create stock/count evidence. Synthetic events or counts forbidden."
+      },
+      {
+        "tables": [
+          "Recipe",
+          "RecipeIngredient",
+          "Topping",
+          "ToppingIngredient"
+        ],
+        "failure": "Menu version/composition; arbitrary manual mutation/rejection is no menu component/version."
+      },
+      {
+        "tables": [
+          "Order",
+          "OrderItem",
+          "OrderItemTopping"
+        ],
+        "failure": "Actual sale/line/selection; failed creation has no sale, Ingredient rename has none either."
+      },
+      {
+        "tables": [
+          "SupplierIngredient",
+          "PurchaseRequest",
+          "PurchaseRequestItem",
+          "GoodsReceipt"
+        ],
+        "failure": "Quote/procurement/ordered-line/receiving evidence; arbitrary rename and no-target failure are none of these."
+      },
+      {
+        "tables": [
+          "Payment",
+          "PaymentCallback",
+          "PaymentReconciliation"
+        ],
+        "failure": "Real customer attempt/provider event/account-date reconciliation; arbitrary command failure is no charge, callback or statement."
+      },
+      {
+        "tables": [
+          "AgentExecution",
+          "AgentToolCall",
+          "AgentEvaluation"
+        ],
+        "failure": "Genuine Agent run/actual dispatch/evaluation only; manual rename or rejected manual creation cannot fabricate Agent activity."
+      }
+    ],
+    "source_evidence": [
+      "apps/api/src/workflows/provider.ts: TARGET_TABLES/TARGET_ENUMS and fail-closed PostgreSQL boundary",
+      "docs/KLTN_PLAN/ARCHITECTURE_FINAL/27_TABLE_CONTRACT.md: all 27 responsibilities; no model removed to offset another table",
+      "apps/api/src/workflows/business-service.ts: command wrappers, effect savepoint, operation write and UNKNOWN handling",
+      "apps/api/src/workflows/http.ts: 25 business mutation routes and 9 Agent mutation routes; validation/envelopes outside receipt boundary",
+      "apps/api/src/common/inventory-core.ts: operationIdentity scoped key and request hash",
+      "apps/agent/src/workflows/agent-workflow.ts: actor/kind/key operations map, approval and memory command kinds",
+      "docs/KLTN_PLAN/ARCHITECTURE_FINAL/POSTGRESQL_PERSISTENCE_CONTRACT.json: prior schema inventory reused; no source/physical state change assumed"
+    ],
+    "evidence_boundary": "Argument over binding responsibilities and current source, not PostgreSQL persistence evidence. All witness proofs below are conditional on architecture approval of a legitimate receipt owner; current constrained architecture fails them.",
+    "input_sha256": {
+      "apps/api/src/workflows/business-service.ts": "8d5ece81b1093f3ff495cd8fdcbba952a0e0f1adb8b54477cf85234a9aaf0079",
+      "apps/api/src/workflows/http.ts": "9fae4d170ba968aa78906a645bae106ec349995ce6ad2a403ceb0ee14d6a02b1",
+      "apps/api/src/workflows/provider.ts": "8485d8bd7ac292e354d951911485856766d3faba3e76f9d1610f67d0f6319a6e",
+      "apps/api/src/common/inventory-core.ts": "03ebe12b9234d28a30ee00b33ed47d826a2fed9e87157b1dd11918c16048b981",
+      "apps/agent/src/workflows/agent-workflow.ts": "f65044de0e814e6afd91c9736bff3221ec9a22292044e3761d4e84be53a018dd"
+    }
+  },
+  "SELECTED_OWNER": {
+    "within_current_27": null,
+    "proposed_after_approval": "CommandReceipt",
+    "approved": false,
+    "implemented": false
+  },
+  "WHY_THIS_OWNER_IS_LEGITIMATE": "Only after explicit architecture approval: a CommandReceipt row means one authorized command's immutable terminal outcome, independent of whether domain creation succeeded. Rejection is a genuine command outcome, not a fake domain object/event. Domain tables retain their existing responsibilities. This proposed owner is additional business persistence and must be counted honestly; it cannot be called infrastructure to evade count.",
+  "COMMAND_RECEIPT_SCHEMA": {
+    "status": "UNAPPROVED_LOGICAL_DESIGN_NOT_DDL_OR_CURRENT_OWNER",
+    "fields": {
+      "id": "TEXT primary key, server-generated collision-resistant identity",
+      "scope": "TEXT NOT NULL, server-defined namespace with authorization rules; preserve existing key semantics until explicit protocol migration",
+      "commandKind": "TEXT NOT NULL, stable semantic operation identifier",
+      "callerKey": "TEXT NOT NULL, original Idempotency-Key; never regenerate on retry",
+      "actorId": "TEXT NOT NULL FK User(id) ON DELETE RESTRICT for current authenticated workflow commands",
+      "commandVersion": "INTEGER NOT NULL CHECK > 0; handler/semantic contract version, included in request hash; changing version does not create a new key identity",
+      "canonicalVersion": "INTEGER NOT NULL CHECK > 0; canonical byte encoding version",
+      "requestHash": "CHAR(64) NOT NULL CHECK lowercase SHA-256 hex; actor/scope/kind/commandVersion/canonicalVersion/expectedVersions/payload bound",
+      "expectedVersions": "JSONB NOT NULL canonical exact decimal string map; validation context, never sole authoritative FK store",
+      "outcome": "TEXT NOT NULL CHECK IN ('SUCCEEDED','REJECTED'); no new ENUM",
+      "httpStatus": "SMALLINT NOT NULL with outcome/command-specific status checks",
+      "resultVersion": "INTEGER NOT NULL CHECK > 0; immutable response contract version",
+      "responseBodyBytes": "BYTEA NOT NULL; exact final application response bytes including existing HTTP success/error envelope; not a reconstructed current entity or reserialized JSON object",
+      "responseContentType": "TEXT NOT NULL; immutable application representation metadata",
+      "responseHeaders": "Immutable allowlisted application headers only; exclude transport Date/connection/request trace headers, credentials and cookies",
+      "createdAt": "TIMESTAMPTZ(3) NOT NULL; command acceptance timestamp",
+      "outcomeRecordedAt": "TIMESTAMPTZ(3) NOT NULL; terminal record preparation time, durable only when transaction commits; not true COMMIT wall-clock time",
+      "committedAt": "NOT FROZEN: true commit timestamp cannot be populated in same transaction by pretending now()/clock_timestamp() is future commit time. If logical commit-associated timestamp is sufficient, explicitly define it as outcomeRecordedAt; otherwise approve separately specified durable commit-time capture before schema freeze. Do not claim current mock committedAt meets true commit-time requirement.",
+      "parentReceiptId": "Nullable self-FK ON DELETE RESTRICT for explicitly linked Agent/business subcommand; must not fabricate a second root outcome or defer cross-store atomicity",
+      "typedRootLinks": "Nullable root columns FK Ingredient, Product, Recipe, Order, PurchaseRequest, second PurchaseRequest for credit transfer, GoodsReceipt, StockCount, Payment, PaymentReconciliation and AgentExecution as command-specific shapes require. Link only real existing or atomically created roots. No required target FK on rejected creation; actor/receipt identity still valid. No invented approval/memory table or generic type/id pseudo-FK."
+    },
+    "uniqueness": "UNIQUE(scope,commandKind,callerKey). Hash and version excluded from unique key so changed content/version cannot escape key conflict. Store tuple, not only r6 digest. Agent actor namespace maps explicitly; never merge current Agent and business key spaces silently.",
+    "immutability": "Insert one terminal row; no committed PENDING placeholder required. UPDATE/DELETE/TRUNCATE forbidden through runtime privileges/guards. No ON CONFLICT overwrite. Future erasure policy must preserve required replay semantics; no silent TTL, response truncation, hash-only retention or slot limit.",
+    "foreign_keys": "Actor/root FKs retained RESTRICT. Missing requested target ID may exist as inert request metadata and must not be assigned a false FK. Required-success root shapes enforced by command dictionary; rejected paths allow absent roots. Multi-item effects reference real Order/PR/Receipt root through existing typed domain relationships, not response JSON as authority.",
+    "timestamps_note": "Prior mock committedAt is captured before work/commit. Renaming its meaning or adding true commit-time audit is a contract decision, not fabricated evidence. PostgreSQL date/time semantics: https://www.postgresql.org/docs/18/functions-datetime.html",
+    "legacy_public_auth_note": "Public registration/password-reset and service-only writes cannot fabricate a User actor. They need an explicitly reviewed principal/scope variant before joining same receipt schema; current minimum workflow commands all require authenticated User. No credential-bearing response is automatically retained."
+  },
+  "COMMAND_TO_OWNER_MATRIX": {
+    "profile_resolution": "Each row supplies all 12 requested dimensions. Shared protocol names refer to sections in this artifact. Candidate domain owner is effect owner only, not accepted receipt owner. Null legitimate_physical_owner is intentional.",
+    "common_profiles": {
+      "business_key": "Current caller c.key / HTTP Idempotency-Key. Immutable across retry; UNIQUE(scope,kind,key) proposed after owner approval; actor and expected versions bound by hash.",
+      "business_hash": "Current operationIdentity: r6 key hashes {type,scope,callerKey}; requestHash hashes {actorId,versions,payload}. Proposed versioned envelope adds explicit command/canonical versions; do not silently reinterpret existing keys/hashes.",
+      "agent_key": "Current Agent identity JSON.stringify([actorId,kind,key]); proposed scope explicitly contains actor namespace and maps to full tuple uniqueness.",
+      "agent_hash": "Current SHA-256 canonical {actorId,kind,payload}; proposal hash/source versions remain distinct business guards. Versioned receipt envelope required before persistent adapter.",
+      "retention": "All required terminal outcomes append without overwrite/fixed cap/cache TTL; retain business-history lifetime, until an explicitly approved D09-compatible erasure/retention policy. Current permission checked before disclosure.",
+      "current_business_storage": "MockRepository process-local operations map; no PostgreSQL physical owner",
+      "current_agent_storage": "AgentState process-local operations map; no PostgreSQL physical owner",
+      "proposed_storage": "Unapproved CommandReceipt immutable terminal row, success or rejection; exact final HTTP envelope bytes frozen once",
+      "replay": "REPLAY_PROTOCOL, never execute effects if exact tuple/hash found",
+      "unknown": "UNKNOWN_COMMIT_PROTOCOL, no blind retry or negative lookup from replica"
+    },
+    "rows": [
+      {
+        "command": "ingredient.edit",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Ingredient expected; missing ID rejection has no target",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Ingredient root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Ingredient",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 160
+        }
+      },
+      {
+        "command": "menu.draft",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Product may exist or be created; draft Recipe may not exist",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Product/Recipe root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Product/Recipe",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 73
+        }
+      },
+      {
+        "command": "menu.publish",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Product exists; published Recipe version not yet created",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Product/Recipe root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Product/Recipe",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 92
+        }
+      },
+      {
+        "command": "menu.archive",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Product expected; missing target possible",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Product/Recipe root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Product/Recipe",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 105
+        }
+      },
+      {
+        "command": "order.create",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "No Order; Product/Recipe/stock inputs only",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Order root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Order",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 167
+        }
+      },
+      {
+        "command": "order.prepare",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Order/items expected; missing target possible",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Order/OrderItem root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Order/OrderItem",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 242
+        }
+      },
+      {
+        "command": "order.complete",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Order/items expected; missing target possible",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Order/OrderItem root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Order/OrderItem",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 242
+        }
+      },
+      {
+        "command": "order.cancel",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Order/items expected; missing target possible",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Order/OrderItem root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Order/OrderItem",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 242
+        }
+      },
+      {
+        "command": "order.remake",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Original Order/items expected; new preparation effects not yet exist",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Order/OrderItem root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Order/OrderItem",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 233
+        }
+      },
+      {
+        "command": "purchase.create",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "No PR; Supplier/quote parents expected",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real PurchaseRequest root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "PurchaseRequest",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 309
+        }
+      },
+      {
+        "command": "purchase.settle",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "PR expected; settlement entry not yet exist",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real PurchaseRequest root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "PurchaseRequest",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 299
+        }
+      },
+      {
+        "command": "purchase.credit",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Source/target PR expected; credit transfer entry not yet exist",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real PurchaseRequest and optional second PurchaseRequest root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "PurchaseRequest and optional second PurchaseRequest",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 278
+        }
+      },
+      {
+        "command": "receipt.draft",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "No receiving document; PR parent expected",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real GoodsReceipt root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "GoodsReceipt",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 349
+        }
+      },
+      {
+        "command": "receipt.edit",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Draft receipt expected; missing target possible",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real GoodsReceipt root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "GoodsReceipt",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 352
+        }
+      },
+      {
+        "command": "receipt.confirm",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Draft receipt exists; new physical lots/effects not yet exist",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real GoodsReceipt root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "GoodsReceipt",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 359
+        }
+      },
+      {
+        "command": "receipt.correct",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Confirmed receipt expected; correction not yet exist",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real GoodsReceipt root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "GoodsReceipt",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 371
+        }
+      },
+      {
+        "command": "purchase.receive",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "PR exists; receipt created and confirmed in one command",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real PurchaseRequest/GoodsReceipt root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "PurchaseRequest/GoodsReceipt",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 365
+        }
+      },
+      {
+        "command": "count.create",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "No count; real batch inputs expected",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real StockCount root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "StockCount",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 410
+        }
+      },
+      {
+        "command": "count.edit",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Count expected; missing target possible",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real StockCount root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "StockCount",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 423
+        }
+      },
+      {
+        "command": "count.submit",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Count expected; missing target possible",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real StockCount root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "StockCount",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 420
+        }
+      },
+      {
+        "command": "count.approve",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Count expected; variance effects not yet exist",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real StockCount root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "StockCount",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 433
+        }
+      },
+      {
+        "command": "payment.attempt",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "No payment attempt; Order parent expected",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Payment root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Payment",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 447
+        }
+      },
+      {
+        "command": "payment.settle",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Payment expected; actual callback may be new; failed callback validation creates no valid callback",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Payment/PaymentCallback root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Payment/PaymentCallback",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 455
+        }
+      },
+      {
+        "command": "payment.refund",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Payment expected; refund result new",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Payment root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Payment",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 465
+        }
+      },
+      {
+        "command": "refund.request",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Payment expected; new refund attempt not yet exist",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Payment root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Payment",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 474
+        }
+      },
+      {
+        "command": "refund.resolve",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Payment/refund attempt expected; provider event may be new",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Payment/PaymentCallback root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Payment/PaymentCallback",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 481
+        }
+      },
+      {
+        "command": "payment.reconcile",
+        "command_scope": "http.mock",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "No reconciliation or prior account/date record may exist",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real PaymentReconciliation root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "PaymentReconciliation",
+        "source": {
+          "file": "apps/api/src/workflows/business-service.ts",
+          "line": 495
+        }
+      },
+      {
+        "command": "plan",
+        "command_scope": "Current [actorId,kind,key] identity; logical actor-owned Agent namespace",
+        "idempotency_key": "agent_key",
+        "request_hash": "agent_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "No execution before planning",
+        "rejection_receipt_storage": "current_agent_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_agent_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map identity [actorId,kind,key]; proposed UNIQUE(scope,kind,key) with explicit actor scope",
+        "fk_strategy": "Actor FK User RESTRICT; optional real AgentExecution root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "AgentExecution",
+        "source": {
+          "file": "apps/agent/src/workflows/agent-workflow.ts",
+          "line": 85
+        }
+      },
+      {
+        "command": "revise",
+        "command_scope": "Current [actorId,kind,key] identity; logical actor-owned Agent namespace",
+        "idempotency_key": "agent_key",
+        "request_hash": "agent_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Genuine execution exists; next revision not yet exist",
+        "rejection_receipt_storage": "current_agent_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_agent_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map identity [actorId,kind,key]; proposed UNIQUE(scope,kind,key) with explicit actor scope",
+        "fk_strategy": "Actor FK User RESTRICT; optional real AgentExecution root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "AgentExecution",
+        "source": {
+          "file": "apps/agent/src/workflows/agent-workflow.ts",
+          "line": 85
+        }
+      },
+      {
+        "command": "approve",
+        "command_scope": "Current [actorId,kind,key] identity; logical actor-owned Agent namespace",
+        "idempotency_key": "agent_key",
+        "request_hash": "agent_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Execution exists; approval decision may not yet exist",
+        "rejection_receipt_storage": "current_agent_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_agent_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map identity [actorId,kind,key]; proposed UNIQUE(scope,kind,key) with explicit actor scope",
+        "fk_strategy": "Actor FK User RESTRICT; optional real AgentExecution root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "AgentExecution",
+        "source": {
+          "file": "apps/agent/src/workflows/agent-workflow.ts",
+          "line": 85
+        }
+      },
+      {
+        "command": "revoke",
+        "command_scope": "Current [actorId,kind,key] identity; logical actor-owned Agent namespace",
+        "idempotency_key": "agent_key",
+        "request_hash": "agent_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Execution/approval expected; missing target possible",
+        "rejection_receipt_storage": "current_agent_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_agent_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map identity [actorId,kind,key]; proposed UNIQUE(scope,kind,key) with explicit actor scope",
+        "fk_strategy": "Actor FK User RESTRICT; optional real AgentExecution root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "AgentExecution",
+        "source": {
+          "file": "apps/agent/src/workflows/agent-workflow.ts",
+          "line": 85
+        }
+      },
+      {
+        "command": "execute",
+        "command_scope": "Current [actorId,kind,key] identity; logical actor-owned Agent namespace",
+        "idempotency_key": "agent_key",
+        "request_hash": "agent_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Execution/approval exists; resulting PR absent before consume",
+        "rejection_receipt_storage": "current_agent_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_agent_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map identity [actorId,kind,key]; proposed UNIQUE(scope,kind,key) with explicit actor scope",
+        "fk_strategy": "Actor FK User RESTRICT; optional real AgentExecution/PurchaseRequest root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "AgentExecution/PurchaseRequest",
+        "source": {
+          "file": "apps/agent/src/workflows/agent-workflow.ts",
+          "line": 85
+        }
+      },
+      {
+        "command": "remember",
+        "command_scope": "Current [actorId,kind,key] identity; logical actor-owned Agent namespace",
+        "idempotency_key": "agent_key",
+        "request_hash": "agent_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "No memory entity before command",
+        "rejection_receipt_storage": "current_agent_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_agent_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map identity [actorId,kind,key]; proposed UNIQUE(scope,kind,key) with explicit actor scope",
+        "fk_strategy": "Actor FK User RESTRICT; optional real No accepted physical active-memory owner root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "No accepted physical active-memory owner",
+        "source": {
+          "file": "apps/agent/src/workflows/agent-workflow.ts",
+          "line": 85
+        }
+      },
+      {
+        "command": "learn",
+        "command_scope": "Current [actorId,kind,key] identity; logical actor-owned Agent namespace",
+        "idempotency_key": "agent_key",
+        "request_hash": "agent_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Owner memory expected in mock; no accepted physical target",
+        "rejection_receipt_storage": "current_agent_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_agent_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map identity [actorId,kind,key]; proposed UNIQUE(scope,kind,key) with explicit actor scope",
+        "fk_strategy": "Actor FK User RESTRICT; optional real No accepted physical active-memory owner root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "No accepted physical active-memory owner",
+        "source": {
+          "file": "apps/agent/src/workflows/agent-workflow.ts",
+          "line": 85
+        }
+      },
+      {
+        "command": "consolidate",
+        "command_scope": "Current [actorId,kind,key] identity; logical actor-owned Agent namespace",
+        "idempotency_key": "agent_key",
+        "request_hash": "agent_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Zero or many owner memories in mock; no single aggregate root",
+        "rejection_receipt_storage": "current_agent_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_agent_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map identity [actorId,kind,key]; proposed UNIQUE(scope,kind,key) with explicit actor scope",
+        "fk_strategy": "Actor FK User RESTRICT; optional real No accepted physical active-memory owner root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "No accepted physical active-memory owner",
+        "source": {
+          "file": "apps/agent/src/workflows/agent-workflow.ts",
+          "line": 85
+        }
+      },
+      {
+        "command": "forget",
+        "command_scope": "Current [actorId,kind,key] identity; logical actor-owned Agent namespace",
+        "idempotency_key": "agent_key",
+        "request_hash": "agent_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Owner memory expected in mock; mutation removes active target",
+        "rejection_receipt_storage": "current_agent_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_agent_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map identity [actorId,kind,key]; proposed UNIQUE(scope,kind,key) with explicit actor scope",
+        "fk_strategy": "Actor FK User RESTRICT; optional real No accepted physical active-memory owner root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "No accepted physical active-memory owner",
+        "source": {
+          "file": "apps/agent/src/workflows/agent-workflow.ts",
+          "line": 85
+        }
+      },
+      {
+        "command": "Agent child purchase.create",
+        "command_scope": "agent.purchase; callerKey executionId:stepIndex",
+        "idempotency_key": "business_key",
+        "request_hash": "business_hash",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "No PR; genuine AgentExecution exists",
+        "rejection_receipt_storage": "current_business_storage; proposed_storage only after architecture approval",
+        "exact_response_storage": "current_business_storage; proposed_storage, including final HTTP envelope, only after approval",
+        "uniqueness_rule": "Current process map r6 digest of (scope,kind,key); proposed full UNIQUE(scope,kind,key)",
+        "fk_strategy": "Actor FK User RESTRICT; optional real PurchaseRequest root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "PurchaseRequest",
+        "source": {
+          "file": "apps/agent/src/workflows/agent-workflow.ts",
+          "line": 201
+        }
+      },
+      {
+        "command": "auth account/profile/password/reset mutations",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Public create may have no User; profile/password update expects User",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real User root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "User",
+        "source": {
+          "file": "apps/api/src/modules/auth/auth.repository.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "user create/update/delete",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Create absent; edit/delete expected",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real User root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "User",
+        "source": {
+          "file": "apps/api/src/modules/user/user.service.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "category create/update/delete",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Create absent; edit/delete expected",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Category root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Category",
+        "source": {
+          "file": "apps/api/src/modules/category/category.repository.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "product create/update/delete",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Create absent; edit/delete expected",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Product root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Product",
+        "source": {
+          "file": "apps/api/src/modules/product/product.repository.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "inventory initialize/import/adjust/threshold",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Imports create lots; ingredient/legacy inventory expected",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Ingredient/IngredientBatch/InventoryTransaction intended; currently legacy Inventory root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Ingredient/IngredientBatch/InventoryTransaction intended; currently legacy Inventory",
+        "source": {
+          "file": "apps/api/src/modules/inventory/inventory.repository.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "simulate sale/apply/restore",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Legacy inventory/batch/transaction expected",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real InventoryTransaction genuine event only root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "InventoryTransaction genuine event only",
+        "source": {
+          "file": "apps/api/src/modules/simulate-sale/simulate-sale.repository.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "supplier and supplier-product create/update/delete",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Create absent; edit/delete expected",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Supplier/SupplierIngredient intended; currently SupplierProduct root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Supplier/SupplierIngredient intended; currently SupplierProduct",
+        "source": {
+          "file": "apps/api/src/modules/supplier/supplier.repository.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "legacy purchase create/status/receive/delete",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Create absent; transitions expect PR",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real PurchaseRequest/GoodsReceipt root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "PurchaseRequest/GoodsReceipt",
+        "source": {
+          "file": "apps/api/src/modules/purchase/purchase.repository.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "legacy payment update",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Payment expected",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Payment root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Payment",
+        "source": {
+          "file": "apps/api/src/modules/payment/payment.repository.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "system-setting upsert",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Setting may not exist",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real SystemSetting root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "SystemSetting",
+        "source": {
+          "file": "apps/api/src/modules/system-setting/system-setting.repository.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "legacy Agent create-PR/log mutations",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "PR/log may not exist",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Genuine AgentExecution/ToolCall/Evaluation and Purchasing intended; currently AgentLog root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Genuine AgentExecution/ToolCall/Evaluation and Purchasing intended; currently AgentLog",
+        "source": {
+          "file": "apps/agent/src/repositories/agent.repository.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "email PR delivery-state update",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "PR expected; transport outcome may be UNKNOWN",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real PurchaseRequest root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "PurchaseRequest",
+        "source": {
+          "file": "apps/api/src/modules/email/email.service.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "Agent failure logging",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Failure log absent; genuine execution not guaranteed",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Genuine Agent evidence only; currently AgentLog root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Genuine Agent evidence only; currently AgentLog",
+        "source": {
+          "file": "apps/api/src/modules/agent/agent-failure-log.service.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "purchase service logging",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "PR may exist; no guaranteed genuine Agent run",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Purchasing outcome, not fake Agent activity root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Purchasing outcome, not fake Agent activity",
+        "source": {
+          "file": "apps/api/src/modules/purchase/purchase.service.ts",
+          "line": null
+        }
+      },
+      {
+        "command": "seed/import mutations",
+        "command_scope": "NOT DEFINED by current legacy command receipt boundary",
+        "idempotency_key": "NOT GENERALLY REQUIRED/PERSISTED by existing legacy surfaces",
+        "request_hash": "NO retained canonical command hash contract on this surface",
+        "legitimate_physical_owner": null,
+        "target_entity_exists_before_execution": "Mixed create/update/delete; not public command contract",
+        "rejection_receipt_storage": "MISSING; unapproved proposed CommandReceipt only",
+        "exact_response_storage": "MISSING immutable exact command response; mutable domain state/log not sufficient",
+        "uniqueness_rule": "NO scoped command outcome uniqueness proven; natural entity keys do not suffice",
+        "fk_strategy": "Actor FK User RESTRICT; optional real Genuine domain entities only; no runtime receipt bypass authorized root FKs where present; absent target rejection valid without fabricated root. Missing-target requested IDs remain inert metadata, not false FK.",
+        "retention_requirement": "retention profile; no per-root fixed slots",
+        "replay_lookup": "replay profile; current process map only, no durable lookup",
+        "unknown_commit_lookup": "unknown profile; authoritative outcome unavailable in current architecture",
+        "domain_effect_owner": "Genuine domain entities only; no runtime receipt bypass authorized",
+        "source": {
+          "file": "packages/database/prisma/{seed_cafe,seed_workflows,seed-suppliers}.ts",
+          "line": null
+        }
+      }
+    ],
+    "coverage": {
+      "business_commands": 27,
+      "business_http_routes": 25,
+      "agent_commands": 9,
+      "agent_linked_business_commands": 1,
+      "additional_legacy_surface_groups": 15,
+      "total_matrix_rows": 52
+    }
+  },
+  "REJECTION_STORAGE": {
+    "current": "No valid physical location in fixed 27-table responsibilities. Mock maps lose receipt on process restart.",
+    "proposed_after_approval": "Standalone CommandReceipt row; target links nullable. Outer transaction locks current actor and command key before SAVEPOINT effects. Recognized business rejection -> ROLLBACK TO effects -> insert rejection receipt outside rolled-back effects -> COMMIT outer transaction. Receipt insert failure rolls back whole transaction; no response reported as durable.",
+    "retained": "Authorized canonicalizable deterministic business invalidity, not-found, stale-version, unavailable stock, invalid lifecycle, invalid/stale/expired approval and equivalent declared domain failures. Input/expected versions frozen before execution. Never revalidate an already retained rejection against new mutable state on replay.",
+    "not_new_terminal_receipts": "Unauthenticated/current-unauthorized access, malformed transport without usable command identity, hash conflict against existing key, infrastructure/serialization/deadlock/connection failure; these must not overwrite an existing receipt. Current authorization denial before replay intentionally hides prior response.",
+    "validation_gap": "HTTP zod parsing currently occurs before BusinessWorkflows/Agent command receipt boundary, so canonicalizable business validation rejected there is not retained. A future adapter must move deterministic domain validation under receipt handling and freeze final HTTP envelope. Malformed transport is distinct from authorized business rejection; no D09 weakening by relabeling domain failures as transport.",
+    "savepoint_limit": "Locks acquired after savepoint may be released on rollback; receipt key/authority locks must precede savepoint. Infrastructure/deferred constraint failure at COMMIT is whole-transaction failure; known business constraints requiring retained rejection must be evaluated/mapped within effect savepoint.",
+    "source": "https://www.postgresql.org/docs/18/sql-rollback-to.html"
+  },
+  "REPLAY_PROTOCOL": [
+    "Authenticate; load and lock current User authority; verify endpoint/object access. Normalize server-owned scope/kind; validate canonicalizable command envelope without running domain mutations.",
+    "Acquire transaction-scoped command-key advisory lock before effect savepoint. Then query immutable receipt by full tuple on authoritative primary. Full-tuple unique constraint remains authority; advisory digest collisions only serialize unrelated commands.",
+    "Existing row: confirm actor access and original versioned request hash. Match returns original status/body bytes and immutable application headers; mismatch returns 409 without replacing old row. Do not reconstruct response from latest Ingredient/Order/Payment/Agent state.",
+    "Absent row: execute once under effect savepoint; retain exact success or recognized rejection; commit effects plus terminal receipt atomically. No provider/LLM/email network side effect inside receipt SQL transaction.",
+    "After restart use same tuple/versioned canonicalizer and bytes. Current privilege revocation can deny replay; exact historical response is returned only when currently authorized. Domain state changes cannot erase or rewrite historical responses."
+  ],
+  "UNKNOWN_COMMIT_PROTOCOL": {
+    "current": "BusinessWorkflows on UNKNOWN performs authorized operation lookup; matching receipt returns result, absent receipt rethrows UNKNOWN. In-memory lookup is not durable proof.",
+    "conditional_steps": [
+      "Retain original tuple/hash/body/versions. A connection error or lost COMMIT reply means UNKNOWN, not rollback. Do not submit a new key.",
+      "Recover on authoritative writable primary for same durable database incarnation; authenticate/current-authorize and acquire same transaction command-key lock. If original transaction unresolved, lock waits or times out to UNKNOWN.",
+      "After lock acquisition execute a fresh READ COMMITTED receipt SELECT. Matching tuple/hash -> original committed result; mismatch -> conflict. Another writer must not bypass key lock or atomic receipt/effects rule.",
+      "Absence means confirmed local rollback only if original key holder has resolved, no prepared transaction remains, database lineage/durability is intact, receipt retention is intact and every effect writer atomically wrote receipt. Otherwise absence remains UNKNOWN. Stale snapshot/replica/promotion that lost acknowledged writes cannot prove rollback.",
+      "Only confirmed rollback permits bounded retry of same command, at most three total confirmed attempts. While authority unavailable/unresolved, return pending/UNKNOWN; no claimed authoritative answer. External provider outcome requires provider lookup separately, never inferred from local absence."
+    ],
+    "durability_boundary": "Process restart on same durable primary is recoverable under proposed protocol. All-node loss or asynchronous failover data loss cannot be made exactly-once by a receipt table. Deployment durability/fencing assumptions must be explicit before evidence is claimed.",
+    "sources": [
+      "https://www.postgresql.org/docs/18/explicit-locking.html",
+      "https://www.postgresql.org/docs/18/transaction-iso.html"
+    ]
+  },
+  "K1_K2_REPLAY_PROOF": {
+    "current_27_result": "FAIL: current mutable Ingredient plus finite columns cannot reconstruct retained exact K1 result after K2; no lawful event/journal owner is available.",
+    "conditional_after_owner_approval": [
+      "Initial Ingredient I.name=A, version=1. K1=(scope,ingredient.edit,key1), requestHash H1 binds I/A->B/expected v1/actor. Atomic success stores I=B/v2 and immutable receipt R1 containing exact original application HTTP status/body bytes B/v2.",
+      "K2 uses key2 and expected v2. Atomic success stores I=C/v3 and separate receipt R2 with C/v3. Unique identities differ by key; R1 cannot be overwritten.",
+      "Restart. Authorized replay key1 with original payload/expected v1 finds R1 before current-version business validation, verifies H1, returns R1 bytes B/v2. No effect function runs; I remains C/v3.",
+      "Changed key1 payload/hash -> 409; R1 and I unchanged. For arbitrary distinct Ki, each has independent append row, so no N-slot limit. Proof rests on terminal immutability, full-tuple uniqueness, shared transaction and durable retention, not hash alone."
+    ],
+    "execution_evidence": "NOT RUN; no PostgreSQL connection"
+  },
+  "REJECTED_CREATE_PROOF": {
+    "current_27_result": "FAIL: no target row; actor/parent existence does not legitimize generic history on User/Product/Supplier/PR. Natural child result owner never created.",
+    "conditional_after_owner_approval": [
+      "K3 authenticated/canonicalizable createOrder with valid shape but a nonexistent Product, or createPurchase with stale quote, enters receipt boundary. No Order/PR exists. Lock actor/key before SAVEPOINT.",
+      "Business validation fails; rollback effect savepoint removes partial inserts/IDs/effects. Insert one CommandReceipt(K3,hash,REJECTED,original error status/body bytes,actor,nullable target links) into surviving outer transaction. Commit receipt with zero domain effects.",
+      "Restart and later product/quote state changes. Authorized same K3/hash returns exact original rejection bytes before rechecking current domain validity. New desired create needs new key. Changed K3 hash -> 409. No fake Order/PR/stock/Agent row required.",
+      "Crash before outer COMMIT -> no durable rejection claim, zero committed effects. Lost reply after COMMIT -> UNKNOWN protocol finds rejection row. This is conditional logical proof; current source's pre-command HTTP validation remains a gap."
+    ],
+    "execution_evidence": "NOT RUN; no PostgreSQL connection"
+  },
+  "CONSTRAINTS_REQUIRED": [
+    "Explicit approval of receipt ownership/manifest change before any schema implementation; exactly 16 existing ENUMs remain unchanged. New outcome fields use finite TEXT checks.",
+    "Authoritative UNIQUE(scope,commandKind,callerKey); version/hash immutable and excluded from uniqueness; no conflict-upsert replacement or fixed slot retention.",
+    "Same database transaction for domain effects, linked Agent/backend effects and terminal receipt; current-authority/key locking before effect savepoint; all writers obey boundary, no independent commit hooks.",
+    "Actor typed User FK and real target FK shapes RESTRICT; missing-target rejection allowed; no fake entities or polymorphic reference strings masquerading as FK integrity.",
+    "Immutable byte-exact final application response and supported versioned serializer/canonicalizer; current HTTP envelope must be frozen inside command boundary, not recreated by changed sendSuccess/sendError code.",
+    "Terminal success/rejection classification and canonicalizable validation boundaries explicit; no silently dropped rejected creates or mutable-state replay.",
+    "Retain all keys/hashes/results for required history lifetime. No response-size truncation, short TTL or secret-bearing payload. Memory forgetting versus exact historical text response requires explicit privacy/retention policy, not use receipts as active memory store.",
+    "Authoritative primary lookup after original transaction/key resolution; no stale-replica negative proof; confirmed rollback vs UNKNOWN classification and durability/failover assumptions tested later.",
+    "createdAt/outcomeRecordedAt/actual committedAt meanings distinct. now() is transaction-start time and clock_timestamp() is call time, neither future commit timestamp. Timestamp contract remains explicit decision before field freeze.",
+    "T18-T24 receipt witnesses plus process restart, fault after every effect/receipt write, concurrent same/different hash, rejected create after rollback, current role revocation, exact HTTP bytes and retained history bounds; all NOT RUN here."
+  ],
+  "D09_COVERAGE": {
+    "current": "NOT SATISFIED: process-local receipt maps, absent legitimate physical owner, pre-command domain validation rejection gaps and external HTTP envelope recreation",
+    "proposed": "Logical design covers scoped identity, actor/hash/version, arbitrary append outcomes, exact success/rejection response and conditional restart/UNKNOWN recovery only after architecture approval and unresolved timestamp/retention details. No implementation or durability acceptance claimed.",
+    "not_a_solution": "Adding CommandReceipt does not solve U2-U6 or active domain/memory persistence. This task does not redesign those areas."
+  },
+  "IMPACT_ON_27_TABLE_MANIFEST": {
+    "current_manifest": "UNCHANGED: 27 target identities / 16 ENUMs; current 31 source declarations include four transitional identities",
+    "proposed_minimal_change": "Add CommandReceipt as 28th business table, retain all existing 27 identities/responsibilities and exactly 16 ENUMs",
+    "if_exact_27_remains_absolute": "No approved solution under current responsibilities. Must explicitly reallocate/consolidate an existing responsibility and replace target identity through architecture review; no spare identity found, no specific removal/consolidation approved or designed here.",
+    "forbidden_shortcuts": "No receipt table in alternate schema classified as infrastructure, hidden partition/join store, legacy table reused secretly, entity JSON/array/blob journal or external cache/file as durable authority."
+  },
+  "ARCHITECTURE_CHANGE_REQUIRED": {
+    "required": true,
+    "smallest_responsibility_preserving_proposal": "Approve exactly one additional CommandReceipt business table: 28 tables / existing 16 ENUMs; D09 unchanged; existing 27 responsibilities unchanged.",
+    "alternative": "If count must remain 27, explicitly approve a revised identity/responsibility manifest making room for command history while preserving all requirements; feasibility not demonstrated. No automatic replacement.",
+    "approval_state": "NOT APPROVED; this task requests evaluation, not authorization to change binding count. No schema/code/migration created."
+  },
+  "REMAINING_RISKS": [
+    "No valid owner within fixed current 27 responsibilities; conditional candidate cannot be presented as resolved U1.",
+    "Exact immutable application response includes HTTP envelope/version, not merely current OperationRecord.response body. Credential/PII policy and memory forgetting must be explicit.",
+    "Timestamp semantic gap: actual commit time is not precommit timestamp; no fabricated committedAt evidence.",
+    "Canonicalizable HTTP domain validation currently escapes retained rejection boundary; current legacy mutation APIs often have no idempotency boundary at all.",
+    "Public auth/service actor variants need reviewed principal scope and secret-safe response rules if covered; no fake User principal allowed.",
+    "Authoritative recovery may remain UNKNOWN during outage/unresolved transaction; no protocol can promise instant certainty or recover lost database durability by lookup alone.",
+    "Only static source/JSON/manifest/coverage/diff checks performed; no PostgreSQL runtime proof, migration, production mutation or U2-U6 work."
+  ],
+  "NEXT_ACTION": "Architecture decision required: explicitly approve proposed 28-table/16-ENUM CommandReceipt owner, or provide an approved revised 27-identity/responsibility manifest. Until then stop U1-dependent persistence work; do not connect to PostgreSQL, implement schema, proceed to U2-U6 or weaken D09."
+}

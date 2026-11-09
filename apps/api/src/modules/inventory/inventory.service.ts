@@ -213,7 +213,6 @@ const getThresholdWarnings = (inputThreshold: number, leadTimeDemand: number, re
 };
 
 export const getInventories = async (): Promise<InventoryDto[]> => {
-    await inventoryRepository.createMissingForActiveProducts();
     const inventories = await inventoryRepository.findMany();
 
     const openPRs = await prisma.purchaseRequestItem.findMany({

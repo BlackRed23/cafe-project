@@ -1,6 +1,8 @@
 import { InventoryTransactionType, PurchaseRequestStatus, type Prisma } from '@cafe-project/database';
 import { prisma } from '@cafe-project/database';
 import type { CreatePurchaseRequestInput, PurchaseRequestFiltersInput, ReceivePurchaseRequestInput } from './purchase.validator';
+import { duplicateReceiptItemIndex } from './purchase.receipt-validation';
+import { HttpError } from '../../common/http-error';
 
 const purchaseInclude = {
     supplier: { include: { products: true } },
@@ -75,6 +77,9 @@ export const purchaseRepository = {
     },
     async updateStatus(id: string, data: Prisma.PurchaseRequestUpdateInput): Promise<PurchaseRequestRecord> { return prisma.purchaseRequest.update({ where: { id }, data, include: purchaseInclude }); },
     async receive(request: PurchaseRequestRecord, input: ReceivePurchaseRequestInput, userId: string): Promise<PurchaseRequestRecord> {
+        if (duplicateReceiptItemIndex(input.items) !== -1) {
+            throw new HttpError(400, 'Each purchase request item can appear only once per receipt.');
+        }
         let retries = 0;
         let lastError: any = null;
 

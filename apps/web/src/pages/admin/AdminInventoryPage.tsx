@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import { AdjustmentBatchSelect, eligibleAdjustmentBatches } from "../../components/admin/AdjustmentBatchSelect";
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -21,7 +23,9 @@ import { useToast } from "../../contexts/ToastContext";
 
 type InventoryTab = "ALL" | "LOW_STOCK" | "WARNING" | "EXPIRING_SOON";
 
-export const AdminInventoryPage: React.FC = () => {
+export const AdminInventoryPage: React.FC = () => mockEnabled ? <MockWorkspace area="inventory" /> : <LegacyAdminInventoryPage />;
+
+const LegacyAdminInventoryPage: React.FC = () => {
   const navigate = useNavigate();
   const { isStaff } = useAuth();
   const [inventories, setInventories] = useState<Inventory[]>([]);

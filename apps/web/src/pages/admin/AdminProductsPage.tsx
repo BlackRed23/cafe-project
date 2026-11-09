@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { productsApi } from "../../api/products.api";
@@ -14,7 +16,9 @@ import { DataTable } from "../../components/admin/DataTable";
 import { useAuth } from "../../contexts/AuthContext";
 import { Plus, Edit2, Trash2, Coffee, RefreshCw, AlertCircle, CheckCircle, Info } from "lucide-react";
 
-export const AdminProductsPage: React.FC = () => {
+export const AdminProductsPage: React.FC = () => mockEnabled ? <MockWorkspace area="menu" /> : <LegacyAdminProductsPage />;
+
+const LegacyAdminProductsPage: React.FC = () => {
   const navigate = useNavigate();
   const { isStaff } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);

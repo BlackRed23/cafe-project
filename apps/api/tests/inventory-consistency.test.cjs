@@ -251,6 +251,30 @@ test('service emits no Agent effects when repository transaction rejects', async
     assert.deepEqual(effects, []);
 });
 
+test('inventory listing never provisions missing inventory or emits Agent writes', async () => {
+    let inventoryWrites = 0;
+    const effects = [];
+    const service = evaluate('modules/inventory/inventory.service.ts', {
+        '@cafe-project/database': { prisma: {
+            purchaseRequestItem: { findMany: async () => [] },
+            inventoryTransaction: { groupBy: async () => [] },
+            supplierProduct: { findMany: async () => [] }
+        }, InventoryTransactionType: {} },
+        '../../common/http-error': { HttpError },
+        './inventory.repository': { inventoryRepository: {
+            createMissingForActiveProducts: async () => { inventoryWrites++; throw new Error('GET must not provision stock'); },
+            findMany: async () => []
+        } },
+        '../agent/agent.client': {
+            createAgentLogViaAgentService: async () => { effects.push('log'); },
+            scanInventoryViaAgentService: async () => { effects.push('scan'); }
+        }
+    });
+    assert.equal((await service.getInventories()).length, 0);
+    assert.equal(inventoryWrites, 0);
+    assert.deepEqual(effects, []);
+});
+
 test('inventory HTTP routes preserve ADMIN-only writes before persistence (in-process, JWT and persistence mocked)', async () => {
     const express = require('express');
     const response = evaluate('common/response.ts', {});
@@ -258,8 +282,8 @@ test('inventory HTTP routes preserve ADMIN-only writes before persistence (in-pr
         '../../common/http-error': { HttpError }, '../../common/response': response,
         './auth.service': { verifyAuthToken(token) {
             if (!['ADMIN', 'STAFF', 'CUSTOMER'].includes(token)) throw new HttpError(401, 'Invalid token');
-            return { id: 'actor', role: token };
-        } }
+            return { id: token, role: token };
+        }, async getCurrentUser(id) { return { id, email: 'actor@example.test', role: id }; } }
     });
     const validators = evaluate('modules/inventory/inventory.validator.ts', { zod: require('zod') });
     const f = fixture();

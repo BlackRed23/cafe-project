@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { productsApi } from "../../api/products.api";
@@ -51,7 +53,9 @@ const toastStyles: Record<ToastType, { bg: string; border: string; text: string;
   },
 };
 
-export const AdminProductFormPage: React.FC = () => {
+export const AdminProductFormPage: React.FC = () => mockEnabled ? <MockWorkspace area="menu" /> : <LegacyAdminProductFormPage />;
+
+const LegacyAdminProductFormPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEdit = !!id;
