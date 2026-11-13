@@ -26,14 +26,15 @@ model AgentExecution {
   costUsd         Decimal         @default(0) @db.Decimal(10, 6)
   fallbackUsed    Boolean         @default(false)
   triggeredBy     String?
-  triggeredByUser User?           @relation("AgentExecutionTriggeredBy", fields: [triggeredBy], references: [id])
+  triggeredByUser User?           @relation("AgentExecutionTriggeredBy", fields: [triggeredBy], references: [id], onDelete: Restrict)
   startedAt       DateTime        @default(now())
   endedAt         DateTime?
   errorMessage    String?
   idempotencyKey  String?         @unique
 
-  toolCalls   AgentToolCall[]
-  evaluations AgentEvaluation[]
+  toolCalls        AgentToolCall[]
+  evaluations      AgentEvaluation[]
+  purchaseRequests PurchaseRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -44,7 +45,7 @@ model AgentExecution {
 model AgentToolCall {
   id           String         @id @default(cuid())
   executionId  String
-  execution    AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  execution    AgentExecution @relation(fields: [executionId], references: [id], onDelete: Restrict)
   stepNo       Int
   toolName     String
   arguments    Json
@@ -61,7 +62,7 @@ model AgentToolCall {
 model AgentEvaluation {
   id            String          @id @default(cuid())
   executionId   String?
-  execution     AgentExecution? @relation(fields: [executionId], references: [id])
+  execution     AgentExecution? @relation(fields: [executionId], references: [id], onDelete: Restrict)
   testCode      String
   category      String
   prompt        String
@@ -82,21 +83,4 @@ model SystemSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
-}
-
-// Chuyển tiếp (Transitional)
-model AgentLog {
-  id             String   @id @default(uuid())
-  action         String
-  input          String?
-  output         String?
-  reasoning      String?
-  fallback_used  Boolean  @default(false)
-  error_message  String?
-  reference_type String?
-  reference_id   String?
-  result         String?
-  triggered_at   DateTime @default(now())
-  createdBy      String?
-  creator        User?    @relation("AgentLogCreatedBy", fields: [createdBy], references: [id])
 }

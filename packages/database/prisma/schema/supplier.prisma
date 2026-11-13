@@ -1,17 +1,17 @@
 model Supplier {
-  id        String    @id @default(cuid())
-  name      String
-  email     String?
-  contact   String?
-  address   String?
-  status    String    @default("ACTIVE")
-  deletedAt DateTime?
+  id               String    @id @default(cuid())
+  name             String
+  email            String?
+  contact          String?
+  address          String?
+  status           String    @default("ACTIVE")
+  deletedAt        DateTime?
+  // Unknown historical score stays NULL; DOCX specifies no scoring formula/range.
+  reliabilityScore Decimal?  @db.Decimal
 
   ingredients      SupplierIngredient[]
   purchaseRequests PurchaseRequest[]
-
-  // Chuyển tiếp (Transitional)
-  products SupplierProduct[]
+  batches          IngredientBatch[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -20,9 +20,9 @@ model Supplier {
 model SupplierIngredient {
   id                   String     @id @default(cuid())
   supplierId           String
-  supplier             Supplier   @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplier             Supplier   @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   ingredientId         String
-  ingredient           Ingredient @relation(fields: [ingredientId], references: [id])
+  ingredient           Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
   pricePerBaseUnit     Decimal    @db.Decimal(18, 4)
   supplierSku          String?
   purchaseUnit         String
@@ -36,26 +36,4 @@ model SupplierIngredient {
   updatedAt DateTime @updatedAt
 
   @@unique([supplierId, ingredientId])
-}
-
-// Chuyển tiếp (Transitional)
-model SupplierProduct {
-  id                   String   @id @default(cuid())
-  supplierId           String
-  supplier             Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  productId            String
-  product              Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  price                Decimal  @db.Decimal(12, 2)
-  supplierSku          String?
-  minOrderQuantity     Int      @default(1)
-  leadTimeDays         Int      @default(3)
-  isPreferred          Boolean  @default(false)
-  purchaseUnit         String?
-  conversionQuantity   Float?
-  conversionTargetUnit String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([supplierId, productId])
 }

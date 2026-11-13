@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15-alpine
@@ -9,9 +7,15 @@ services:
       POSTGRES_PASSWORD: cafedb_password
       POSTGRES_DB: cafedb
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
 
   agent:
@@ -21,15 +25,23 @@ services:
       dockerfile: apps/agent/Dockerfile
     container_name: cafe_agent
     environment:
-      - DATABASE_URL=postgresql://cafedb:cafedb_password@postgres:5432/cafedb
+      - DATABASE_URL=${CAFE_DATABASE_URL:?CAFE_DATABASE_URL is required}
       - PORT=5055
-      - AGENT_INTERNAL_TOKEN=dev-agent-secret
+      - AGENT_HOST=0.0.0.0
+      - AGENT_INTERNAL_TOKEN=${AGENT_INTERNAL_TOKEN:?Set AGENT_INTERNAL_TOKEN to a secure random secret}
       - GEMINI_API_KEY=dummy_key_for_local_demo
       - NODE_ENV=development
     ports:
       - "5055:5055"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5055/health', {signal: AbortSignal.timeout(3000)}).then(r => process.exit(r.status === 200 ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     restart: unless-stopped
 
   api:
@@ -39,9 +51,10 @@ services:
       dockerfile: apps/api/Dockerfile
     container_name: cafe_api
     environment:
-      - DATABASE_URL=postgresql://cafedb:cafedb_password@postgres:5432/cafedb
+      - DATABASE_URL=${CAFE_DATABASE_URL:?CAFE_DATABASE_URL is required}
       - PORT=5000
       - AGENT_BASE_URL=http://agent:5055
+      - AGENT_INTERNAL_TOKEN=${AGENT_INTERNAL_TOKEN:?Set AGENT_INTERNAL_TOKEN to a secure random secret}
       - FRONTEND_URL=http://localhost:8080
       - CORS_ORIGIN=http://localhost:8080,http://localhost:5173
       - JWT_SECRET=local_demo_jwt_secret
@@ -49,8 +62,16 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - postgres
-      - agent
+      postgres:
+        condition: service_healthy
+      agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/health', {signal: AbortSignal.timeout(3000)}).then(r => process.exit(r.status === 200 ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
     restart: unless-stopped
 
   web:
@@ -64,7 +85,14 @@ services:
     ports:
       - "8080:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
     restart: unless-stopped
 
 volumes:

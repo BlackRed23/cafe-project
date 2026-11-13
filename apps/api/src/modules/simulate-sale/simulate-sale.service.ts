@@ -1,273 +1,59 @@
+import { Prisma } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
+import { activeRecipe, recipeNeeds, productCapacity, ingredientAvailable } from '../../common/recipe-stock';
 import { simulateSaleRepository } from './simulate-sale.repository';
 import type { SimulateSaleInput } from './simulate-sale.validator';
-import { scanInventoryViaAgentService, createAgentLogViaAgentService } from '../agent/agent.client';
-
-const randomInt = (min: number, max: number): number => Math.floor(Math.random() * (max - min + 1)) + min;
-
-// Helper to normalize simulate sale input into items array
-const normalizeSimulateItems = (input: SimulateSaleInput) => {
-  if (input.items && input.items.length > 0) {
-    return input.items;
-  }
-  if (input.productId) {
-    return [{ productId: input.productId, quantity: input.quantity ?? 0 }];
-  }
-  return [];
-};
-
-const runAgentScan = async (input: { productIds: string[]; userId: string; sourceId?: string }) => {
-    try {
-        const scan = await scanInventoryViaAgentService({
-            productIds: input.productIds,
-            triggerType: 'SIMULATE_SALE',
-            sourceType: 'SIMULATE_SALE',
-            sourceId: input.sourceId
-        }, input.userId);
-        return { ...scan, agentWarning: null };
-    } catch (error) {
-        console.error('[AI_AGENT] Failed to scan inventory after simulate sale', error);
-        return {
-            results: [],
-            createdPurchaseRequests: [],
-            agentWarning: 'Simulate sale completed, but AI Agent scan could not run.'
-        };
-    }
-};
 
 export const simulateSaleService = {
-    async run(input: SimulateSaleInput, userId: string) {
-        // Multi-product support
-    if (input.items && input.items.length > 0) {
-        // Resolve inventories for all items
-        const allInventories = await simulateSaleRepository.findInventories();
-        const plans = input.items.map((it) => {
-            const inv = allInventories.find((i) => i.productId === it.productId);
-            if (!inv) {
-                throw new HttpError(404, `Inventory not found for product ${it.productId}.`);
+    async run(input: SimulateSaleInput, _userId: string) {
+        // Legacy implementation mutated real stock and triggered purchase creation.
+        // No approved replacement policy or simulation persistence contract exists.
+        if (input.isPreview !== true) throw new HttpError(409, 'BLOCKED: mô phỏng ghi tồn thật chưa có chính sách được xác minh. Chỉ hỗ trợ isPreview=true.', 'SIMULATION_WRITE_BLOCKED');
+        let items = input.items?.length ? input.items : input.productId ? [{ productId: input.productId, quantity: input.quantity ?? 0 }] : [];
+        if (input.simulationMode || input.dailySimulatedQuantity !== undefined) {
+            if (items.length !== 1) throw new HttpError(400, 'Mô phỏng theo kỳ chỉ nhận một sản phẩm.');
+            let days = input.simulationMode === 'WEEK' ? 7 : input.simulationMode === 'MONTH' ? 30 : 1;
+            if (input.simulationMode === 'CUSTOM_RANGE') {
+                const start = Date.parse(input.startDate ?? ''), end = Date.parse(input.endDate ?? '');
+                if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) throw new HttpError(400, 'Khoảng thời gian không hợp lệ.');
+                days = Math.floor((end - start) / 86400000) + 1;
             }
-            if (!inv.product.isActive) {
-                throw new HttpError(400, `Selected product ${it.productId} is inactive.`);
+            items = [{ productId: items[0]!.productId, quantity: input.dailySimulatedQuantity === undefined ? items[0]!.quantity : input.dailySimulatedQuantity * days }];
+        }
+        if (!items.length || new Set(items.map(i => i.productId)).size !== items.length || items.some(i => !Number.isSafeInteger(i.quantity) || i.quantity <= 0)) throw new HttpError(400, 'Số lượng mô phỏng không hợp lệ.');
+        const products = await simulateSaleRepository.findProducts(items.map(i => i.productId));
+        const totals = new Map<string, { quantity: Prisma.Decimal; available: Prisma.Decimal }>();
+        const affectedProducts = items.map(item => {
+            const product = products.find(p => p.id === item.productId);
+            if (!product) throw new HttpError(404, 'Không tìm thấy sản phẩm đang bán.');
+            const recipe = activeRecipe(product.recipes), needs = recipeNeeds(recipe, item.quantity);
+            for (const [id, amount] of needs) {
+                const ingredient = recipe.ingredients.find(i => i.ingredientId === id)!.ingredient;
+                const previous = totals.get(id);
+                totals.set(id, { quantity: (previous?.quantity ?? new Prisma.Decimal(0)).plus(amount), available: ingredientAvailable(ingredient) });
             }
-            const available = (inv.quantity ?? 0) - (inv.reservedStock ?? 0);
-            if (available < it.quantity) {
-                const unit = inv.product?.unit || 'đơn vị';
-                throw new HttpError(400, `Không đủ tồn kho để mô phỏng bán hàng cho sản phẩm ${it.productId}. Tồn kho hiện tại: ${available} ${unit}, yêu cầu: ${it.quantity} ${unit}.`);
-            }
-            return { inventory: inv, decrease: it.quantity };
+            const capacity = productCapacity(product.recipes);
+            if (item.quantity > capacity) throw new HttpError(409, 'Không đủ nguyên liệu/lô còn hạn cho dự báo.');
+            return { productId: product.id, productName: product.name, inventoryId: null, transactionId: null,
+                stockBefore: capacity, stockAfter: capacity - item.quantity, decreasedQuantity: item.quantity,
+                ingredientConsumption: [...needs].map(([ingredientId, quantity]) => ({ ingredientId, quantityBase: quantity.toString() })) };
         });
-        const affectedProducts = await simulateSaleRepository.applySale(plans, input.note ?? null, userId);
-        const allAgentResults: any[] = [];
-        const allCreatedPurchaseRequests: any[] = [];
-        let anyWarning: string | null = null;
-        let lastScanSessionId: string | undefined;
-
+        for (const total of totals.values()) if (total.quantity.gt(total.available)) throw new HttpError(409, 'Các sản phẩm dùng chung nguyên liệu vượt tồn khả dụng.');
         for (const affected of affectedProducts) {
-            const scan = await runAgentScan({
-                productIds: [affected.productId],
-                sourceId: affected.transactionId,
-                userId
-            });
-            createAgentLogViaAgentService({
-                action: 'SIMULATE_SALE_COMPLETED',
-                result: 'SUCCESS',
-                reasoning: `Mô phỏng bán hoàn tất. Tồn kho sản phẩm ${affected.productName} đã trừ ${affected.decreasedQuantity}. AI Agent đã kiểm tra.`,
-                input: {
-                    productId: affected.productId,
-                    productName: affected.productName,
-                    quantityBefore: affected.stockBefore,
-                    quantityAfter: affected.stockAfter,
-                    quantityDecreased: affected.decreasedQuantity,
-                    triggerType: 'SIMULATE_SALE'
-                },
-                output: {
-                    description: `Mô phỏng bán hoàn tất. AI Agent đã kiểm tra tồn kho.`,
-                    agentWarning: scan.agentWarning || null,
-                    createdPurchaseRequestsCount: scan.createdPurchaseRequests?.length || 0,
-                    scanSessionId: scan.scanSessionId || null
-                },
-                creator: userId ? { connect: { id: userId } } : undefined
-            }).catch(console.error);
-
-            allAgentResults.push(...scan.results);
-            allCreatedPurchaseRequests.push(...scan.createdPurchaseRequests);
-            if (scan.agentWarning) anyWarning = scan.agentWarning;
-            if (scan.scanSessionId) lastScanSessionId = scan.scanSessionId;
+            const recipe = activeRecipe(products.find(product => product.id === affected.productId)!.recipes);
+            affected.stockAfter = Math.min(...[...recipeNeeds(recipe, 1)].map(([id, perServing]) => {
+                const total = totals.get(id)!;
+                return total.available.minus(total.quantity).div(perServing).floor().toNumber();
+            }));
         }
-
-        return {
-            affectedProducts,
-            createdPurchaseRequests: allCreatedPurchaseRequests,
-            agentLogs: allAgentResults,
-            agentResults: allAgentResults,
-            agentWarning: anyWarning,
-            scanSessionId: lastScanSessionId,
-            newQuantity: affectedProducts[0]?.stockAfter ?? 0,
-        };
-    }
-    if (input.productId) {
-            const inventory = await simulateSaleRepository.findInventoryByProductId(input.productId);
-
-            if (!inventory) {
-                throw new HttpError(404, 'Inventory not found for selected product.');
-            }
-
-            if (!inventory.product.isActive) {
-                throw new HttpError(400, 'Selected product is inactive.');
-            }
-
-            let quantity = input.quantity ?? 0;
-
-            if (input.simulationMode || input.dailySimulatedQuantity) {
-                let numberOfDays = 1;
-                if (input.simulationMode === 'WEEK') numberOfDays = 7;
-                else if (input.simulationMode === 'MONTH') numberOfDays = 30;
-                else if (input.simulationMode === 'CUSTOM_RANGE') {
-                    if (input.startDate && input.endDate) {
-                        const start = new Date(input.startDate);
-                        const end = new Date(input.endDate);
-                        const diffTime = end.getTime() - start.getTime();
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        numberOfDays = diffDays >= 0 ? diffDays + 1 : 0;
-                    } else {
-                        numberOfDays = 0;
-                    }
-                }
-
-                if (input.dailySimulatedQuantity) {
-                    quantity = Math.round(input.dailySimulatedQuantity * numberOfDays);
-                }
-            }
-
-            if (inventory.quantity < quantity) {
-                let unit = inventory.product?.unit || 'đơn vị';
-                if (unit.toLowerCase() === 'ly') unit = 'đơn vị';
-                throw new HttpError(400, `Không đủ tồn kho để mô phỏng bán hàng. Tồn kho hiện tại: ${inventory.quantity} ${unit}, yêu cầu: ${quantity} ${unit}.`);
-            }
-
-            const affectedProduct = await simulateSaleRepository.applyProductSale(inventory, quantity, input.note ?? null, userId);
-            if (!affectedProduct) {
-                throw new HttpError(404, 'Inventory not found for selected product.');
-            }
-
-            const scan = await runAgentScan({
-                productIds: [affectedProduct.productId],
-                sourceId: affectedProduct.transactionId,
-                userId
-            });
-
-            createAgentLogViaAgentService({
-                action: 'SIMULATE_SALE_COMPLETED',
-                result: 'SUCCESS',
-                reasoning: `Mô phỏng bán hoàn tất. Tồn kho sản phẩm ${affectedProduct.productName} đã trừ ${affectedProduct.decreasedQuantity}. AI Agent đã kiểm tra.`,
-                input: {
-                    productId: affectedProduct.productId,
-                    productName: affectedProduct.productName,
-                    quantityBefore: affectedProduct.stockBefore,
-                    quantityAfter: affectedProduct.stockAfter,
-                    quantityDecreased: affectedProduct.decreasedQuantity,
-                    triggerType: 'SIMULATE_SALE'
-                },
-                output: {
-                    description: `Mô phỏng bán hoàn tất. AI Agent đã kiểm tra tồn kho.`,
-                    agentWarning: scan.agentWarning || null,
-                    createdPurchaseRequestsCount: scan.createdPurchaseRequests?.length || 0,
-                    scanSessionId: scan.scanSessionId || null
-                },
-                creator: userId ? { connect: { id: userId } } : undefined
-            }).catch(console.error);
-
-            return {
-                affectedProduct,
-                affectedProducts: [affectedProduct],
-                inventoryId: affectedProduct.inventoryId,
-                transactionId: affectedProduct.transactionId,
-                productId: affectedProduct.productId,
-                productName: affectedProduct.productName,
-                stockBefore: affectedProduct.stockBefore,
-                stockAfter: affectedProduct.stockAfter,
-                newQuantity: affectedProduct.stockAfter,
-                decreasedQuantity: affectedProduct.decreasedQuantity,
-                createdPurchaseRequests: scan.createdPurchaseRequests,
-                agentLogs: scan.results,
-                agentResults: scan.results,
-                agentWarning: scan.agentWarning,
-                scanSessionId: scan.scanSessionId
-            };
-        }
-
-        const inventories = await simulateSaleRepository.findInventories();
-        if (inventories.length === 0) throw new HttpError(404, 'No inventory found.');
-        const productCount = input.productCount ?? 1;
-        const minDecrease = input.minDecrease ?? 1;
-        const maxDecrease = input.maxDecrease ?? minDecrease;
-        const shuffled = [...inventories].sort(() => Math.random() - 0.5);
-        const selected = shuffled.slice(0, Math.min(productCount, shuffled.length));
-        const plans = selected.map((inventory) => ({ inventory, decrease: randomInt(minDecrease, maxDecrease) }));
-        const affectedProducts = await simulateSaleRepository.applySale(plans, input.note ?? null, userId);
-        const productIds = affectedProducts.map((item: any) => item.productId);
-        const scan = await runAgentScan({
-            productIds,
-            userId
-        });
-
-        for (const affected of affectedProducts) {
-            createAgentLogViaAgentService({
-                action: 'SIMULATE_SALE_COMPLETED',
-                result: 'SUCCESS',
-                reasoning: `Mô phỏng bán hoàn tất. Tồn kho sản phẩm ${affected.productName} đã trừ ${affected.decreasedQuantity}. AI Agent đã kiểm tra.`,
-                input: {
-                    productId: affected.productId,
-                    productName: affected.productName,
-                    quantityBefore: affected.stockBefore,
-                    quantityAfter: affected.stockAfter,
-                    quantityDecreased: affected.decreasedQuantity,
-                    triggerType: 'SIMULATE_SALE'
-                },
-                output: {
-                    description: `Mô phỏng bán hoàn tất. AI Agent đã kiểm tra tồn kho.`,
-                    agentWarning: scan.agentWarning || null,
-                    createdPurchaseRequestsCount: scan.createdPurchaseRequests?.length || 0,
-                    scanSessionId: scan.scanSessionId || null
-                },
-                creator: userId ? { connect: { id: userId } } : undefined
-            }).catch(console.error);
-        }
-
-        return { affectedProducts, createdPurchaseRequests: scan.createdPurchaseRequests, agentLogs: scan.results, agentResults: scan.results, agentWarning: scan.agentWarning, scanSessionId: scan.scanSessionId, newQuantity: affectedProducts[0]?.stockAfter ?? 0 };
+        return { isPreview: true, inventoryUnchanged: true, affectedProduct: affectedProducts[0], affectedProducts,
+            newQuantity: affectedProducts[0]?.stockAfter ?? 0, createdPurchaseRequests: [], agentLogs: [], agentResults: [], agentWarning: null, scanSessionId: null };
     },
-
-    async restore(transactionId: string, userId: string) {
-        if (!transactionId?.trim()) {
-            throw new HttpError(400, 'Simulation transaction id is required.');
-        }
-
-        const restored = await simulateSaleRepository.restoreSale(transactionId.trim(), userId);
-        createAgentLogViaAgentService({
-            action: 'SIMULATE_SALE_REVERTED',
-            result: 'SUCCESS',
-            reasoning: `Đã khôi phục mô phỏng bán sản phẩm ${restored.productName}. Tồn kho cộng lại ${restored.decreasedQuantity}.`,
-            input: {
-                productId: restored.productId,
-                productName: restored.productName,
-                quantityBefore: restored.stockBeforeRestore,
-                quantityAfter: restored.restoredStock,
-                quantityAdded: restored.decreasedQuantity,
-                triggerType: 'SIMULATE_SALE_REVERTED'
-            },
-            output: {
-                description: `Đã khôi phục mô phỏng bán sản phẩm ${restored.productName}. Tồn kho cộng lại ${restored.decreasedQuantity}.`,
-                restoredQuantity: restored.decreasedQuantity,
-                finalStock: restored.restoredStock
-            },
-            creator: userId ? { connect: { id: userId } } : undefined
-        }).catch(console.error);
-        
-        return restored;
+    async restore(_transactionId: string, _userId: string): Promise<never> {
+        throw new HttpError(409, 'BLOCKED: thiếu bằng chứng hoàn kho mô phỏng lịch sử; không tự cộng tồn thật.', 'SIMULATION_RESTORE_BLOCKED');
     },
-
     async pendingRestore(userId: string) {
-        const pendingRestores = await simulateSaleRepository.findPendingRestore(userId);
-        return { pendingRestores };
+        const historicalTransactions = await simulateSaleRepository.findPendingRestore(userId);
+        return { pendingRestores: [], historicalTransactions, blocked: true, reason: 'Historical simulations require manual reconciliation.' };
     }
 };

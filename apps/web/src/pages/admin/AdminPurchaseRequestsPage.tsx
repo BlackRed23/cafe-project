@@ -4,7 +4,6 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, FileSpreadsheet, MailWarning, Plus, X } from "lucide-react";
 import { purchaseRequestsApi } from "../../api/purchaseRequests.api";
-import { productsApi } from "../../api/products.api";
 import { suppliersApi } from "../../api/suppliers.api";
 import { inventoryApi } from "../../api/inventory.api";
 import type { PurchaseRequest } from "../../types/purchaseRequest.types";
@@ -78,7 +77,7 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
     setIsFormLoading(true);
     try {
       const [prodRes, suppRes, invRes, spmRes] = await Promise.all([
-        productsApi.getProducts(),
+        inventoryApi.getInventories().then(rows => rows.map(row => ({ id: row.id, name: row.productName ?? "", unit: row.unit ?? "" }))),
         suppliersApi.getSuppliers(),
         inventoryApi.getInventories(),
         suppliersApi.getSupplierProducts(),

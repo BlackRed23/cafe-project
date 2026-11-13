@@ -19,6 +19,7 @@ export const rejectPurchaseRequestSchema = z.object({
 });
 
 export const receivePurchaseRequestSchema = z.object({
+    idempotencyKey: z.string().trim().min(1).max(200),
     note: z.string().trim().max(1000, 'Note must be at most 1000 characters.').optional().nullable(),
     items: z.array(z.object({
         purchaseRequestItemId: z.string().trim().min(1, 'Purchase request item is required.'),

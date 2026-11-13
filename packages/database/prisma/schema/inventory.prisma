@@ -1,15 +1,13 @@
 enum InventoryTransactionType {
   IMPORT
-  ORDER
-  CANCEL
-  DAMAGE
-  ADJUSTMENT
-  SIMULATE_SALE
   CONSUME
   WASTE
+  ADJUSTMENT
   RETURN
   RESERVE
   RELEASE
+  CANCEL
+  SIMULATE_SALE
 }
 
 enum WasteReason {
@@ -31,7 +29,7 @@ model Ingredient {
   sku                 String    @unique
   name                String
   categoryId          String?
-  category            Category? @relation(fields: [categoryId], references: [id])
+  category            Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   baseUnit            String    @default("g")
   costPerBaseUnit     Decimal   @default(0) @db.Decimal(18, 4)
   quantity            Decimal   @default(0) @db.Decimal(14, 3)
@@ -63,7 +61,7 @@ model Ingredient {
 model IngredientBatch {
   id                    String               @id @default(cuid())
   ingredientId          String
-  ingredient            Ingredient           @relation(fields: [ingredientId], references: [id])
+  ingredient            Ingredient           @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
   batchCode             String
   quantityInitial       Decimal              @db.Decimal(14, 3)
   quantityRemaining     Decimal              @default(0) @db.Decimal(14, 3)
@@ -71,10 +69,11 @@ model IngredientBatch {
   expirationDate        DateTime?
   receivedAt            DateTime             @default(now())
   supplierId            String?
+  supplier              Supplier?            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   goodsReceiptId        String?
-  goodsReceipt          GoodsReceipt?        @relation(fields: [goodsReceiptId], references: [id])
+  goodsReceipt          GoodsReceipt?        @relation(fields: [goodsReceiptId], references: [id], onDelete: Restrict)
   purchaseRequestItemId String?
-  purchaseRequestItem   PurchaseRequestItem? @relation(fields: [purchaseRequestItemId], references: [id])
+  purchaseRequestItem   PurchaseRequestItem? @relation(fields: [purchaseRequestItemId, ingredientId], references: [id, ingredientId], onDelete: Restrict)
   receivedQty           Decimal?             @db.Decimal(14, 3)
   receivedUnit          String?
   note                  String?
@@ -84,39 +83,42 @@ model IngredientBatch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([ingredientId, batchCode])
+  @@unique([id, ingredientId])
   @@index([ingredientId])
   @@index([expirationDate])
+  @@index([supplierId])
+  @@index([goodsReceiptId])
+  @@index([purchaseRequestItemId])
+  @@index([ingredientId, expirationDate])
 }
 
 model InventoryTransaction {
   id              String                   @id @default(cuid())
-  ingredientId    String?
-  ingredient      Ingredient?              @relation(fields: [ingredientId], references: [id])
+  ingredientId    String
+  ingredient      Ingredient               @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
   batchId         String?
-  batch           IngredientBatch?         @relation(fields: [batchId], references: [id])
+  batch           IngredientBatch?         @relation(fields: [batchId, ingredientId], references: [id, ingredientId], onDelete: Restrict)
   type            InventoryTransactionType
   quantity        Decimal                  @db.Decimal(14, 3)
-  unitCost        Decimal                  @default(0) @db.Decimal(18, 4)
-  totalCost       Decimal                  @default(0) @db.Decimal(14, 2)
+  unitCost        Decimal?                 @db.Decimal(18, 4)
+  totalCost       Decimal?                 @db.Decimal(14, 2)
   referenceType   String?
   referenceId     String?
   orderItemId     String?
+  orderItem       OrderItem?               @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
   performedBy     String?
-  performedByUser User?                    @relation("InventoryTransactionPerformedBy", fields: [performedBy], references: [id])
+  performedByUser User?                    @relation("InventoryTransactionPerformedBy", fields: [performedBy], references: [id], onDelete: Restrict)
   reason          String?
   idempotencyKey  String?                  @unique
   wasteReason     WasteReason?
-
-  // Cột chuyển tiếp (Transitional legacy support)
-  productId     String?
-  legacyBatchId String?
-  legacyBatch   InventoryBatch? @relation(fields: [legacyBatchId], references: [id])
 
   createdAt DateTime @default(now())
 
   @@index([ingredientId, createdAt])
   @@index([referenceType, referenceId])
   @@index([orderItemId])
+  @@index([batchId, ingredientId])
   @@index([type, createdAt])
 }
 
@@ -125,9 +127,9 @@ model StockCount {
   code         String           @unique
   status       StockCountStatus @default(DRAFT)
   createdById  String
-  createdBy    User             @relation("StockCountCreatedBy", fields: [createdById], references: [id])
+  createdBy    User             @relation("StockCountCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   approvedById String?
-  approvedBy   User?            @relation("StockCountApprovedBy", fields: [approvedById], references: [id])
+  approvedBy   User?            @relation("StockCountApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
   approvedAt   DateTime?
   note         String?
 
@@ -144,7 +146,7 @@ model StockCountItem {
   stockCountId String
   stockCount   StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
   ingredientId String
-  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
   systemQty    Decimal    @db.Decimal(14, 3)
   actualQty    Decimal    @db.Decimal(14, 3)
   varianceQty  Decimal    @db.Decimal(14, 3)
@@ -154,39 +156,4 @@ model StockCountItem {
 
   @@unique([stockCountId, ingredientId])
   @@index([ingredientId])
-}
-
-// ============================================================================
-// BẢNG CHUYỂN TIẾP (Transitional Legacy Models - Sẽ xóa ở giai đoạn Contract)
-// ============================================================================
-model Inventory {
-  id                   String                @id @default(cuid())
-  productId            String                @unique
-  product              Product               @relation(fields: [productId], references: [id])
-  quantity             Int                   @default(0)
-  reservedStock        Int                   @default(0)
-  minThreshold         Int                   @default(10)
-  unit                 String
-  purchaseRequestItems PurchaseRequestItem[]
-  batches              InventoryBatch[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model InventoryBatch {
-  id             String    @id @default(cuid())
-  inventoryId    String
-  inventory      Inventory @relation(fields: [inventoryId], references: [id])
-  batchCode      String
-  quantity       Int       @default(0)
-  expirationDate DateTime
-
-  transactions InventoryTransaction[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([inventoryId])
-  @@index([expirationDate])
 }

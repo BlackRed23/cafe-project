@@ -26,8 +26,8 @@ model User {
   approvedStockCounts       StockCount[]           @relation("StockCountApprovedBy")
   agentExecutions           AgentExecution[]       @relation("AgentExecutionTriggeredBy")
 
-  // Quan hệ chuyển tiếp (Transitional legacy support)
-  legacyAgentLogs AgentLog[] @relation("AgentLogCreatedBy")
+  receivedGoodsReceipts   GoodsReceipt[]          @relation("GoodsReceiptReceivedBy")
+  resolvedReconciliations PaymentReconciliation[] @relation("PaymentReconciliationResolvedBy")
 
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())

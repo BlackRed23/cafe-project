@@ -1,3 +1,4 @@
+import { productCapacity } from '../../common/recipe-stock';
 import { Prisma } from '@cafe-project/database';
 import { deleteCloudinaryImage, extractCloudinaryPublicId } from '../../common/cloudinary';
 import { HttpError } from '../../common/http-error';
@@ -39,18 +40,15 @@ export type ProductDto = {
 };
 
 const toProductDto = (product: ProductRecord): ProductDto => {
-    if (!product) {
-        return {} as ProductDto; // Fallback an toàn nếu undefined
-    }
-
-    return {
+    const capacity = productCapacity(product.recipes);
+return {
         id: product.id,
         name: product.name,
         sku: product.sku,
         description: product.description ?? null,
         price: Number(product.price || 0),
         costPrice: Number(product.costPrice || 0),
-        unit: product.unit || 'hộp',
+        unit: product.servingUnit || 'hộp',
         imageUrl: product.imageUrl ?? null,
         isActive: product.isActive ?? true,
         categoryId: product.categoryId,
@@ -59,22 +57,16 @@ const toProductDto = (product: ProductRecord): ProductDto => {
             name: product.category.name,
             description: product.category.description ?? null
         } : { id: product.categoryId || '', name: 'Unknown', description: null },
-        inventory: product.inventory
-            ? {
-                  quantity: product.inventory.quantity,
-                  minThreshold: product.inventory.minThreshold,
-                  unit: product.inventory.unit
-              }
-            : null,
-        inventoryQuantity: product.inventory?.quantity ?? null,
-        nutritionFacts: (product as any).nutritionFacts ?? null,
-        usageInstructions: (product as any).usageInstructions ?? null,
-        storageInstructions: (product as any).storageInstructions ?? null,
-        origin: (product as any).origin ?? null,
-        certifications: (product as any).certifications ?? null,
-        expiryInfo: (product as any).expiryInfo ?? null,
-        deletedAt: (product as any).deletedAt ?? null,
-        pendingDeleteUntil: (product as any).pendingDeleteUntil ?? null,
+        inventory: { quantity: capacity, minThreshold: 0, unit: product.servingUnit },
+        inventoryQuantity: capacity,
+        nutritionFacts: product.nutritionFacts ?? null,
+        usageInstructions: product.usageInstructions ?? null,
+        storageInstructions: product.storageInstructions ?? null,
+        origin: product.origin ?? null,
+        certifications: product.certifications ?? null,
+        expiryInfo: product.expiryInfo ?? null,
+        deletedAt: product.deletedAt ?? null,
+        pendingDeleteUntil: product.pendingDeleteUntil ?? null,
         createdAt: product.createdAt ?? new Date(),
         updatedAt: product.updatedAt ?? new Date()
     };
@@ -152,26 +144,7 @@ const generateUniqueSku = async (name: string, ignoreId?: string): Promise<strin
 
 const getDeleteBlockedMessage = async (productId: string): Promise<string | null> => {
     const blockers = await productRepository.getDeleteBlockers(productId);
-    const hasOrderItems = blockers.orderItems > 0;
-    const hasInventoryTransactions = blockers.inventoryTransactions > 0;
-    const hasPurchaseRequestItems = blockers.purchaseRequestItems > 0;
-    const blockerCount = [hasOrderItems, hasInventoryTransactions, hasPurchaseRequestItems].filter(Boolean).length;
-
-    if (blockerCount > 1) {
-        return 'Không thể xóa sản phẩm vì đã phát sinh đơn hàng, lịch sử kho hoặc yêu cầu nhập hàng.';
-    }
-
-    if (hasOrderItems) {
-        return 'Không thể xóa sản phẩm vì sản phẩm này đã có trong đơn hàng.';
-    }
-
-    if (hasInventoryTransactions) {
-        return 'Không thể xóa sản phẩm vì sản phẩm này đã có lịch sử nhập/xuất kho.';
-    }
-
-    if (hasPurchaseRequestItems) {
-        return 'Không thể xóa sản phẩm vì sản phẩm này đã có trong yêu cầu nhập hàng.';
-    }
+    if (blockers.orderItems || blockers.recipes || blockers.toppings) return 'Sản phẩm có đơn hàng/công thức/topping; chỉ được ngưng hoạt động.';
 
     return null;
 };
@@ -190,9 +163,9 @@ const deleteProductImageForPurge = async (product: ProductRecord): Promise<void>
 
     try {
         await deleteCloudinaryImage(publicId);
-    } catch (error: any) {
-        console.error(`[product] Failed to delete Cloudinary image for product ${product.id}. Reason: ${error.message}`);
-        throw new HttpError(502, error.message || 'Failed to delete product image from Cloudinary.');
+    } catch (error: unknown) {
+        console.error(`[product] Failed to delete Cloudinary image for product ${product.id}. Reason: ${error instanceof Error ? error.message : "Unknown error"}`);
+        throw new HttpError(502, 'Failed to delete product image from Cloudinary.');
     }
 };
 
@@ -219,7 +192,7 @@ export const createProduct = async (input: CreateProductInput): Promise<ProductD
             description: normalizeOptionalString(input.description),
             price: input.price,
             costPrice: input.costPrice ?? 0,
-            unit: input.unit?.trim() || 'hộp',
+            servingUnit: input.unit?.trim() || 'hộp',
             categoryId: input.categoryId,
             imageUrl: normalizeOptionalString(input.imageUrl),
             isActive: input.isActive ?? true,
@@ -261,7 +234,7 @@ export const updateProduct = async (id: string, input: UpdateProductInput): Prom
             ...(input.description !== undefined ? { description: normalizeOptionalString(input.description) } : {}),
             ...(input.price !== undefined ? { price: input.price } : {}),
             ...(input.costPrice !== undefined ? { costPrice: input.costPrice } : {}),
-            ...(input.unit !== undefined ? { unit: input.unit.trim() || 'hộp' } : {}),
+            ...(input.unit !== undefined ? { servingUnit: input.unit.trim() || 'hộp' } : {}),
             ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
             ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
             ...(input.imageUrl !== undefined ? { imageUrl: normalizeOptionalString(input.imageUrl) } : {}),
@@ -302,9 +275,7 @@ export const scheduleDelete = async (id: string): Promise<ProductDto> => {
 
     const updatedProduct = await productRepository.update(id, {
         isActive: false,
-        // @ts-ignore
         deletedAt: new Date(),
-        // @ts-ignore
         pendingDeleteUntil
     });
 
@@ -316,9 +287,7 @@ export const restore = async (id: string): Promise<ProductDto> => {
 
     const updatedProduct = await productRepository.update(id, {
         isActive: true,
-        // @ts-ignore
         deletedAt: null,
-        // @ts-ignore
         pendingDeleteUntil: null
     });
 

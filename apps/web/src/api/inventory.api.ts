@@ -133,21 +133,26 @@ export const inventoryApi = {
     throw new Error("Invalid payload for updateInventory");
   },
 
-  importInventory: async (payload: { productId: string; quantity: number; note?: string; batchCode?: string; expirationDate?: string }): Promise<any> => {
+  importInventory: async (payload: { productId: string; quantity?: number; purchaseQuantity?: number; supplierIngredientId?: string; note?: string; batchCode?: string; expirationDate?: string }): Promise<any> => {
+    const inventoryId = await resolveInventoryId(payload.productId);
     const response = await apiClient.post("/inventories/import", {
-      inventoryId: await resolveInventoryId(payload.productId),
+      inventoryId,
       quantity: payload.quantity,
+      purchaseQuantity: payload.purchaseQuantity,
+      supplierIngredientId: payload.supplierIngredientId,
       note: payload.note,
       batchCode: payload.batchCode,
+      idempotencyKey: payload.batchCode ? `manual-import:${inventoryId}:${payload.batchCode}` : undefined,
       expirationDate: payload.expirationDate,
     });
     return normalizeInventoryMutation(response.data);
   },
 
-  adjustInventory: async (payload: { productId: string; batchId: string; quantity: number; note?: string }): Promise<any> => {
+  adjustInventory: async (payload: { productId: string; batchId: string; quantity: number; note?: string; idempotencyKey?: string }): Promise<any> => {
     if (!payload.batchId) throw new Error("Vui lòng chọn lô còn hạn để điều chỉnh.");
     const response = await apiClient.post("/inventories/adjust", {
       batchId: payload.batchId,
+      idempotencyKey: payload.idempotencyKey,
       inventoryId: await resolveInventoryId(payload.productId),
       quantity: payload.quantity,
       note: payload.note,

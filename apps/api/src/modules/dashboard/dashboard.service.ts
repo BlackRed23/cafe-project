@@ -1,4 +1,5 @@
-import { prisma } from '@cafe-project/database';
+import { auditDto, auditInclude } from '../agent/agent-audit';
+import { Prisma, prisma } from '@cafe-project/database';
 import { PurchaseRequestStatus, OrderStatus } from '@cafe-project/database';
 
 export const dashboardService = {
@@ -14,9 +15,9 @@ export const dashboardService = {
             }
         });
 
-        const inventories = await prisma.inventory.findMany();
-        const lowStockCount = inventories.filter((inv: { quantity: number, minThreshold: number }) => inv.quantity <= inv.minThreshold && inv.quantity > 0).length;
-        const outOfStockCount = inventories.filter((inv: { quantity: number }) => inv.quantity <= 0).length;
+        const inventories = await prisma.ingredient.findMany({ where: { isActive: true, deletedAt: null } });
+        const lowStockCount = inventories.filter(inv => inv.quantity.minus(inv.reserved).lte(inv.minThreshold) && inv.quantity.minus(inv.reserved).gt(0)).length;
+        const outOfStockCount = inventories.filter(inv => inv.quantity.minus(inv.reserved).lte(0)).length;
 
         const prPendingReceive = await prisma.purchaseRequest.count({
             where: { status: PurchaseRequestStatus.SENT }
@@ -44,10 +45,13 @@ export const dashboardService = {
         const totalProducts = await prisma.product.count();
 
         // 2. Inventory metrics
-        const inventories = await prisma.inventory.findMany();
-        const totalQuantity = inventories.reduce((sum: number, inv: { quantity: number }) => sum + inv.quantity, 0);
-        const lowStockCount = inventories.filter((inv: { quantity: number, minThreshold: number }) => inv.quantity <= inv.minThreshold && inv.quantity > 0).length;
-        const outOfStockCount = inventories.filter((inv: { quantity: number }) => inv.quantity <= 0).length;
+        const inventories = await prisma.ingredient.findMany({ where: { isActive: true, deletedAt: null } });
+        const grouped = new Map<string, Prisma.Decimal>();
+        for (const inv of inventories) grouped.set(inv.baseUnit, (grouped.get(inv.baseUnit) ?? new Prisma.Decimal(0)).plus(inv.quantity));
+        const quantitiesByUnit = [...grouped].map(([unit, amount]) => ({ unit, quantity: Number(amount) }));
+        const totalQuantity = quantitiesByUnit.length === 1 ? quantitiesByUnit[0]!.quantity : null;
+        const lowStockCount = inventories.filter(inv => inv.quantity.minus(inv.reserved).lte(inv.minThreshold) && inv.quantity.minus(inv.reserved).gt(0)).length;
+        const outOfStockCount = inventories.filter(inv => inv.quantity.minus(inv.reserved).lte(0)).length;
 
         // 3. Orders metrics
         const todayOrders = await prisma.order.count({
@@ -86,13 +90,11 @@ export const dashboardService = {
         const totalSuppliers = await prisma.supplier.count();
 
         // 6. AI metrics
-        const totalLogs = await prisma.agentLog.count();
-        const todayScans = await prisma.agentLog.count({
+        const totalLogs = await prisma.agentExecution.count();
+        const todayScans = await prisma.agentExecution.count({
             where: {
-                action: {
-                    startsWith: 'SCAN_INVENTORY'
-                },
-                triggered_at: {
+                intent: { contains: 'SCAN' },
+                startedAt: {
                     gte: startOfToday
                 }
             }
@@ -107,54 +109,15 @@ export const dashboardService = {
                 totalAmount: true
             }
         });
-        const totalRevenue = completedOrdersList.reduce((sum: number, order: { totalAmount: any }) => sum + Number(order.totalAmount), 0);
+        const totalRevenue = completedOrdersList.reduce((sum, order) => sum + Number(order.totalAmount), 0);
 
         // Get details of the last AI recommendation scan for the dashboard AI widget
-        const lastScanLog = await prisma.agentLog.findFirst({
-            where: {
-                action: {
-                    startsWith: 'SCAN_INVENTORY'
-                }
-            },
-            orderBy: {
-                triggered_at: 'desc'
-            },
-            include: {
-                creator: {
-                    select: {
-                        name: true
-                    }
-                }
-            }
-        });
-
-        let aiWidgetDetails = null;
-        if (lastScanLog) {
-            let lastSupplierName = null;
-            if (lastScanLog.output) {
-                try {
-                    const outputData = JSON.parse(lastScanLog.output);
-                    if (outputData.recommendedSupplierId) {
-                        const supplier = await prisma.supplier.findUnique({
-                            where: { id: outputData.recommendedSupplierId }
-                        });
-                        lastSupplierName = supplier?.name || null;
-                    }
-                } catch {
-                    // Ignore JSON parsing errors
-                }
-            }
-
-            aiWidgetDetails = {
-                lastScanTime: lastScanLog.triggered_at,
-                reasoning: lastScanLog.reasoning,
-                result: lastScanLog.result,
-                lastSupplierSelected: lastSupplierName,
-                totalAiPurchaseRequests: await prisma.purchaseRequest.count({
-                    where: { aiGenerated: true }
-                })
-            };
-        }
+        const lastExecution = await prisma.agentExecution.findFirst({ where: { intent: { contains: 'SCAN' } }, orderBy: { startedAt: 'desc' }, include: auditInclude });
+        const lastScanLog = lastExecution ? auditDto(lastExecution) : null;
+        const recommended = lastScanLog?.output.recommendedSupplierId;
+        const supplier = typeof recommended === 'string' ? await prisma.supplier.findUnique({ where: { id: recommended } }) : null;
+        const aiWidgetDetails = lastScanLog ? { lastScanTime: lastScanLog.createdAt, reasoning: lastScanLog.reasoning, result: lastScanLog.result,
+            lastSupplierSelected: supplier?.name ?? null, totalAiPurchaseRequests: await prisma.purchaseRequest.count({ where: { aiGenerated: true } }) } : null;
 
         return {
             products: {
@@ -162,6 +125,8 @@ export const dashboardService = {
             },
             inventory: {
                 totalQuantity,
+                quantitiesByUnit,
+                quantityUnit: quantitiesByUnit.length === 1 ? quantitiesByUnit[0]!.unit : null,
                 lowStockCount,
                 outOfStockCount
             },
@@ -230,22 +195,11 @@ export const dashboardService = {
     },
 
     async getLowStock() {
-        const inventories = await prisma.inventory.findMany({
-            include: {
-                product: true
-            }
-        });
-
-        return inventories
-            .filter((inv: { quantity: number, minThreshold: number }) => inv.quantity <= inv.minThreshold)
-            .map((inv: any) => ({
-                productName: inv.product.name,
-                sku: inv.product.sku,
-                quantity: inv.quantity,
-                threshold: inv.minThreshold,
-                status: inv.quantity <= 0 ? 'OUT OF STOCK' : 'LOW STOCK'
-            }))
-            .sort((a: { quantity: number }, b: { quantity: number }) => a.quantity - b.quantity);
+        const inventories = await prisma.ingredient.findMany({ where: { isActive: true, deletedAt: null } });
+        return inventories.filter(inv => inv.quantity.minus(inv.reserved).lte(inv.minThreshold)).map(inv => ({
+            ingredientId: inv.id, productName: inv.name, sku: inv.sku, quantity: Number(inv.quantity), availableStock: Number(inv.quantity.minus(inv.reserved)),
+            threshold: Number(inv.minThreshold), unit: inv.baseUnit, status: inv.quantity.minus(inv.reserved).lte(0) ? 'OUT OF STOCK' : 'LOW STOCK'
+        })).sort((a,b) => a.availableStock - b.availableStock);
     },
 
     async getRecentActivity() {
@@ -263,13 +217,14 @@ export const dashboardService = {
             },
             take: 5,
             orderBy: { createdAt: 'desc' },
-            include: { product: true }
+            include: { ingredient: true }
         });
 
         // Fetch 5 latest AI actions
-        const aiLogs = await prisma.agentLog.findMany({
+        const aiLogs = await prisma.agentExecution.findMany({
             take: 5,
-            orderBy: { triggered_at: 'desc' }
+            orderBy: { startedAt: 'desc' },
+            include: auditInclude
         });
 
         // Fetch 5 latest Purchase Requests
@@ -304,19 +259,20 @@ export const dashboardService = {
                 id: `import-${imp.id}`,
                 type: 'INVENTORY',
                 title: `Goods Imported`,
-                description: `Imported ${imp.quantity} unit(s) of ${imp.product.name}. Reason: ${imp.reason || 'None'}`,
+                description: `Imported ${imp.quantity} unit(s) of ${imp.ingredient.name}. Reason: ${imp.reason || 'None'}`,
                 timestamp: imp.createdAt
             });
         }
 
         // Normalize AI Logs
-        for (const log of aiLogs) {
+        for (const execution of aiLogs) {
+            const log = auditDto(execution);
             activities.push({
                 id: `ai-${log.id}`,
                 type: 'AI',
                 title: `AI Agent Action`,
                 description: `Action: ${log.action} - Result: ${log.result || 'SKIPPED'}. Reasoning: ${log.reasoning || 'No details'}`,
-                timestamp: log.triggered_at
+                timestamp: log.createdAt
             });
         }
 

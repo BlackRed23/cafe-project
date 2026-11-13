@@ -3,6 +3,7 @@ import type { CreateOrderPayload, Order } from "../types/order.types";
 
 const VALID_ORDER_STATUSES = new Set(["PENDING", "CONFIRMED", "PROCESSING", "COMPLETED", "CANCELLED"]);
 const VALID_PAYMENT_STATUSES = new Set(["PENDING", "SUCCESS", "PAID", "FAILED", "REFUNDED"]);
+const pendingOrderKeys = new Map<string, string>();
 
 type OrderFilters = {
   status?: string | null;
@@ -164,9 +165,15 @@ const normalizeOrderPayload = (payload: CreateOrderPayload): CreateOrderPayload 
 
 export const ordersApi = {
   createOrder: async (payload: CreateOrderPayload): Promise<Order> => {
+    const normalized = normalizeOrderPayload(payload);
+    const command = JSON.stringify(normalized);
+    const idempotencyKey = pendingOrderKeys.get(command) ?? crypto.randomUUID();
+    pendingOrderKeys.set(command, idempotencyKey);
     try {
-      const response = await apiClient.post("/orders", normalizeOrderPayload(payload));
-      return normalizeOrder(unwrapApiField<any>(response.data, "order"));
+      const response = await apiClient.post("/orders", { ...normalized, idempotencyKey });
+      const order = normalizeOrder(unwrapApiField<any>(response.data, "order"));
+      pendingOrderKeys.delete(command);
+      return order;
     } catch (error: any) {
       error.friendlyMessage = getOrderErrorMessage(
         error,

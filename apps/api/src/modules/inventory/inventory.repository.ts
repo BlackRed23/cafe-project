@@ -1,236 +1,150 @@
-import { InventoryTransactionType, type Category, type Inventory, type InventoryTransaction, type Prisma, type Product, type User } from '@cafe-project/database';
-import { prisma } from '@cafe-project/database';
-import { getOptionalSettingValue } from '../system-setting/system-setting.service';
+import { createHash } from 'node:crypto';
+import { InventoryTransactionType, Prisma, prisma } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
-
-const assertStockDelta = (quantity: number, positiveOnly = false): void => {
-    if (!Number.isInteger(quantity) || quantity === 0 || Math.abs(quantity) > 2147483647 || (positiveOnly && quantity < 0)) {
-        throw new HttpError(400, 'Số lượng tồn kho phải là số nguyên hợp lệ khác 0.');
-    }
-};
-
-type ProductWithCategory = Product & {
-    category: Category;
-};
-
-export type InventoryRecord = Inventory & {
-    product: ProductWithCategory;
-};
-
-export type InventoryTransactionRecord = InventoryTransaction & {
-    product: Product;
-    user: Pick<User, 'id' | 'name' | 'email'> | null;
-};
+import { supplierExpiryInstant } from '../../common/ingredient-policy';
+import { requireWholePieces, stockQuantity } from './inventory-quantity';
 
 const inventoryInclude = {
-    product: {
-        include: {
-            category: true
-        }
-    },
-    batches: {
-        orderBy: {
-            expirationDate: 'asc'
-        }
-    }
-} satisfies Prisma.InventoryInclude;
-
+    category: true,
+    batches: { orderBy: [{ expirationDate: 'asc' }, { receivedAt: 'asc' }, { id: 'asc' }] }
+} satisfies Prisma.IngredientInclude;
 const transactionInclude = {
-    product: true,
-    user: {
-        select: {
-            id: true,
-            name: true,
-            email: true
-        }
-    }
+    ingredient: { select: { name: true, sku: true } },
+    performedByUser: { select: { id: true, name: true, email: true } }
 } satisfies Prisma.InventoryTransactionInclude;
 
+export type InventoryRecord = Prisma.IngredientGetPayload<{ include: typeof inventoryInclude }>;
+export type InventoryTransactionRecord = Prisma.InventoryTransactionGetPayload<{ include: typeof transactionInclude }>;
+export type ImportStockOptions = { idempotencyKey?: string; supplierIngredientId?: string; purchaseQuantity?: number };
+
+const mutationKey = (kind: string, key?: string): string | undefined => key
+    ? `inventory:${kind}:${createHash('sha256').update(key).digest('hex')}` : undefined;
+
+const expiryDate = (value?: string): Date => {
+    let expiry: Date;
+    try { expiry = value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? supplierExpiryInstant(value) : new Date(value ?? ''); }
+    catch { throw new HttpError(400, 'Ngày hết hạn không hợp lệ.'); }
+    if (!Number.isFinite(expiry.getTime()) || expiry.getTime() <= Date.now()) throw new HttpError(400, 'Lô nhập cần hạn sử dụng trong tương lai.');
+    return expiry;
+};
+
+const lockedIngredient = async (tx: Prisma.TransactionClient, id: string) => {
+    await tx.$queryRaw`SELECT "id" FROM "Ingredient" WHERE "id" = ${id} FOR UPDATE`;
+    const current = await tx.ingredient.findUnique({ where: { id } });
+    if (!current || !current.isActive || current.deletedAt) throw new HttpError(404, 'Không tìm thấy nguyên liệu đang hoạt động.');
+    if (current.reserved.isNegative() || current.quantity.lessThan(current.reserved)) throw new HttpError(409, 'Tồn kho cần đối soát trước khi thay đổi.');
+    const balances = await tx.ingredientBatch.aggregate({ where: { ingredientId: id }, _sum: { quantityRemaining: true } });
+    if (!current.quantity.equals(balances._sum.quantityRemaining ?? 0)) throw new HttpError(409, 'Tổng tồn lô lệch tồn nguyên liệu; cần đối soát.');
+    return current;
+};
+
+const readUpdated = async (tx: Prisma.TransactionClient, id: string): Promise<InventoryRecord> => {
+    const row = await tx.ingredient.findUnique({ where: { id }, include: inventoryInclude });
+    if (!row) throw new HttpError(404, 'Không tìm thấy nguyên liệu.');
+    return row;
+};
+
 export const inventoryRepository = {
-    async createMissingForActiveProducts(): Promise<void> {
-        const productsWithoutInventory = await prisma.product.findMany({
-            where: {
-                isActive: true,
-                inventory: {
-                    is: null
-                }
-            },
-            select: {
-                id: true,
-                unit: true
-            }
-        });
-
-        if (productsWithoutInventory.length === 0) {
-            return;
-        }
-
-        const defaultMinThresholdSetting = await getOptionalSettingValue('inventory.defaultMinThreshold');
-        const defaultMinThreshold = parseInt(defaultMinThresholdSetting || '10', 10);
-        const minThreshold = isNaN(defaultMinThreshold) ? 10 : defaultMinThreshold;
-
-        await prisma.inventory.createMany({
-            data: productsWithoutInventory.map((product: any) => ({
-                productId: product.id,
-                quantity: 0,
-                minThreshold,
-                unit: product.unit || 'hộp'
-            })),
-            skipDuplicates: true
-        });
-    },
-
     async findMany(): Promise<InventoryRecord[]> {
-        return prisma.inventory.findMany({
-            where: {
-                product: {
-                    isActive: true
-                }
-            },
-            include: inventoryInclude,
-            orderBy: {
-                updatedAt: 'desc'
-            }
-        });
+        return prisma.ingredient.findMany({ where: { isActive: true, deletedAt: null }, include: inventoryInclude, orderBy: { updatedAt: 'desc' } });
     },
-
     async findById(id: string): Promise<InventoryRecord | null> {
-        return prisma.inventory.findFirst({
-            where: {
-                id,
-                product: {
-                    isActive: true
-                }
-            },
-            include: inventoryInclude
-        });
+        return prisma.ingredient.findFirst({ where: { id, isActive: true, deletedAt: null }, include: inventoryInclude });
     },
-
     async findTransactions(): Promise<InventoryTransactionRecord[]> {
-        return prisma.inventoryTransaction.findMany({
-            include: transactionInclude,
-            orderBy: {
-                createdAt: 'desc'
-            }
-        });
+        return prisma.inventoryTransaction.findMany({ include: transactionInclude, orderBy: { createdAt: 'desc' } });
     },
-
-    async importStock(inventory: InventoryRecord, quantity: number, note: string | null, userId: string, batchCode?: string, expirationDate?: string): Promise<InventoryRecord> {
-        assertStockDelta(quantity, true);
-        const expiry = expirationDate ? new Date(expirationDate) : null;
-        if (!expiry || !Number.isFinite(expiry.getTime())) {
-            throw new HttpError(400, 'Ngày hết hạn của lô không hợp lệ.');
-        }
+    /** Standalone receipts only. Purchase receipts must go through GoodsReceipt. */
+    async importStock(inventory: InventoryRecord, inputQuantity: Prisma.Decimal | number, note: string | null, userId: string,
+        batchCode?: string, expirationDate?: string, options: ImportStockOptions = {}): Promise<InventoryRecord> {
+        const quantity = stockQuantity(inputQuantity);
+        const expiry = expiryDate(expirationDate);
+        const key = mutationKey('import', options.idempotencyKey);
+        const code = batchCode?.trim() || (key ? `manual-${key.slice(-32)}` : undefined);
+        if (!code) throw new HttpError(400, 'Cần mã lô hoặc idempotencyKey để tránh nhập trùng.');
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            // Lock the aggregate before batch reads/writes, matching order/receipt write order.
-            await tx.$queryRaw`SELECT "id" FROM "Inventory" WHERE "id" = ${inventory.id} FOR UPDATE`;
-            const current = await tx.inventory.findUnique({ where: { id: inventory.id } });
-            if (!current) throw new HttpError(404, 'Không tìm thấy tồn kho.');
-            const finalBatchCode = batchCode?.trim() || `${current.productId.slice(0, 8)}-${Date.now()}`;
-            if (await tx.inventoryBatch.findFirst({ where: { inventoryId: current.id, batchCode: finalBatchCode } })) {
-                throw new HttpError(409, 'Mã lô đã tồn tại trong kho.');
+            const current = await lockedIngredient(tx, inventory.id);
+            requireWholePieces(quantity, current.baseUnit);
+            let supplierId: string | undefined;
+            let unitCost = current.costPerBaseUnit;
+            let receivedUnit = current.baseUnit;
+            let receivedQty = quantity;
+            if (options.supplierIngredientId) {
+                const link = await tx.supplierIngredient.findUnique({ where: { id: options.supplierIngredientId }, include: { supplier: true } });
+                if (!link || link.ingredientId !== current.id || link.supplier.deletedAt || link.supplier.status !== 'ACTIVE' ||
+                    link.conversionTargetUnit !== current.baseUnit || !link.conversionQuantity.greaterThan(0)) {
+                    throw new HttpError(400, 'Quy cách nhà cung cấp không hợp lệ cho nguyên liệu.');
+                }
+                if (options.purchaseQuantity !== undefined) {
+                    receivedQty = stockQuantity(options.purchaseQuantity);
+                    if (!receivedQty.times(link.conversionQuantity).equals(quantity)) throw new HttpError(409, 'Quy cách nhập đã thay đổi, vui lòng thử lại.');
+                    receivedUnit = link.purchaseUnit;
+                }
+                supplierId = link.supplierId;
+                unitCost = link.pricePerBaseUnit;
             }
-            await tx.inventory.update({
-                where: { id: inventory.id },
-                data: {
-                    quantity: { increment: quantity }
-                }
-            });
-
-            const batch = await tx.inventoryBatch.create({
-                data: {
-                    inventoryId: current.id,
-                    batchCode: finalBatchCode,
-                    quantity,
-                    expirationDate: expiry
-                }
-            });
-
-            await tx.inventoryTransaction.create({
-                data: {
-                    productId: current.productId,
-                    userId,
-                    type: InventoryTransactionType.IMPORT,
-                    quantity,
-                    reason: note,
-                    batchId: batch.id
-                }
-            });
-
-            const updatedInventory = await tx.inventory.findUnique({
-                where: { id: inventory.id },
-                include: inventoryInclude
-            });
-
-            if (!updatedInventory) {
-                throw new Error('Inventory update failed.');
+            if (unitCost.isNegative()) throw new HttpError(409, 'Giá vốn nguyên liệu không hợp lệ.');
+            const existing = await tx.ingredientBatch.findUnique({ where: { ingredientId_batchCode: { ingredientId: current.id, batchCode: code } } });
+            const prior = key ? await tx.inventoryTransaction.findUnique({ where: { idempotencyKey: key } }) : null;
+            if (existing || prior) {
+                if (!existing || !prior || prior.ingredientId !== current.id || prior.batchId !== existing.id ||
+                    prior.type !== InventoryTransactionType.IMPORT || !prior.quantity.equals(quantity) || prior.reason !== note ||
+                    prior.performedBy !== userId || existing.goodsReceiptId || existing.purchaseRequestItemId ||
+                    existing.supplierId !== (supplierId ?? null) || existing.receivedUnit !== receivedUnit || !existing.receivedQty?.equals(receivedQty) ||
+                    existing.expirationDate?.getTime() !== expiry.getTime()) throw new HttpError(409, 'Mã lô hoặc idempotencyKey đã được sử dụng.');
+                return readUpdated(tx, current.id);
             }
-
-            return updatedInventory;
+            const next = stockQuantity(current.quantity.plus(quantity));
+            const batch = await tx.ingredientBatch.create({ data: {
+                ingredientId: current.id, batchCode: code, quantityInitial: quantity, quantityRemaining: quantity,
+                expirationDate: expiry, supplierId, unitCost, receivedQty, receivedUnit, note
+            } });
+            await tx.ingredient.update({ where: { id: current.id }, data: { quantity: next, rowVersion: { increment: 1 } } });
+            await tx.inventoryTransaction.create({ data: {
+                ingredientId: current.id, batchId: batch.id, performedBy: userId, type: InventoryTransactionType.IMPORT,
+                quantity, unitCost, reason: note, referenceType: 'MANUAL_IMPORT', referenceId: batch.id, idempotencyKey: key
+            } });
+            return readUpdated(tx, current.id);
         });
     },
-
-    async adjustStock(inventory: InventoryRecord, quantity: number, note: string | null, userId: string, batchId?: string): Promise<InventoryRecord> {
-        assertStockDelta(quantity);
-        if (!batchId) {
-            throw new HttpError(409, 'Cần chọn lô để điều chỉnh; tồn kho không có lô cần được đối soát trước.');
-        }
+    async adjustStock(inventory: InventoryRecord, inputQuantity: number, note: string | null, userId: string, batchId?: string, idempotencyKey?: string): Promise<InventoryRecord> {
+        const quantity = stockQuantity(inputQuantity, true);
+        if (!batchId) throw new HttpError(409, 'Cần chọn lô để điều chỉnh.');
+        const key = mutationKey('adjust', idempotencyKey);
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            await tx.$queryRaw`SELECT "id" FROM "Inventory" WHERE "id" = ${inventory.id} FOR UPDATE`;
-            const current = await tx.inventory.findUnique({ where: { id: inventory.id } });
-            if (!current) throw new HttpError(404, 'Không tìm thấy tồn kho.');
-            const batch = await tx.inventoryBatch.findFirst({ where: { id: batchId, inventoryId: current.id } });
-            if (!batch) throw new HttpError(400, 'Lô không thuộc tồn kho cần điều chỉnh.');
-            if (!Number.isFinite(new Date(batch.expirationDate).getTime()) || new Date(batch.expirationDate).getTime() <= Date.now()) {
-                throw new HttpError(409, 'Lô đã hết hạn hoặc không có hạn hợp lệ; cần đối soát riêng.');
+            const current = await lockedIngredient(tx, inventory.id);
+            requireWholePieces(quantity, current.baseUnit);
+            const prior = key ? await tx.inventoryTransaction.findUnique({ where: { idempotencyKey: key } }) : null;
+            if (prior) {
+                if (prior.ingredientId !== current.id || prior.batchId !== batchId || prior.type !== InventoryTransactionType.ADJUSTMENT ||
+                    !prior.quantity.equals(quantity) || prior.reason !== note || prior.performedBy !== userId) throw new HttpError(409, 'idempotencyKey đã được sử dụng cho yêu cầu khác.');
+                return readUpdated(tx, current.id);
             }
-            if (current.quantity + quantity < current.reservedStock || current.quantity + quantity < 0 || batch.quantity + quantity < 0) {
-                throw new HttpError(409, 'Điều chỉnh vượt tồn kho khả dụng hoặc số lượng của lô.');
-            }
-
-            // Evaluate reservation protection in the UPDATE as well as under the row lock.
-            const changed = await tx.$executeRaw`
-                UPDATE "Inventory" SET "quantity" = "quantity" + ${quantity}, "updatedAt" = NOW()
-                WHERE "id" = ${current.id}
-                  AND "quantity" + ${quantity} >= "reservedStock"
-                  AND "quantity" + ${quantity} >= 0
-            `;
-            if (changed !== 1) throw new HttpError(409, 'Tồn kho đã thay đổi, vui lòng kiểm tra lại.');
-            const changedBatch = await tx.inventoryBatch.updateMany({
-                where: { id: batch.id, inventoryId: current.id, quantity: { gte: Math.max(0, -quantity) } },
-                data: { quantity: { increment: quantity } }
+            const batch = await tx.ingredientBatch.findFirst({ where: { id: batchId, ingredientId: current.id } });
+            if (!batch) throw new HttpError(400, 'Lô không thuộc nguyên liệu cần điều chỉnh.');
+            if (!batch.expirationDate || batch.expirationDate.getTime() <= Date.now() || batch.receivedAt.getTime() > Date.now()) throw new HttpError(409, 'Lô hết hạn hoặc thiếu hạn; cần đối soát riêng.');
+            const next = stockQuantity(current.quantity.plus(quantity), false, true);
+            const nextBatch = stockQuantity(batch.quantityRemaining.plus(quantity), false, true);
+            if (next.lessThan(current.reserved)) throw new HttpError(409, 'Điều chỉnh vượt tồn khả dụng.');
+            const changed = await tx.ingredientBatch.updateMany({
+                where: { id: batch.id, ingredientId: current.id, quantityRemaining: batch.quantityRemaining },
+                data: { quantityRemaining: nextBatch }
             });
-            if (changedBatch.count !== 1) throw new HttpError(409, 'Lô đã thay đổi, vui lòng kiểm tra lại.');
-
-            await tx.inventoryTransaction.create({
-                data: {
-                    productId: current.productId,
-                    userId,
-                    type: InventoryTransactionType.ADJUSTMENT,
-                    quantity,
-                    reason: note,
-                    batchId: batch.id
-                }
-            });
-
-            const updatedInventory = await tx.inventory.findUnique({
-                where: { id: inventory.id },
-                include: inventoryInclude
-            });
-
-            if (!updatedInventory) {
-                throw new Error('Inventory update failed.');
-            }
-
-            return updatedInventory;
+            if (changed.count !== 1) throw new HttpError(409, 'Lô đã thay đổi, vui lòng thử lại.');
+            await tx.ingredient.update({ where: { id: current.id }, data: { quantity: next, rowVersion: { increment: 1 } } });
+            await tx.inventoryTransaction.create({ data: {
+                ingredientId: current.id, batchId: batch.id, performedBy: userId, type: InventoryTransactionType.ADJUSTMENT,
+                quantity, reason: note, referenceType: 'MANUAL_ADJUSTMENT', referenceId: batch.id, idempotencyKey: key
+            } });
+            return readUpdated(tx, current.id);
         });
     },
-
     async updateThreshold(inventory: InventoryRecord, minThreshold: number): Promise<InventoryRecord> {
-        return prisma.inventory.update({
-            where: { id: inventory.id },
-            data: { minThreshold },
-            include: inventoryInclude
+        const threshold = stockQuantity(minThreshold, false, true);
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const current = await lockedIngredient(tx, inventory.id);
+            requireWholePieces(threshold, current.baseUnit);
+            return tx.ingredient.update({ where: { id: current.id }, data: { minThreshold: threshold, rowVersion: { increment: 1 } }, include: inventoryInclude });
         });
     }
 };

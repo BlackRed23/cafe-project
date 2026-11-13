@@ -4,7 +4,7 @@
     "private": true,
     "scripts": {
         "dev:mock": "ts-node src/workflows/server.ts",
-        "predev:mock": "npm run build --workspace @cafe-project/agent",
+        "predev:mock": "turbo run build --filter=@cafe-project/agent...",
         "start:mock": "node dist/workflows/server.js",
         "mock:scan": "node dist/workflows/server.js --scan-once",
         "mock:token": "node dist/workflows/server.js --token",

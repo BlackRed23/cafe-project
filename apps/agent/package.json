@@ -4,7 +4,13 @@
     "private": true,
     "main": "dist/public-api.js",
     "types": "dist/public-api.d.ts",
-    "typesVersions": { "*": { "workflows": ["dist/workflows/agent-workflow.d.ts"] } },
+    "typesVersions": {
+        "*": {
+            "workflows": [
+                "dist/workflows/agent-workflow.d.ts"
+            ]
+        }
+    },
     "exports": {
         "./workflows": "./dist/workflows/agent-workflow.js",
         ".": "./dist/public-api.js"
@@ -25,7 +31,8 @@
         "@google/generative-ai": "^0.24.1",
         "dotenv": "^16.4.5",
         "node-cron": "^4.4.1",
-        "nodemailer": "9.0.1"
+        "nodemailer": "9.0.1",
+        "openai": "^7.56.0"
     },
     "devDependencies": {
         "@types/node": "^20.12.11",

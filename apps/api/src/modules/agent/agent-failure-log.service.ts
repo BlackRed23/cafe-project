@@ -1,163 +1,46 @@
-import { prisma } from '@cafe-project/database';
-
-type AgentFailureInput = {
-    triggerType?: string;
-    productIds?: string[];
-    productId?: string;
-    sourceType?: string;
-    sourceId?: string;
-    note?: string;
+import { Prisma, prisma } from '@cafe-project/database';
+import { auditDto, auditInclude } from './agent-audit';
+type AgentFailureInput = { triggerType?: string; productIds?: string[]; productId?: string; sourceType?: string; sourceId?: string; note?: string };
+const str = (v: unknown) => typeof v === 'string' && v.trim() ? v.trim() : undefined;
+const pageInt = (value: unknown, fallback: number, max = 2147483647) => {
+    const n = Number(value); return Number.isSafeInteger(n) && n > 0 ? Math.min(n, max) : fallback;
 };
-
-const safeJsonParse = (value?: string | null): any => {
-    if (!value) return null;
-    try {
-        return JSON.parse(value);
-    } catch {
-        return null;
-    }
-};
-
-const serializeAgentLogField = (value: unknown): string | null => {
-    if (value === undefined || value === null) return null;
-    if (typeof value === "string") return value;
-
-    try {
-        return JSON.stringify(value);
-    } catch {
-        return String(value);
-    }
-};
-
-const asString = (value: unknown): string | undefined =>
-    typeof value === 'string' && value.trim() ? value.trim() : undefined;
-
-const toAgentLogDto = (log: any) => {
-    const input = safeJsonParse(log.input);
-    const output = safeJsonParse(log.output);
-    const result = log.result || '';
-    const reason = asString(output?.reason) || result || asString(log.action);
-
-    return {
-        id: log.id,
-        action: log.action,
-        status: log.error_message || result === 'FAILED' ? 'FAILED' : 'SUCCESS',
-        result,
-        reason,
-        message: asString(output?.message) || 'Agent xử lý thất bại.',
-        triggerType: asString(input?.triggerType),
-        productId: asString(output?.productId) || asString(input?.productId),
-        productName: asString(output?.productName) || asString(input?.productName),
-        inventoryId: asString(output?.inventoryId) || asString(input?.inventoryId),
-        purchaseRequestId: asString(output?.purchaseRequestId),
-        referenceType: log.reference_type,
-        referenceId: log.reference_id,
-        input,
-        output,
-        reasoning: log.reasoning,
-        errorMessage: log.error_message,
-        fallbackUsed: log.fallback_used,
-        createdAt: log.triggered_at,
-        error_message: log.error_message,
-        reference_type: log.reference_type,
-        reference_id: log.reference_id
-    };
-};
-
-const safeErrorMessage = (error: unknown): string => {
-    if (error instanceof Error && error.message) return error.message;
-    if (typeof error === 'string' && error.trim()) return error.trim();
-    return 'Unknown Agent service error.';
-};
-
-const failureReason = (error: unknown): 'AGENT_SERVICE_TIMEOUT' | 'AGENT_SERVICE_UNAVAILABLE' => {
-    const message = safeErrorMessage(error).toLowerCase();
-    return message.includes('timeout') || message.includes('aborted') ? 'AGENT_SERVICE_TIMEOUT' : 'AGENT_SERVICE_UNAVAILABLE';
-};
-
 export const agentFailureLogService = {
     async createServiceUnavailableLog(input: AgentFailureInput = {}, error: unknown, userId?: string) {
-        const errorMessage = safeErrorMessage(error);
-        const reason = failureReason(error);
-        const message = 'Không kết nối được AI Agent service.';
-        const output = {
-            failed: true,
-            reason,
-            message,
-            errorMessage,
-            productId: input.productId,
-            productIds: input.productIds,
-            notification: {
-                type: 'error',
-                title: 'Agent xử lý thất bại',
-                description: 'Backend không kết nối được AI Agent service. Vui lòng kiểm tra process apps/agent.',
-                actionLabel: 'Xem nhật ký Agent',
-                actionUrl: '/admin/agent-logs'
-            }
-        };
-
-        const log = await prisma.agentLog.create({
-            data: {
-                action: 'AGENT_SERVICE_UNAVAILABLE',
-                input: serializeAgentLogField({
-                    triggerType: input.triggerType,
-                    productId: input.productId,
-                    productIds: input.productIds,
-                    sourceType: input.sourceType,
-                    sourceId: input.sourceId,
-                    note: input.note
-                }),
-                output: serializeAgentLogField(output),
-                reasoning: 'apps/api could not reach the separate apps/agent HTTP service.',
-                result: 'FAILED',
-                fallback_used: false,
-                error_message: errorMessage,
-                reference_type: input.sourceType || 'AgentService',
-                reference_id: input.sourceId,
-                creator: userId ? { connect: { id: userId } } : undefined
-            }
-        });
-
-        return toAgentLogDto(log);
+        const timeout = error instanceof Error && /timeout|aborted/i.test(error.message);
+        const reason = timeout ? 'AGENT_SERVICE_TIMEOUT' : 'AGENT_SERVICE_UNAVAILABLE';
+        const errorMessage = timeout ? 'Agent service timeout.' : 'Agent service unavailable.';
+        const args: Prisma.InputJsonObject = { triggerType: input.triggerType ?? null, productId: input.productId ?? null, productIds: input.productIds ?? [],
+            sourceType: input.sourceType ?? null, sourceId: input.sourceId ?? null, note: input.note ?? null };
+        const execution = await prisma.agentExecution.create({ data: { goal: 'AGENT_SERVICE_UNAVAILABLE', intent: 'AGENT_SERVICE_UNAVAILABLE', status: 'FAILED',
+            errorMessage, endedAt: new Date(), ...(userId ? { triggeredBy: userId } : {}),
+            toolCalls: { create: { stepNo: 1, toolName: 'AGENT_SERVICE_UNAVAILABLE', status: 'FAILED', errorMessage, completedAt: new Date(),
+                arguments: { action: 'AGENT_SERVICE_UNAVAILABLE', input: args, reference_type: input.sourceType ?? 'AgentService', reference_id: input.sourceId ?? null,
+                    reasoning: 'API could not reach separate Agent service.' },
+                result: { result: 'FAILED', output: { reason, message: 'Không kết nối được AI Agent service.', errorMessage,
+                    productId: input.productId ?? null, productIds: input.productIds ?? [], notification: { type: 'error', title: 'Agent xử lý thất bại',
+                        description: 'Không kết nối được AI Agent service.', actionLabel: 'Xem nhật ký Agent', actionUrl: '/admin/agent-logs' } } }
+            } }
+        }, include: auditInclude });
+        return auditDto(execution);
     },
-
     async listLogs(query: Record<string, unknown> = {}) {
-        const page = Number.parseInt(String(query.page ?? '1'), 10) || 1;
-        const limit = Math.min(Number.parseInt(String(query.limit ?? '20'), 10) || 20, 100);
-        const status = asString(query.status)?.toUpperCase();
-        const action = asString(query.action);
-        const productId = asString(query.productId);
-        const and: any[] = [];
-        if (action) and.push({ action });
-        if (status === 'FAILED') and.push({ OR: [{ result: 'FAILED' }, { error_message: { not: null } }] });
-        if (productId) {
-            and.push({
-                OR: [
-                    { input: { contains: productId } },
-                    { output: { contains: productId } },
-                    { reference_id: productId }
-                ]
-            });
-        }
-        const where: any = and.length ? { AND: and } : {};
-        const [total, logs] = await Promise.all([
-            prisma.agentLog.count({ where }),
-            prisma.agentLog.findMany({
-                where,
-                orderBy: { triggered_at: 'desc' },
-                skip: (page - 1) * limit,
-                take: limit
-            })
-        ]);
-
-        return {
-            logs: logs.map(toAgentLogDto),
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages: Math.max(1, Math.ceil(total / limit))
-            }
-        };
+        const page = pageInt(query.page, 1), limit = pageInt(query.limit, 20, 100), status = str(query.status)?.toUpperCase();
+        const action = str(query.action), productId = str(query.productId), triggerType = str(query.triggerType);
+        const and: Prisma.AgentExecutionWhereInput[] = [];
+        if (action) and.push({ OR: [{ intent: action }, { toolCalls: { some: { arguments: { path: ['action'], equals: action } } } }] });
+        if (status === 'FAILED') and.push({ status: { in: ['FAILED', 'TIMEOUT', 'CANCELLED'] } });
+        if (status === 'RUNNING') and.push({ status: { in: ['RUNNING', 'WAITING_APPROVAL'] } });
+        if (status === 'SUCCESS') and.push({ status: 'SUCCEEDED' });
+        if (triggerType) and.push({ toolCalls: { some: { arguments: { path: ['input', 'triggerType'], equals: triggerType } } } });
+        if (productId) and.push({ toolCalls: { some: { OR: [
+            { arguments: { path: ['input', 'productId'], equals: productId } },
+            { arguments: { path: ['input', 'productIds'], array_contains: [productId] } },
+            { result: { path: ['output', 'productId'], equals: productId } }
+        ] } } });
+        const where: Prisma.AgentExecutionWhereInput = and.length ? { AND: and } : {};
+        const [total, logs] = await Promise.all([prisma.agentExecution.count({ where }), prisma.agentExecution.findMany({ where, include: auditInclude,
+            orderBy: { startedAt: 'desc' }, skip: Math.min((page - 1) * limit, 2147483647), take: limit })]);
+        return { logs: logs.map(auditDto), pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } };
     }
 };

@@ -1,5 +1,6 @@
 import { HttpError } from '../../common/http-error';
-import { prisma } from '@cafe-project/database';
+import { Prisma, prisma, type SupplierIngredient, type Supplier } from '@cafe-project/database';
+import { stockQuantity } from './inventory-quantity';
 import { inventoryRepository, type InventoryRecord, type InventoryTransactionRecord } from './inventory.repository';
 import type { AdjustInventoryInput, ImportInventoryInput, UpdateThresholdInput } from './inventory.validator';
 import { InventoryTransactionType } from '@cafe-project/database';
@@ -45,12 +46,14 @@ export type InventoryDto = {
     openPurchaseRequestCode?: string;
     openPurchaseRequestStatus?: string;
     sellableQuantity: number;
-    batches?: any[];
+    ingredientId: string;
+    batches: Array<{ id: string; batchCode: string; quantity: number; quantityInitial: number; quantityRemaining: number; expirationDate: Date | null; receivedAt: Date }>;
 };
 
 export type InventoryTransactionDto = {
     id: string;
-    productId: string;
+    ingredientId: string;
+    productId: string | null;
     productName: string;
     productSku: string;
     type: string;
@@ -85,34 +88,36 @@ const getStatus = (availableStock: number, minThreshold: number): InventoryStatu
 };
 
 const toInventoryDto = (inventory: InventoryRecord): InventoryDto => {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-
-    const batches = (inventory as any).batches ?? [];
-    const sellableQuantity = batches.reduce((sum: number, batch: any) => {
-        if (batch.quantity > 0 && new Date(batch.expirationDate) >= startOfToday) {
-            return sum + batch.quantity;
-        }
-        return sum;
-    }, 0);
+    const now = new Date();
+    const batches = inventory.batches.map(batch => ({
+        id: batch.id, batchCode: batch.batchCode, quantity: Number(batch.quantityRemaining),
+        quantityInitial: Number(batch.quantityInitial), quantityRemaining: Number(batch.quantityRemaining),
+        expirationDate: batch.expirationDate, receivedAt: batch.receivedAt
+    }));
+    const eligible = inventory.batches.filter(batch => batch.expirationDate && batch.expirationDate > now && batch.receivedAt <= now)
+        .reduce((sum, batch) => sum.plus(batch.quantityRemaining), new Prisma.Decimal(0));
+    const available = inventory.quantity.minus(inventory.reserved);
+    const sellableQuantity = Number(Prisma.Decimal.max(0, Prisma.Decimal.min(available, eligible.minus(inventory.reserved))));
 
     return {
         id: inventory.id,
         inventoryId: inventory.id,
-        productId: inventory.productId,
-        productImageUrl: inventory.product.imageUrl,
-        productName: inventory.product.name,
-        productSku: inventory.product.sku,
-        categoryName: inventory.product.category.name,
-        quantity: inventory.quantity,
-        stock: inventory.quantity,
-        reservedStock: inventory.reservedStock,
-        availableStock: inventory.quantity - inventory.reservedStock,
+        // Legacy display fields describe ingredients; IDs are Ingredient.id aliases.
+        ingredientId: inventory.id,
+        productId: inventory.id,
+        productImageUrl: inventory.imageUrl,
+        productName: inventory.name,
+        productSku: inventory.sku,
+        categoryName: inventory.category?.name ?? '',
+        quantity: Number(inventory.quantity),
+        stock: Number(inventory.quantity),
+        reservedStock: Number(inventory.reserved),
+        availableStock: Number(available),
         sellableQuantity,
-        minThreshold: inventory.minThreshold,
-        minStock: inventory.minThreshold,
-        unit: inventory.unit,
-        status: getStatus(inventory.quantity - inventory.reservedStock, inventory.minThreshold),
+        minThreshold: Number(inventory.minThreshold),
+        minStock: Number(inventory.minThreshold),
+        unit: inventory.baseUnit,
+        status: getStatus(Number(available), Number(inventory.minThreshold)),
         createdAt: inventory.createdAt,
         updatedAt: inventory.updatedAt,
         batches
@@ -121,16 +126,17 @@ const toInventoryDto = (inventory: InventoryRecord): InventoryDto => {
 
 const toTransactionDto = (transaction: InventoryTransactionRecord): InventoryTransactionDto => ({
     id: transaction.id,
-    productId: transaction.productId,
-    productName: transaction.product.name,
-    productSku: transaction.product.sku,
+    ingredientId: transaction.ingredientId,
+    productId: transaction.ingredientId,
+    productName: transaction.ingredient.name,
+    productSku: transaction.ingredient.sku,
     type: transaction.type === 'ADJUSTMENT' ? 'ADJUST' : transaction.type,
-    quantity: transaction.quantity,
+    quantity: Number(transaction.quantity),
     previousQty: null,
     newQty: null,
     note: transaction.reason,
-    createdBy: transaction.user?.name ?? null,
-    createdByEmail: transaction.user?.email ?? null,
+    createdBy: transaction.performedByUser?.name ?? null,
+    createdByEmail: transaction.performedByUser?.email ?? null,
     createdAt: transaction.createdAt
 });
 
@@ -163,27 +169,31 @@ const normalizePositiveInteger = (value: number | undefined, fallback: number): 
     return value;
 };
 
-const toSupplierDto = (supplierProduct: any) => ({
+const toSupplierDto = (supplierProduct: SupplierIngredient & { supplier: Supplier }) => ({
     supplierId: supplierProduct.supplierId,
     supplierName: supplierProduct.supplier.name,
     isPreferred: supplierProduct.isPreferred,
     priority: null,
     leadTimeDays: supplierProduct.leadTimeDays,
     moq: supplierProduct.minOrderQuantity,
-    purchasePrice: Number(supplierProduct.price)
+    purchasePrice: Number(supplierProduct.pricePerBaseUnit.times(supplierProduct.conversionQuantity)),
+    pricePerBaseUnit: Number(supplierProduct.pricePerBaseUnit),
+    purchaseUnit: supplierProduct.purchaseUnit,
+    conversionQuantity: Number(supplierProduct.conversionQuantity),
+    conversionTargetUnit: supplierProduct.conversionTargetUnit
 });
 
 const getSupplierProductsForSuggestion = async (productId: string) => {
-    return prisma.supplierProduct.findMany({
+    return prisma.supplierIngredient.findMany({
         where: {
-            productId,
+            ingredientId: productId,
             supplier: {
                 status: 'ACTIVE',
                 deletedAt: null
             }
         },
         include: { supplier: true },
-        orderBy: [{ isPreferred: 'desc' }, { leadTimeDays: 'asc' }, { price: 'asc' }]
+        orderBy: [{ isPreferred: 'desc' }, { leadTimeDays: 'asc' }, { pricePerBaseUnit: 'asc' }]
     });
 };
 
@@ -228,14 +238,14 @@ export const getInventories = async (): Promise<InventoryDto[]> => {
         }
     });
 
-    const openPRMap = new Map();
+    const openPRMap = new Map<string, typeof openPRs[number]['request']>();
     for (const prItem of openPRs) {
-        if (!openPRMap.has(prItem.inventoryId)) {
-            openPRMap.set(prItem.inventoryId, prItem.request);
+        if (!openPRMap.has(prItem.ingredientId)) {
+            openPRMap.set(prItem.ingredientId, prItem.request);
         }
     }
 
-    const productIds = inventories.map(inv => inv.productId);
+    const ingredientIds = inventories.map(inv => inv.id);
     const salesWindowDays = 30;
     const bufferDays = 2;
     const delayBufferDays = 2;
@@ -243,29 +253,29 @@ export const getInventories = async (): Promise<InventoryDto[]> => {
     salesWindowStart.setDate(salesWindowStart.getDate() - salesWindowDays);
 
     const salesGroups = await prisma.inventoryTransaction.groupBy({
-        by: ['productId'],
+        by: ['ingredientId'],
         where: {
-            productId: { in: productIds },
-            type: { in: [InventoryTransactionType.ORDER, InventoryTransactionType.SIMULATE_SALE] },
+            ingredientId: { in: ingredientIds },
+            type: InventoryTransactionType.CONSUME,
             createdAt: { gte: salesWindowStart }
         },
         _sum: { quantity: true }
     });
 
-    const salesMap = new Map<string, number>(salesGroups.map((g: any) => [g.productId, Math.abs(g._sum.quantity ?? 0)]));
+    const salesMap = new Map(salesGroups.map(g => [g.ingredientId, Math.abs(Number(g._sum.quantity ?? 0))]));
 
-    const supplierProducts = await prisma.supplierProduct.findMany({
+    const supplierProducts = await prisma.supplierIngredient.findMany({
         where: {
-            productId: { in: productIds },
+            ingredientId: { in: ingredientIds },
             supplier: { status: 'ACTIVE', deletedAt: null }
         },
-        orderBy: [{ isPreferred: 'desc' }, { leadTimeDays: 'asc' }, { price: 'asc' }]
+        orderBy: [{ isPreferred: 'desc' }, { leadTimeDays: 'asc' }, { pricePerBaseUnit: 'asc' }]
     });
 
-    const supplierMap = new Map<string, any>();
+    const supplierMap = new Map<string, SupplierIngredient>();
     for (const sp of supplierProducts) {
-        if (!supplierMap.has(sp.productId)) {
-            supplierMap.set(sp.productId, sp);
+        if (!supplierMap.has(sp.ingredientId)) {
+            supplierMap.set(sp.ingredientId, sp);
         }
     }
 
@@ -273,12 +283,12 @@ export const getInventories = async (): Promise<InventoryDto[]> => {
         const dto = toInventoryDto(inv);
         const openPR = openPRMap.get(inv.id);
         
-        const totalSalesInWindow = Number(salesMap.get(inv.productId) ?? 0);
+        const totalSalesInWindow = Number(salesMap.get(inv.id) ?? 0);
         const avgDailySales = totalSalesInWindow / salesWindowDays;
         const baseDailySales = avgDailySales > 0 ? avgDailySales : 1;
         
-        const primarySupplierProduct = supplierMap.get(inv.productId);
-        const leadTimeDays = primarySupplierProduct?.leadTimeDays || 3;
+        const primarySupplierProduct = supplierMap.get(inv.id);
+        const leadTimeDays = primarySupplierProduct?.leadTimeDays ?? 3;
         const effectiveLeadTimeDays = leadTimeDays + delayBufferDays;
 
         const leadTimeDemand = Math.ceil(baseDailySales * effectiveLeadTimeDays);
@@ -308,27 +318,42 @@ export const getInventoryTransactions = async (): Promise<InventoryTransactionDt
     return transactions.map(toTransactionDto);
 };
 
+// Agent contract accepts selling Product IDs and resolves their recipes itself.
+const scanIngredientProducts = async (ingredientId: string, triggerType: string, userId: string) => {
+    const now = new Date();
+    const products = await prisma.product.findMany({ where: {
+        isActive: true, deletedAt: null, recipes: { some: {
+            isActive: true, effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
+            ingredients: { some: { ingredientId } }
+        } }
+    }, select: { id: true } });
+    if (products.length === 0) return;
+    return scanInventoryViaAgentService({ productIds: products.map(row => row.id), triggerType,
+        sourceType: 'INGREDIENT', sourceId: ingredientId }, userId);
+};
+
 export const importInventory = async (input: ImportInventoryInput, userId: string): Promise<InventoryMutationDto> => {
     const inventory = await ensureInventoryExists(input.inventoryId);
-    const stockBefore = inventory.quantity;
-    let importQuantity = input.quantity ?? 0;
+    const stockBefore = Number(inventory.quantity);
+    let importQuantity = new Prisma.Decimal(input.quantity ?? 0);
     let purchaseQuantity: number | undefined;
     let purchaseUnit: string | null = null;
     let conversionQuantity: number | null = null;
     let conversionTargetUnit: string | null = null;
     let conversionNote: string | null = null;
+    const supplierIngredient = input.supplierIngredientId
+        ? await prisma.supplierIngredient.findUnique({ where: { id: input.supplierIngredientId }, include: { supplier: true } })
+        : input.supplierId ? await prisma.supplierIngredient.findUnique({
+            where: { supplierId_ingredientId: { supplierId: input.supplierId, ingredientId: inventory.id } }, include: { supplier: true }
+        }) : null;
+    if ((input.supplierIngredientId || input.supplierId) && (!supplierIngredient || supplierIngredient.ingredientId !== inventory.id ||
+        (input.supplierId && supplierIngredient.supplierId !== input.supplierId) || supplierIngredient.supplier.deletedAt || supplierIngredient.supplier.status !== 'ACTIVE')) {
+        throw new HttpError(400, 'Nhà cung cấp không cung cấp nguyên liệu này.');
+    }
 
     if (input.purchaseQuantity !== undefined) {
-        const supplierProduct = input.supplierProductId
-            ? await prisma.supplierProduct.findUnique({ where: { id: input.supplierProductId }, include: { supplier: true } })
-            : input.supplierId
-              ? await prisma.supplierProduct.findUnique({
-                    where: { supplierId_productId: { supplierId: input.supplierId, productId: inventory.productId } },
-                    include: { supplier: true }
-                })
-              : null;
-
-        if (!supplierProduct || supplierProduct.productId !== inventory.productId) {
+        const supplierProduct = supplierIngredient;
+        if (!supplierProduct || supplierProduct.ingredientId !== inventory.id) {
             throw new HttpError(400, 'Chưa có quy cách nhập hàng cho sản phẩm này.');
         }
 
@@ -336,23 +361,24 @@ export const importInventory = async (input: ImportInventoryInput, userId: strin
             throw new HttpError(400, 'Chưa có quy cách nhập hàng cho sản phẩm này.');
         }
 
-        if (supplierProduct.conversionTargetUnit !== inventory.unit) {
-            throw new HttpError(400, `Quy cách nhập hàng quy đổi sang ${supplierProduct.conversionTargetUnit}, không khớp đơn vị tồn kho ${inventory.unit}.`);
+        if (supplierProduct.conversionTargetUnit !== inventory.baseUnit) {
+            throw new HttpError(400, `Quy cách nhập hàng quy đổi sang ${supplierProduct.conversionTargetUnit}, không khớp đơn vị tồn kho ${inventory.baseUnit}.`);
         }
 
         purchaseQuantity = input.purchaseQuantity;
         purchaseUnit = supplierProduct.purchaseUnit;
-        conversionQuantity = supplierProduct.conversionQuantity;
+        conversionQuantity = Number(supplierProduct.conversionQuantity);
         conversionTargetUnit = supplierProduct.conversionTargetUnit;
-        importQuantity = Math.ceil(input.purchaseQuantity * supplierProduct.conversionQuantity);
-        conversionNote = `Nhập ${input.purchaseQuantity} ${purchaseUnit}; quy cách 1 ${purchaseUnit} = ${conversionQuantity} ${conversionTargetUnit}; kho tăng ${importQuantity} ${inventory.unit}`;
+        importQuantity = stockQuantity(new Prisma.Decimal(input.purchaseQuantity).times(supplierProduct.conversionQuantity));
+        conversionNote = `Nhập ${input.purchaseQuantity} ${purchaseUnit}; quy cách 1 ${purchaseUnit} = ${conversionQuantity} ${conversionTargetUnit}; kho tăng ${importQuantity} ${inventory.baseUnit}`;
     }
 
-    if (importQuantity <= 0) {
+    if (importQuantity.lessThanOrEqualTo(0)) {
         throw new HttpError(400, 'Số lượng phải lớn hơn 0.');
     }
 
-    const updatedInventory = await inventoryRepository.importStock(inventory, importQuantity, appendConversionNote(normalizeNote(input.note), conversionNote), userId, input.batchCode, input.expirationDate);
+    const updatedInventory = await inventoryRepository.importStock(inventory, importQuantity, appendConversionNote(normalizeNote(input.note), conversionNote), userId, input.batchCode, input.expirationDate,
+        { idempotencyKey: input.idempotencyKey, supplierIngredientId: supplierIngredient?.id, purchaseQuantity: input.purchaseQuantity });
     const dto = toInventoryDto(updatedInventory);
     const availableStockAfter = dto.quantity - dto.reservedStock;
     const isLow = availableStockAfter < dto.minThreshold;
@@ -363,7 +389,7 @@ export const importInventory = async (input: ImportInventoryInput, userId: strin
         result: 'SUCCESS',
         reasoning: `Đã nhập kho sản phẩm ${dto.productName}. Tồn kho đã được cập nhật.`,
         input: {
-            productId: inventory.productId,
+            ingredientId: inventory.id,
             productName: dto.productName,
             quantityBefore: stockBefore,
             quantityAfter: dto.quantity,
@@ -377,13 +403,7 @@ export const importInventory = async (input: ImportInventoryInput, userId: strin
         creator: userId ? { connect: { id: userId } } : undefined
     }).catch(console.error);
 
-    scanInventoryViaAgentService({
-        productIds: [inventory.productId],
-        triggerType: 'INVENTORY_IMPORTED',
-        sourceType: 'INVENTORY',
-        sourceId: inventory.id,
-        note: 'Inventory imported'
-    }, userId).catch((error) => {
+    scanIngredientProducts(inventory.id, 'INVENTORY_IMPORTED', userId).catch((error) => {
         console.error('[AI_AGENT] Failed to scan inventory after inventory import', error);
     });
 
@@ -408,7 +428,7 @@ export const importInventory = async (input: ImportInventoryInput, userId: strin
         purchaseUnit,
         conversionQuantity,
         conversionTargetUnit,
-        convertedQuantity: importQuantity,
+        convertedQuantity: Number(importQuantity),
         stockBefore
     };
 };
@@ -420,7 +440,7 @@ export const adjustInventory = async (input: AdjustInventoryInput, userId: strin
         throw new HttpError(400, 'Số lượng điều chỉnh không được bằng 0.');
     }
 
-    const updatedInventory = await inventoryRepository.adjustStock(inventory, input.quantity, normalizeNote(input.note), userId, input.batchId);
+    const updatedInventory = await inventoryRepository.adjustStock(inventory, input.quantity, normalizeNote(input.note), userId, input.batchId, input.idempotencyKey);
     const dto = toInventoryDto(updatedInventory);
 
     const availableStockAfter = dto.quantity - dto.reservedStock;
@@ -432,9 +452,9 @@ export const adjustInventory = async (input: AdjustInventoryInput, userId: strin
         result: 'SUCCESS',
         reasoning: `Đã điều chỉnh tồn kho sản phẩm ${dto.productName}.`,
         input: {
-            productId: inventory.productId,
+            ingredientId: inventory.id,
             productName: dto.productName,
-            quantityBefore: inventory.quantity,
+            quantityBefore: Number(inventory.quantity),
             quantityAfter: dto.quantity,
             availableStock: availableStockAfter,
             minThreshold: dto.minThreshold,
@@ -447,13 +467,7 @@ export const adjustInventory = async (input: AdjustInventoryInput, userId: strin
     }).catch(console.error);
 
     if (availableStockAfter <= dto.minThreshold || input.quantity < 0) {
-        scanInventoryViaAgentService({
-            productIds: [inventory.productId],
-            triggerType: 'INVENTORY_ADJUSTED',
-            sourceType: 'INVENTORY',
-            sourceId: inventory.id,
-            note: 'Inventory adjusted below threshold or downward'
-        }, userId).catch((error) => {
+        scanIngredientProducts(inventory.id, 'INVENTORY_ADJUSTED', userId).catch((error) => {
             console.error('[AI_AGENT] Failed to scan inventory after inventory adjustment', error);
         });
     }
@@ -502,10 +516,10 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string) => {
     const bufferDays = 2;
     const delayBufferDays = 2;
 
-    const supplierProducts = await getSupplierProductsForSuggestion(inventory.productId);
+    const supplierProducts = await getSupplierProductsForSuggestion(inventory.id);
     const primarySupplierProduct = supplierProducts[0] ?? null;
 
-    const leadTimeDays = primarySupplierProduct?.leadTimeDays || 3;
+    const leadTimeDays = primarySupplierProduct?.leadTimeDays ?? 3;
     const effectiveLeadTimeDays = leadTimeDays + delayBufferDays;
 
     const salesWindowStart = new Date();
@@ -513,14 +527,14 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string) => {
 
     const salesTransactions = await prisma.inventoryTransaction.aggregate({
         where: {
-            productId: inventory.productId,
-            type: { in: [InventoryTransactionType.ORDER, InventoryTransactionType.SIMULATE_SALE] },
+            ingredientId: inventory.id,
+            type: InventoryTransactionType.CONSUME,
             createdAt: { gte: salesWindowStart }
         },
         _sum: { quantity: true }
     });
 
-    const totalSalesInWindow = Math.abs(salesTransactions._sum.quantity ?? 0);
+    const totalSalesInWindow = Math.abs(Number(salesTransactions._sum.quantity ?? 0));
     const avgDailySales = totalSalesInWindow / salesWindowDays;
     const baseDailySales = avgDailySales > 0 ? avgDailySales : 1;
     
@@ -529,7 +543,7 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string) => {
     
     const recommendedThreshold = Math.ceil(leadTimeDemand + safetyStock);
 
-    const warnings = getThresholdWarnings(inventory.minThreshold, leadTimeDemand, recommendedThreshold);
+    const warnings = getThresholdWarnings(Number(inventory.minThreshold), leadTimeDemand, recommendedThreshold);
 
     if (supplierProducts.length === 0) {
         warnings.push({
@@ -538,22 +552,23 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string) => {
         });
     }
 
-    const unit = inventory.unit || 'đơn vị';
+    const unit = inventory.baseUnit;
     const explanation = avgDailySales > 0
-        ? `Sản phẩm ${inventory.product.name} đang được tính ngưỡng. Dựa trên tốc độ bán trung bình ${Number(avgDailySales.toFixed(2))} ${unit}/ngày, thời gian nhập hàng thực tế ${effectiveLeadTimeDays} ngày và dự phòng rủi ro, hệ thống gợi ý hàng an toàn là ${safetyStock} ${unit} và ngưỡng đề xuất là ${recommendedThreshold} ${unit}.`
-        : `Sản phẩm ${inventory.product.name} chưa có lịch sử bán hàng. Hệ thống dùng tốc độ bán giả định 1 ${unit}/ngày và gợi ý mức an toàn là ${safetyStock} ${unit}, tổng ngưỡng đề xuất là ${recommendedThreshold} ${unit}.`;
+        ? `Nguyên liệu ${inventory.name}: tiêu hao trung bình ${Number(avgDailySales.toFixed(2))} ${unit}/ngày, thời gian nhập ${effectiveLeadTimeDays} ngày; ngưỡng đề xuất ${recommendedThreshold} ${unit}.`
+        : `Nguyên liệu ${inventory.name} chưa có lịch sử tiêu hao. Giả định 1 ${unit}/ngày; ngưỡng đề xuất ${recommendedThreshold} ${unit}.`;
 
     return {
         inventoryId: inventory.id,
-        productId: inventory.productId,
-        productName: inventory.product.name,
+        ingredientId: inventory.id,
+        productId: inventory.id,
+        productName: inventory.name,
         inventoryUnit: unit,
         explanation,
-        currentStock: inventory.quantity,
-        stock: inventory.quantity,
-        reservedStock: inventory.reservedStock,
-        availableStock: inventory.quantity - inventory.reservedStock,
-        currentThreshold: inventory.minThreshold,
+        currentStock: Number(inventory.quantity),
+        stock: Number(inventory.quantity),
+        reservedStock: Number(inventory.reserved),
+        availableStock: Number(inventory.quantity.minus(inventory.reserved)),
+        currentThreshold: Number(inventory.minThreshold),
         salesWindowDays,
         totalSalesInWindow,
         avgDailySales: Number(avgDailySales.toFixed(2)),
@@ -568,7 +583,7 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string) => {
         supplier: primarySupplierProduct ? toSupplierDto(primarySupplierProduct) : null,
         backupSuppliers: supplierProducts.slice(1).map(toSupplierDto),
         supplierCapacityAvailable: false,
-        capacityNote: 'SupplierProduct hiện chưa có availableQuantity/capacity; hệ thống không tự kết luận nhà cung cấp đủ hay thiếu.',
+        capacityNote: 'SupplierIngredient chưa có availableQuantity/capacity; chưa xác minh khả năng cung cấp.',
         warnings: warnings.map((warning) => warning.message),
         warningDetails: warnings
     };

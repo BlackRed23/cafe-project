@@ -115,14 +115,47 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse) =
     }
 };
 
-if (require.main === module) {
-    const server = http.createServer((req, res) => {
-        handleRequest(req, res).catch(() => {
-            sendJson(res, 500, { message: 'Agent service error.' });
-        });
-    });
+let startup: Promise<{ server: http.Server; stop: () => Promise<void> }> | undefined;
 
-    server.listen(AGENT_PORT, AGENT_HOST, () => {
+export const startServer = () => {
+    if (startup) return startup;
+    startup = (async () => {
+        requireInternalSecret();
+        const server = http.createServer((req, res) => {
+            handleRequest(req, res).catch(() => {
+                sendJson(res, 500, { message: 'Agent service error.' });
+            });
+        });
+        await new Promise<void>((resolve, reject) => {
+            server.once('error', reject);
+            server.listen(AGENT_PORT, AGENT_HOST, () => {
+                server.removeListener('error', reject);
+                resolve();
+            });
+        });
+        let stopping: Promise<void> | undefined;
+        const stop = () => stopping ??= (async () => {
+            process.removeListener('SIGINT', shutdown);
+            process.removeListener('SIGTERM', shutdown);
+            await new Promise<void>((resolve, reject) => {
+                server.close(error => error ? reject(error) : resolve());
+            });
+        })();
+        const shutdown = () => { void stop().catch(error => {
+            console.error('[agent-service] shutdown failed:', error);
+            process.exitCode = 1;
+        }); };
+        process.once('SIGINT', shutdown);
+        process.once('SIGTERM', shutdown);
         console.log('[agent-service] listening on configured interface');
+        return { server, stop };
+    })();
+    return startup;
+};
+
+if (require.main === module) {
+    startServer().catch(error => {
+        console.error('[agent-service] startup failed:', error);
+        process.exitCode = 1;
     });
 }

@@ -1,21 +1,12 @@
-import type { Category, Inventory, Prisma, Product } from '@cafe-project/database';
+import type { Prisma, Product } from '@cafe-project/database';
 import { prisma } from '@cafe-project/database';
-
-export type ProductRecord = Product & {
-    category: Category;
-    inventory: Inventory | null;
-};
-
-export type ProductDeleteBlockers = {
-    orderItems: number;
-    purchaseRequestItems: number;
-    inventoryTransactions: number;
-};
+import { HttpError } from '../../common/http-error';
 
 const productInclude = {
-    category: true,
-    inventory: true
+    category: true, recipes: { include: { ingredients: { include: { ingredient: { include: { batches: true } } } } } }
 } satisfies Prisma.ProductInclude;
+export type ProductRecord = Prisma.ProductGetPayload<{ include: typeof productInclude }>;
+export type ProductDeleteBlockers = { orderItems: number; recipes: number; toppings: number };
 
 export const productRepository = {
     async findMany(includeInactive = false): Promise<ProductRecord[]> {
@@ -53,29 +44,7 @@ export const productRepository = {
     },
 
     async create(data: Prisma.ProductUncheckedCreateInput): Promise<ProductRecord> {
-        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            const product = await tx.product.create({ data });
-
-            await tx.inventory.create({
-                data: {
-                    productId: product.id,
-                    quantity: 0,
-                    minThreshold: 10,
-                    unit: product.unit
-                }
-            });
-
-            const productWithInventory = await tx.product.findUnique({
-                where: { id: product.id },
-                include: productInclude
-            });
-
-            if (!productWithInventory) {
-                throw new Error('Product creation failed.');
-            }
-
-            return productWithInventory;
-        });
+        return prisma.product.create({ data, include: productInclude });
     },
 
     async update(id: string, data: Prisma.ProductUncheckedUpdateInput): Promise<ProductRecord> {
@@ -87,36 +56,24 @@ export const productRepository = {
     },
 
     async getDeleteBlockers(productId: string): Promise<ProductDeleteBlockers> {
-        const [orderItems, purchaseRequestItems, inventoryTransactions] = await Promise.all([
-            prisma.orderItem.count({ where: { productId } }),
-            prisma.purchaseRequestItem.count({ where: { productId } }),
-            prisma.inventoryTransaction.count({ where: { productId } })
+        const [orderItems, recipes, toppings] = await Promise.all([
+            prisma.orderItem.count({ where: { productId } }), prisma.recipe.count({ where: { productId } }), prisma.topping.count({ where: { productId } })
         ]);
-
-        return { orderItems, purchaseRequestItems, inventoryTransactions };
+        return { orderItems, recipes, toppings };
     },
-
     async delete(id: string): Promise<ProductRecord> {
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            const inventory = await tx.inventory.findUnique({ where: { productId: id } });
-            
-            if (inventory) {
-                await tx.inventoryBatch.deleteMany({ where: { inventoryId: inventory.id } });
-                await tx.inventory.delete({ where: { id: inventory.id } });
+            await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${id} FOR UPDATE`;
+            if (await tx.orderItem.count({ where: { productId: id } }) || await tx.recipe.count({ where: { productId: id } }) || await tx.topping.count({ where: { productId: id } })) {
+                throw new HttpError(409, 'Sản phẩm có đơn hàng/công thức/topping; chỉ được ngưng hoạt động.');
             }
-            
-            await tx.supplierProduct.deleteMany({ where: { productId: id } });
-
-            return tx.product.delete({
-                where: { id },
-                include: productInclude
-            });
+            return tx.product.delete({ where: { id }, include: productInclude });
         });
     },
 
     async categoryExists(categoryId: string): Promise<boolean> {
         const category = await prisma.category.findUnique({
-            where: { id: categoryId },
+            where: { id: categoryId, kind: 'PRODUCT' },
             select: { id: true }
         });
 

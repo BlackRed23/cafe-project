@@ -2,6 +2,9 @@ import { apiClient, unwrapApiData, unwrapApiField, unwrapApiList } from "./clien
 import type { PurchaseRequest, PurchaseRequestEmailPreview } from "../types/purchaseRequest.types";
 import { fixVietnameseMojibakeText } from "../utils/textEncoding";
 
+// Retain key while outcome is unknown; retry same payload with same key.
+const pendingReceiptKeys = new Map<string, string>();
+
 const cleanText = (value: unknown): string =>
   typeof value === "string" ? fixVietnameseMojibakeText(value) : "";
 
@@ -131,10 +134,14 @@ export const purchaseRequestsApi = {
     id: string,
     payload: { notes?: string; items: Array<{ purchaseRequestItemId: string; receivedQuantity: number }> }
   ): Promise<{ purchaseRequest: PurchaseRequest; isStockSafe: boolean }> => {
-    const response = await apiClient.patch(`/purchase-requests/${id}/receive`, payload);
+    const command = JSON.stringify({ id, payload });
+    const idempotencyKey = pendingReceiptKeys.get(command) ?? crypto.randomUUID();
+    pendingReceiptKeys.set(command, idempotencyKey);
+    const response = await apiClient.patch(`/purchase-requests/${id}/receive`, { ...payload, note: payload.notes, idempotencyKey });
     const data = response.data;
     const purchaseRequest = normalizePurchaseRequest(unwrapApiField<any>(data, "purchaseRequest"));
     const isStockSafe = data?.data?.isStockSafe ?? true;
+    pendingReceiptKeys.delete(command);
     return { purchaseRequest, isStockSafe };
   },
 

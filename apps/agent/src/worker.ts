@@ -1,59 +1,67 @@
 import dotenv from 'dotenv';
-import path from 'path';
 
-// Load environmental config
-dotenv.config();
+let startup: Promise<{ stop: () => Promise<void>; completed: boolean }> | undefined;
 
-import { env } from './config/env';
-import { prisma } from '@cafe-project/database';
-import { logger } from './utils/logger';
-import { initInventoryScanJob } from './jobs/inventory-scan.job';
-import { agentService } from './services/agent.service';
-
-const main = async () => {
-    logger.info('AI Agent starting...');
-
-    // 1. Connect Prisma
-    try {
-        await prisma.$connect();
-        logger.info('Connected to database successfully.');
-    } catch (err) {
-        logger.error('❌ Failed to connect to database:', err);
-        process.exit(1);
-    }
-
-    // 2. Print required startup log exactly
-    console.log('AI Agent started');
-
-    // 3. Check for manual run through startup flag or argv
-    const scanOnce = process.argv.includes('--scan-once') || env.RUN_ON_START;
-
-    if (scanOnce) {
-        logger.info('Immediate scan requested.');
-        try {
-            await agentService.runScan('MANUAL');
-        } catch (err) {
-            logger.error('Error running manual scan:', err);
-        }
-
-        // If manual command support requested scan-once, exit immediately
-        if (process.argv.includes('--scan-once')) {
-            logger.info('Manual run completed. Exiting.');
+export const startWorker = () => {
+    if (startup) return startup;
+    startup = (async () => {
+        dotenv.config();
+        // Runtime dependencies load only when explicitly starting the worker.
+        const { env } = await import('./config/env');
+        const { prisma } = await import('@cafe-project/database');
+        const { logger } = await import('./utils/logger');
+        const { initInventoryScanJob } = await import('./jobs/inventory-scan.job');
+        const { agentService } = await import('./services/agent.service');
+        const { default: cron } = await import('node-cron');
+        const existingTasks = new Set(cron.getTasks().keys());
+        const findOwnedTasks = () => [...cron.getTasks()].filter(([id]) => !existingTasks.has(id)).map(([, task]) => task);
+        let tasks: ReturnType<typeof findOwnedTasks> = [];
+        let stopping: Promise<void> | undefined;
+        const stop = () => stopping ??= (async () => {
+            process.removeListener('SIGINT', shutdown);
+            process.removeListener('SIGTERM', shutdown);
             try {
+                for (const task of tasks) await task.destroy();
+            } finally {
                 await prisma.$disconnect();
-            } catch (disError) {
-                logger.error('Error disconnecting Prisma:', disError);
             }
-            process.exit(0);
+        })();
+        const shutdown = () => { void stop().catch(error => {
+            logger.error('Error shutting down AI Agent:', error);
+            process.exitCode = 1;
+        }); };
+        try {
+            logger.info('AI Agent starting...');
+            await prisma.$connect();
+            logger.info('Connected to database successfully.');
+            console.log('AI Agent started');
+            const completed = process.argv.includes('--scan-once');
+            if (completed || env.RUN_ON_START) {
+                logger.info('Immediate scan requested.');
+                await agentService.runScan('MANUAL');
+            }
+            if (completed) {
+                logger.info('Manual run completed. Exiting.');
+                await stop();
+            } else {
+                try { await initInventoryScanJob(); } finally { tasks = findOwnedTasks(); }
+                process.once('SIGINT', shutdown);
+                process.once('SIGTERM', shutdown);
+            }
+            return { stop, completed };
+        } catch (error) {
+            try { await stop(); } catch (cleanupError) {
+                logger.error('Error cleaning up failed AI Agent startup:', cleanupError);
+            }
+            throw error;
         }
-    }
-
-    // 4. Start scheduled cron jobs
-    await initInventoryScanJob();
+    })();
+    return startup;
 };
 
-main().catch((err) => {
-    logger.error('Fatal crash on AI Agent startup:', err);
-    process.exit(1);
-});
-export {};
+if (require.main === module) {
+    startWorker().catch(error => {
+        console.error('Fatal crash on AI Agent startup:', error);
+        process.exitCode = 1;
+    });
+}

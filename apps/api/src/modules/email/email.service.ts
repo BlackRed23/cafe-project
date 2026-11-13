@@ -3,6 +3,7 @@ import { PurchaseRequestStatus } from '@cafe-project/database';
 import { prisma } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
 import { createAgentLogViaAgentService } from '../agent/agent.client';
+import { purchaseRepository } from '../purchase/purchase.repository';
 import { buildPurchaseRequestEmailDraft } from '../purchase/purchase.service';
 import { getOptionalSettingValue } from '../system-setting/system-setting.service';
 
@@ -28,24 +29,7 @@ export const emailService = {
     },
 
     async getPreview(id: string) {
-        const request = await prisma.purchaseRequest.findUnique({
-            where: { id },
-            include: {
-                supplier: { include: { products: true } },
-                items: {
-                    include: {
-                        product: true,
-                        inventory: {
-                            include: {
-                                product: {
-                                    include: { category: true }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        });
+        const request = await purchaseRepository.findById(id);
 
         if (!request) {
             throw new HttpError(404, 'Purchase request not found.');
@@ -57,7 +41,7 @@ export const emailService = {
 
         const supplierEmail = request.supplier.email || '';
         const isValidEmail = EMAIL_REGEX.test(supplierEmail);
-        const emailDraft = await buildPurchaseRequestEmailDraft(request as any);
+        const emailDraft = await buildPurchaseRequestEmailDraft(request);
 
         let smtpConfigured = true;
         try {
@@ -88,7 +72,7 @@ export const emailService = {
             where: { id },
             include: {
                 supplier: true,
-                items: { include: { product: true } }
+                items: { include: { ingredient: true } }
             }
         });
 
@@ -100,7 +84,7 @@ export const emailService = {
             throw new HttpError(400, 'Only approved purchase requests can be emailed.');
         }
 
-        const isPendingDelete = request.items.some((item: any) => item.product.pendingDeleteUntil);
+        const isPendingDelete = request.items.some(item => item.ingredient.deletedAt || !item.ingredient.isActive);
         if (isPendingDelete) {
             await createAgentLogViaAgentService({
                 action: 'SEND_SUPPLIER_EMAIL_BLOCKED',
@@ -142,12 +126,12 @@ export const emailService = {
         }
 
         if (request.supplier?.status === 'INACTIVE') {
-            let suggestedSuppliers: any[] = [];
-            const productId = request.items?.[0]?.productId;
+            let suggestedSuppliers: Array<{ supplierId: string; supplierName: string; isPreferred: boolean; leadTimeDays: number; moq: number; purchasePrice: number }> = [];
+            const productId = request.items[0]?.ingredientId;
             if (productId) {
-                const altSupplierProducts = await prisma.supplierProduct.findMany({
+                const altSupplierProducts = await prisma.supplierIngredient.findMany({
                     where: {
-                        productId,
+                        ingredientId: productId,
                         supplierId: { not: request.supplier.id },
                         supplier: { status: 'ACTIVE' }
                     },
@@ -155,16 +139,16 @@ export const emailService = {
                     orderBy: [
                         { isPreferred: 'desc' },
                         { leadTimeDays: 'asc' },
-                        { price: 'asc' }
+                        { pricePerBaseUnit: 'asc' }
                     ]
                 });
-                suggestedSuppliers = altSupplierProducts.map((sp: any) => ({
+                suggestedSuppliers = altSupplierProducts.map(sp => ({
                     supplierId: sp.supplierId,
                     supplierName: sp.supplier.name,
                     isPreferred: sp.isPreferred,
                     leadTimeDays: sp.leadTimeDays,
                     moq: sp.minOrderQuantity,
-                    purchasePrice: Number(sp.price)
+                    purchasePrice: Number(sp.pricePerBaseUnit.times(sp.conversionQuantity))
                 }));
             }
 
@@ -184,7 +168,7 @@ export const emailService = {
                     supplierName: request.supplier.name,
                     supplierStatus: 'INACTIVE',
                     productId,
-                    productName: request.items?.[0]?.product?.name,
+                    productName: request.items[0]?.ingredient.name,
                     suggestedSuppliers,
                     notification: {
                         title: "Không thể gửi email",
@@ -238,11 +222,11 @@ export const emailService = {
                 reference_type: 'purchase_request',
                 reference_id: id,
                 creator: userId ? { connect: { id: userId } } : undefined
-            });
+            }).catch(() => console.error('[EMAIL] Audit dispatch unavailable'));
 
             return updatedRequest;
-        } catch (error: any) {
-            const errorMessage = error instanceof Error ? error.message : 'Unknown SMTP error';
+        } catch (error: unknown) {
+            const errorMessage = 'SMTP send failed; delivery status must be checked before retry.';
 
             await prisma.purchaseRequest.update({
                 where: { id },

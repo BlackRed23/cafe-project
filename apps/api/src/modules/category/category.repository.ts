@@ -6,6 +6,7 @@ export type CategoryRecord = Category;
 export const categoryRepository = {
     async findMany() {
         return prisma.category.findMany({
+            where: { kind: 'PRODUCT' },
             orderBy: { createdAt: 'desc' },
             include: {
                 products: {
@@ -21,11 +22,11 @@ export const categoryRepository = {
     },
 
     async findById(id: string): Promise<CategoryRecord | null> {
-        return prisma.category.findUnique({ where: { id } });
+        return prisma.category.findUnique({ where: { id, kind: 'PRODUCT' } });
     },
 
     async findByName(name: string): Promise<CategoryRecord | null> {
-        return prisma.category.findUnique({ where: { name } });
+        return prisma.category.findUnique({ where: { name_kind: { name, kind: 'PRODUCT' } } });
     },
 
     async create(data: Prisma.CategoryCreateInput): Promise<CategoryRecord> {

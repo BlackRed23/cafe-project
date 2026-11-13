@@ -4,47 +4,54 @@ import type { JwtUserPayload } from '../auth/auth.service';
 import { orderRepository, type OrderRecord } from './order.repository';
 import type { CreateOrderInput, OrderFiltersInput, OrderStatusInput } from './order.validator';
 import { scanInventoryViaAgentService, createAgentLogViaAgentService } from '../agent/agent.client';
+import { selectPayment, paymentSummaryStatus } from '../payment/payment-selection';
 
 export type OrderDto = ReturnType<typeof toOrderDto>;
 
-const toOrderDto = (order: OrderRecord) => ({
-    id: order.id,
-    userId: order.userId,
-    customer: order.user,
-    status: order.status,
-    displayStatus: order.status === OrderStatus.PROCESSING ? 'CONFIRMED' : order.status,
-    totalAmount: Number(order.totalAmount),
-    shippingFee: Number(order.shippingFee),
-    shippingZone: order.shippingZone ?? null,
-    paymentStatus: order.payment?.status ?? 'PENDING',
-    paymentMethod: order.payment?.method ?? null,
-    payment: order.payment ? { ...order.payment, amount: Number(order.payment.amount) } : null,
-    shippingName: order.shippingName ?? null,
-    shippingPhone: order.shippingPhone ?? null,
-    shippingAddress: order.shippingAddress ?? null,
-    note: order.note ?? null,
-    stockDeductedAt: order.stockDeductedAt ?? null,
-    items: order.items.map((item) => ({
-        id: item.id,
-        orderId: item.orderId,
-        productId: item.productId,
-        productName: item.product.name,
-        productSku: item.product.sku,
-        quantity: item.quantity,
-        price: Number(item.price),
-        unitPrice: Number(item.price),
-        subtotal: Number(item.price) * item.quantity,
-        product: {
-            id: item.product.id,
-            name: item.product.name,
-            sku: item.product.sku,
-            unit: item.product.unit ?? 'hộp',
-            imageUrl: item.product.imageUrl ?? null
-        }
-    })),
-    createdAt: order.createdAt,
-    updatedAt: order.updatedAt
-});
+const toOrderDto = (order: OrderRecord) => {
+    const payment = selectPayment(order.payments);
+    return {
+        id: order.id,
+        userId: order.userId,
+        customer: order.user,
+        status: order.status,
+        displayStatus: order.status === OrderStatus.PROCESSING ? 'CONFIRMED' : order.status,
+        totalAmount: Number(order.totalAmount),
+        shippingFee: Number(order.shippingFee),
+        shippingZone: order.shippingZone ?? null,
+        paymentStatus: payment ? paymentSummaryStatus(payment.status) : order.paymentStatus,
+        paymentMethod: payment?.method ?? order.paymentMethod,
+        payment: payment ? { ...payment, status: paymentSummaryStatus(payment.status), amount: Number(payment.amount) } : null,
+        shippingName: order.shippingName ?? null,
+        shippingPhone: order.shippingPhone ?? null,
+        shippingAddress: order.shippingAddress ?? null,
+        note: order.note ?? null,
+        stockDeductedAt: order.items.find(item => item.committedAt)?.committedAt ?? null,
+        items: order.items.map((item) => ({
+            id: item.id,
+            orderId: item.orderId,
+            productId: item.productId,
+            recipeId: item.recipeId,
+            recipeVersion: item.recipeVersion,
+            consumptionStatus: item.consumptionStatus,
+            productName: item.product.name,
+            productSku: item.product.sku,
+            quantity: item.quantity,
+            price: Number(item.price),
+            unitPrice: Number(item.price),
+            subtotal: item.price.mul(item.quantity).toNumber(),
+            product: {
+                id: item.product.id,
+                name: item.product.name,
+                sku: item.product.sku,
+                unit: item.product.servingUnit ?? 'hộp',
+                imageUrl: item.product.imageUrl ?? null
+            }
+        })),
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt
+    };
+};
 
 const ensureOrderExists = async (id: string): Promise<OrderRecord> => {
     const order = await orderRepository.findById(id);
@@ -103,6 +110,7 @@ const assertTransition = (order: OrderRecord, next: OrderStatus): void => {
 };
 
 const normalizeOrderError = (error: unknown, fallback: string): HttpError => {
+    if (error instanceof HttpError) return error;
     const message = error instanceof Error ? error.message : fallback;
     const lower = message.toLowerCase();
 
@@ -154,12 +162,13 @@ export const getOrderById = async (id: string, user: JwtUserPayload): Promise<Or
 export const updateOrderStatus = async (id: string, input: OrderStatusInput, userId: string): Promise<OrderDto> => {
     const order = await ensureOrderExists(id);
     const nextStatus = normalizeStatus(input.status);
+    if (order.status === nextStatus) return toOrderDto(order);
     assertTransition(order, nextStatus);
 
     try {
         const updatedOrder = await orderRepository.updateStatus(order, nextStatus, userId);
 
-        if (nextStatus === OrderStatus.COMPLETED && !order.stockDeductedAt) {
+        if (nextStatus === OrderStatus.COMPLETED && !order.items.some(item => item.committedAt)) {
             const productIds = updatedOrder.items.map((item) => item.productId);
             createAgentLogViaAgentService({
                 action: 'ORDER_COMPLETED',

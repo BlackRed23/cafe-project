@@ -10,7 +10,7 @@ model Product {
   sku                String    @unique
   description        String?
   price              Decimal   @default(0) @db.Decimal(12, 2)
-  costPrice          Decimal   @default(0) @db.Decimal(18, 4)
+  costPrice          Decimal   @default(0) @db.Decimal(65, 30)
   servingUnit        String    @default("ly")
   imageUrl           String?
   isActive           Boolean   @default(true)
@@ -25,16 +25,11 @@ model Product {
   expiryInfo          String?
 
   categoryId String
-  category   Category @relation(fields: [categoryId], references: [id])
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
   recipes    Recipe[]
   orderItems OrderItem[]
   toppings   Topping[]
-
-  // Quan hệ chuyển tiếp (Transitional legacy support)
-  inventory            Inventory?
-  supplierProducts     SupplierProduct[]
-  purchaseRequestItems PurchaseRequestItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -43,7 +38,7 @@ model Product {
 model Recipe {
   id            String    @id @default(cuid())
   productId     String
-  product       Product   @relation(fields: [productId], references: [id])
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
   version       Int       @default(1)
   isActive      Boolean   @default(true)
   effectiveFrom DateTime  @default(now())
@@ -60,15 +55,16 @@ model Recipe {
   updatedAt DateTime @updatedAt
 
   @@unique([productId, version])
+  @@unique([id, productId, version])
   @@index([productId, isActive])
 }
 
 model RecipeIngredient {
   id              String     @id @default(cuid())
   recipeId        String
-  recipe          Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  recipe          Recipe     @relation(fields: [recipeId], references: [id], onDelete: Restrict)
   ingredientId    String
-  ingredient      Ingredient @relation(fields: [ingredientId], references: [id])
+  ingredient      Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
   quantity        Decimal    @db.Decimal(14, 3)
   unit            String
   quantityBase    Decimal    @db.Decimal(14, 3)
@@ -84,11 +80,11 @@ model RecipeIngredient {
 
 model Topping {
   id          String      @id @default(cuid())
-  name        String
+  name        String      @unique
   toppingType ToppingType @default(ADD)
   price       Decimal     @default(0) @db.Decimal(12, 2)
   productId   String?
-  product     Product?    @relation(fields: [productId], references: [id])
+  product     Product?    @relation(fields: [productId], references: [id], onDelete: Restrict)
   isActive    Boolean     @default(true)
   sortOrder   Int         @default(0)
 
@@ -102,9 +98,9 @@ model Topping {
 model ToppingIngredient {
   id           String     @id @default(cuid())
   toppingId    String
-  topping      Topping    @relation(fields: [toppingId], references: [id], onDelete: Cascade)
+  topping      Topping    @relation(fields: [toppingId], references: [id], onDelete: Restrict)
   ingredientId String
-  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
   quantityBase Decimal    @db.Decimal(14, 3)
   note         String?
 

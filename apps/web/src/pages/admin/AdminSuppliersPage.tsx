@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { suppliersApi } from "../../api/suppliers.api";
-import { productsApi } from "../../api/products.api";
+import { inventoryApi } from "../../api/inventory.api";
 import { purchaseRequestsApi } from "../../api/purchaseRequests.api";
 import type { Supplier, SupplierProduct } from "../../types/supplier.types";
 import type { Product } from "../../types/product.types";
@@ -14,7 +14,8 @@ import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { DataTable } from "../../components/admin/DataTable";
 import { useToast } from "../../contexts/ToastContext";
 import { Plus, Edit2, Trash2, Link2, Truck, Coffee, AlertTriangle, Ban, CheckCircle } from "lucide-react";
-import { ALLOWED_PRODUCT_UNITS } from "../../constants/units";
+import { ALLOWED_PRODUCT_UNITS as PRODUCT_UNITS } from "../../constants/units";
+const ALLOWED_PRODUCT_UNITS = [...PRODUCT_UNITS, "g", "ml", "l", "piece"];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -42,7 +43,7 @@ export const AdminSuppliersPage: React.FC = () => {
   const toast = useToast();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Pick<Product, "id" | "name" | "unit">[]>([]);
   const [purchaseRequests, setPurchaseRequests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +88,7 @@ export const AdminSuppliersPage: React.FC = () => {
       const [sups, prodLinks, prods, prs] = await Promise.all([
         suppliersApi.getSuppliers(),
         suppliersApi.getSupplierProducts().catch(() => [] as SupplierProduct[]),
-        productsApi.getProducts().catch(() => [] as Product[]),
+        inventoryApi.getInventories().then(rows => rows.map(row => ({ id: row.id, name: row.productName ?? "", unit: row.unit ?? "" }))),
         purchaseRequestsApi.getPurchaseRequests().catch(() => []),
       ]);
       setSuppliers(sups);
@@ -811,7 +812,7 @@ export const AdminSuppliersPage: React.FC = () => {
                         </select>
                       </div>
                       <Input
-                        label="Giá nhập đề xuất (VND)"
+                        label="Giá mỗi đơn vị mua (VND)"
                         type="number"
                         value={importPrice || ""}
                         onChange={(e) => setImportPrice(parseFloat(e.target.value) || 0)}
@@ -984,7 +985,7 @@ export const AdminSuppliersPage: React.FC = () => {
                     </select>
                   </div>
                   <Input
-                    label="Giá nhập đề xuất (VND)"
+                    label="Giá mỗi đơn vị mua (VND)"
                     type="number"
                     value={importPrice || ""}
                     onChange={(e) => setImportPrice(parseFloat(e.target.value) || 0)}

@@ -1,4 +1,5 @@
 import { Prisma } from '@cafe-project/database';
+import { supplierConversion } from './supplier-conversion';
 import { HttpError } from '../../common/http-error';
 import { supplierRepository, type SupplierProductRecord, type SupplierRecord } from './supplier.repository';
 import type { CreateSupplierInput, CreateSupplierProductInput, UpdateSupplierInput, UpdateSupplierProductInput } from './supplier.validator';
@@ -14,20 +15,24 @@ const toSupplierDto = (supplier: SupplierRecord) => ({
     contact: supplier.contact,
     address: supplier.address,
     status: supplier.status,
-    products: supplier.products.map((mapping) => ({
+    products: supplier.ingredients.map((mapping) => ({
         id: mapping.id,
         supplierId: mapping.supplierId,
         supplierName: supplier.name,
-        productId: mapping.productId,
-        productName: mapping.product.name,
-        productSku: mapping.product.sku,
-        price: Number(mapping.price),
+        ingredientId: mapping.ingredientId,
+        productId: mapping.ingredientId,
+        productName: mapping.ingredient.name,
+        productSku: mapping.ingredient.sku,
+        price: Number(mapping.pricePerBaseUnit.times(mapping.conversionQuantity)),
+        pricePerBaseUnit: Number(mapping.pricePerBaseUnit),
+        pricePerBaseUnitExact: mapping.pricePerBaseUnit.toString(),
+        priceExact: mapping.pricePerBaseUnit.times(mapping.conversionQuantity).toString(),
         supplierSku: mapping.supplierSku,
         minOrderQuantity: mapping.minOrderQuantity,
         leadTimeDays: mapping.leadTimeDays,
         isPreferred: mapping.isPreferred,
         purchaseUnit: mapping.purchaseUnit,
-        conversionQuantity: mapping.conversionQuantity,
+        conversionQuantity: Number(mapping.conversionQuantity),
         conversionTargetUnit: mapping.conversionTargetUnit,
         createdAt: mapping.createdAt,
         updatedAt: mapping.updatedAt
@@ -40,16 +45,20 @@ const toSupplierProductDto = (mapping: SupplierProductRecord) => ({
     id: mapping.id,
     supplierId: mapping.supplierId,
     supplierName: mapping.supplier.name,
-    productId: mapping.productId,
-    productName: mapping.product.name,
-    productSku: mapping.product.sku,
-    price: Number(mapping.price),
+    ingredientId: mapping.ingredientId,
+    productId: mapping.ingredientId,
+    productName: mapping.ingredient.name,
+    productSku: mapping.ingredient.sku,
+    price: Number(mapping.pricePerBaseUnit.times(mapping.conversionQuantity)),
+    pricePerBaseUnit: Number(mapping.pricePerBaseUnit),
+    pricePerBaseUnitExact: mapping.pricePerBaseUnit.toString(),
+    priceExact: mapping.pricePerBaseUnit.times(mapping.conversionQuantity).toString(),
     supplierSku: mapping.supplierSku,
     minOrderQuantity: mapping.minOrderQuantity,
     leadTimeDays: mapping.leadTimeDays,
     isPreferred: mapping.isPreferred,
     purchaseUnit: mapping.purchaseUnit,
-    conversionQuantity: mapping.conversionQuantity,
+    conversionQuantity: Number(mapping.conversionQuantity),
     conversionTargetUnit: mapping.conversionTargetUnit,
     createdAt: mapping.createdAt,
     updatedAt: mapping.updatedAt
@@ -57,7 +66,7 @@ const toSupplierProductDto = (mapping: SupplierProductRecord) => ({
 
 const ensureSupplier = async (id: string): Promise<SupplierRecord> => {
     const supplier = await supplierRepository.findSupplierById(id);
-    if (!supplier) throw new HttpError(404, 'Supplier not found.');
+    if (!supplier || supplier.deletedAt) throw new HttpError(404, 'Supplier not found.');
     return supplier;
 };
 
@@ -89,11 +98,12 @@ export const supplierService = {
     },
     async deleteSupplier(id: string) {
         const supplier = await ensureSupplier(id);
-        const supplierProductsCount = supplier.products.length;
+        const supplierProductsCount = supplier.ingredients.length;
         const purchaseRequestsCount = await supplierRepository.countPurchaseRequests(id);
         const agentLogsCount = await supplierRepository.countAgentLogs(id);
+        const batchesCount = await supplierRepository.countBatches(id);
 
-        if (supplierProductsCount > 0 || purchaseRequestsCount > 0 || agentLogsCount > 0) {
+        if (supplierProductsCount > 0 || purchaseRequestsCount > 0 || agentLogsCount > 0 || batchesCount > 0) {
             throw new HttpError(409, 'Không thể xoá nhà cung cấp vì đã có dữ liệu liên quan. Hãy chuyển nhà cung cấp sang trạng thái ngưng hoạt động.', 'SUPPLIER_HAS_RELATIONS');
         }
 
@@ -106,19 +116,19 @@ export const supplierService = {
     async createSupplierProduct(input: CreateSupplierProductInput) {
         await ensureSupplier(input.supplierId);
         await ensureProduct(input.productId);
+        const ingredient = await supplierRepository.findIngredient(input.productId);
+        if (!ingredient) throw new HttpError(404, "Ingredient not found.");
+        const conversion = supplierConversion(input, ingredient.baseUnit);
         if (await supplierRepository.findSupplierProductByPair(input.supplierId, input.productId)) throw new HttpError(409, 'Supplier already provides this product.');
         try {
             return toSupplierProductDto(await supplierRepository.createSupplierProduct({
                 supplierId: input.supplierId,
-                productId: input.productId,
-                price: input.price,
+                ingredientId: input.productId,
+                ...conversion,
                 supplierSku: normalize(input.supplierSku),
                 minOrderQuantity: input.minOrderQuantity ?? 1,
                 leadTimeDays: input.leadTimeDays ?? 3,
                 isPreferred: input.isPreferred ?? false,
-                purchaseUnit: normalize(input.purchaseUnit),
-                conversionQuantity: input.conversionQuantity ?? null,
-                conversionTargetUnit: normalize(input.conversionTargetUnit)
             }));
         }
         catch (error) { if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new HttpError(409, 'Supplier already provides this product.'); throw error; }
@@ -126,21 +136,26 @@ export const supplierService = {
     async updateSupplierProduct(id: string, input: UpdateSupplierProductInput) {
         const current = await ensureSupplierProduct(id);
         const supplierId = input.supplierId ?? current.supplierId;
-        const productId = input.productId ?? current.productId;
+        const productId = input.productId ?? current.ingredientId;
         await ensureSupplier(supplierId); await ensureProduct(productId);
+        const ingredient = await supplierRepository.findIngredient(productId);
+        if (!ingredient) throw new HttpError(404, "Ingredient not found.");
+        const conversion = supplierConversion({
+            price: input.price ?? current.pricePerBaseUnit.times(current.conversionQuantity).toString(),
+            purchaseUnit: input.purchaseUnit === undefined ? current.purchaseUnit : input.purchaseUnit,
+            conversionQuantity: input.conversionQuantity === undefined ? Number(current.conversionQuantity) : input.conversionQuantity,
+            conversionTargetUnit: input.conversionTargetUnit === undefined ? current.conversionTargetUnit : input.conversionTargetUnit
+        }, ingredient.baseUnit);
         const duplicate = await supplierRepository.findSupplierProductByPair(supplierId, productId);
         if (duplicate && duplicate.id !== id) throw new HttpError(409, 'Supplier already provides this product.');
         return toSupplierProductDto(await supplierRepository.updateSupplierProduct(id, {
             ...(input.supplierId !== undefined ? { supplierId } : {}),
-            ...(input.productId !== undefined ? { productId } : {}),
-            ...(input.price !== undefined ? { price: input.price } : {}),
+            ...(input.productId !== undefined ? { ingredientId: productId } : {}),
+            ...conversion,
             ...(input.supplierSku !== undefined ? { supplierSku: normalize(input.supplierSku) } : {}),
             ...(input.minOrderQuantity !== undefined ? { minOrderQuantity: input.minOrderQuantity } : {}),
             ...(input.leadTimeDays !== undefined ? { leadTimeDays: input.leadTimeDays } : {}),
             ...(input.isPreferred !== undefined ? { isPreferred: input.isPreferred } : {}),
-            ...(input.purchaseUnit !== undefined ? { purchaseUnit: normalize(input.purchaseUnit) } : {}),
-            ...(input.conversionQuantity !== undefined ? { conversionQuantity: input.conversionQuantity } : {}),
-            ...(input.conversionTargetUnit !== undefined ? { conversionTargetUnit: normalize(input.conversionTargetUnit) } : {})
         }));
     },
     async deleteSupplierProduct(id: string) { await ensureSupplierProduct(id); return toSupplierProductDto(await supplierRepository.deleteSupplierProduct(id)); }

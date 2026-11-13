@@ -43,6 +43,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
   const [inputNote, setInputNote] = useState("");
   const [adjustmentBatchId, setAdjustmentBatchId] = useState("");
   const [batchCode, setBatchCode] = useState("");
+  const [adjustmentKey, setAdjustmentKey] = useState(() => crypto.randomUUID());
   const [expirationDate, setExpirationDate] = useState("");
   const [importMode, setImportMode] = useState<"internal" | "supplier">("internal");
   const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
@@ -277,6 +278,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
     setInputValue(0);
     setInputNote("");
     setBatchCode("");
+    setAdjustmentKey(crypto.randomUUID());
     setExpirationDate("");
     setPrQuantity(0);
     setPrSupplierId("");
@@ -388,11 +390,15 @@ const LegacyAdminInventoryPage: React.FC = () => {
           return;
         }
 
+        const importBatchCode = batchCode.trim() || `MANUAL-${crypto.randomUUID()}`;
+        setBatchCode(importBatchCode);
         const res = await inventoryApi.importInventory({
           productId: selectedInventory.productId,
-          quantity: finalQuantity,
+          quantity: isSupplierMode ? undefined : inputValue,
+          purchaseQuantity: isSupplierMode ? inputValue : undefined,
+          supplierIngredientId: isSupplierMode ? supplierProduct!.id : undefined,
           note: inputNote.trim() || undefined,
-          batchCode: batchCode.trim() || undefined,
+          batchCode: importBatchCode,
           expirationDate,
         });
         const minThreshold = res.minThreshold ?? res.min_threshold ?? 0;
@@ -413,8 +419,8 @@ const LegacyAdminInventoryPage: React.FC = () => {
       } else if (modalType === "adjust") {
         const batch = eligibleAdjustmentBatches(selectedInventory).find(item => item.id === adjustmentBatchId);
         if (!batch) throw new Error("Vui lòng chọn lô còn hạn để điều chỉnh.");
-        if (!Number.isInteger(inputValue) || inputValue < 0) throw new Error("Số lượng thực tế của lô phải là số nguyên không âm.");
-        const diff = inputValue - batch.quantity;
+        if (!Number.isFinite(inputValue) || Number(inputValue.toFixed(3)) !== inputValue || inputValue < 0) throw new Error("Số lượng thực tế của lô phải không âm, tối đa 3 số thập phân.");
+        const diff = Number((inputValue - batch.quantity).toFixed(3));
         if (diff === 0) {
           globalToast.success("Điều chỉnh tồn kho thành công.");
           handleCloseModal();
@@ -424,6 +430,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
         const res = await inventoryApi.adjustInventory({
           productId: selectedInventory.productId,
           quantity: diff, batchId: adjustmentBatchId,
+          idempotencyKey: adjustmentKey,
           note: inputNote.trim() || undefined,
         });
         const minThreshold = res.minThreshold ?? res.min_threshold ?? 0;

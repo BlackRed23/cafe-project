@@ -3,6 +3,7 @@ import { HttpError } from '../../common/http-error';
 import type { JwtUserPayload } from '../auth/auth.service';
 import { paymentRepository, type PaymentRecord } from './payment.repository';
 import type { PaymentStatusInput } from './payment.validator';
+import { paymentSummaryStatus } from './payment-selection';
 
 export type PaymentDto = ReturnType<typeof toPaymentDto>;
 
@@ -11,7 +12,7 @@ const toPaymentDto = (payment: PaymentRecord) => ({
     orderId: payment.orderId,
     method: payment.method,
     amount: Number(payment.amount),
-    status: payment.status,
+    status: paymentSummaryStatus(payment.status),
     paidAt: payment.paidAt,
     customer: payment.order.user,
     createdAt: payment.createdAt,

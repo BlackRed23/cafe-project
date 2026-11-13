@@ -1,54 +1,34 @@
-import { PurchaseRequestStatus } from '@cafe-project/database';
+import { PurchaseRequestStatus, type Prisma } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
-import { inventoryRepository } from '../inventory/inventory.repository';
 
-const serializeAgentLogField = (value: unknown): string | null => {
-    if (value === undefined || value === null) return null;
-    if (typeof value === "string") return value;
 
+import { purchaseRepository, type PurchaseRequestRecord } from './purchase.repository';
+import type { CreatePurchaseRequestInput, MarkPurchaseRequestPaidInput, PurchaseRequestFiltersInput, ReceivePurchaseRequestInput, RejectPurchaseRequestInput } from './purchase.validator';
+import { createAgentLogViaAgentService } from '../agent/agent.client';
+import { randomUUID } from 'node:crypto';
+import { getOptionalSettingValue } from '../system-setting/system-setting.service';
+
+const totalForItem = (quantity: number, unitPrice: Prisma.Decimal | null): number => unitPrice?.mul(quantity).toNumber() ?? 0;
+
+const visibleNote = (value: string | null): string | null => {
     try {
-        return JSON.stringify(value);
-    } catch {
-        return String(value);
-    }
+        const data: unknown = JSON.parse(value ?? '');
+        if (data && typeof data === 'object' && 'schema' in data && 'note' in data &&
+            (data.schema === 'api-purchase-v1' || data.schema === 'api-receipt-v1') && (typeof data.note === 'string' || data.note === null)) return data.note;
+    } catch { /* Plain historical notes stay unchanged. */ }
+    return value;
 };
 
-import { ACTIVE_PURCHASE_REQUEST_MESSAGE, purchaseRepository, type PurchaseRequestRecord } from './purchase.repository';
-import type { CreatePurchaseRequestInput, MarkPurchaseRequestPaidInput, PurchaseRequestFiltersInput, ReceivePurchaseRequestInput, RejectPurchaseRequestInput } from './purchase.validator';
-import { scanInventoryViaAgentService } from '../agent/agent.client';
-import { getOptionalSettingValue } from '../system-setting/system-setting.service';
-import { prisma } from '@cafe-project/database';
-const totalForItem = (quantity: number, unitPrice: number | null): number => quantity * (unitPrice ?? 0);
-
-const purchaseConversionForItem = (request: PurchaseRequestRecord, item: PurchaseRequestRecord['items'][number]) => {
-    const supplierProduct = request.supplier.products.find((mapping) => mapping.productId === item.productId);
-    const conversionQuantity = supplierProduct?.conversionQuantity ?? null;
-    const purchaseUnit = supplierProduct?.purchaseUnit ?? null;
-    const conversionTargetUnit = supplierProduct?.conversionTargetUnit ?? null;
-
-    if (!purchaseUnit || !conversionQuantity || !conversionTargetUnit || conversionTargetUnit !== item.inventory.unit) {
-        return {
-            purchaseQuantity: null,
-            purchaseUnit,
-            conversionQuantity,
-            conversionTargetUnit,
-            convertedQuantity: item.quantity,
-            inventoryUnit: item.inventory.unit,
-            conversionMissing: true
-        };
-    }
-
-    const purchaseQuantity = Math.ceil(item.quantity / conversionQuantity);
-
-    return {
-        purchaseQuantity,
-        purchaseUnit,
-        conversionQuantity,
-        conversionTargetUnit,
-        convertedQuantity: Math.ceil(purchaseQuantity * conversionQuantity),
-        inventoryUnit: item.inventory.unit,
-        conversionMissing: false
-    };
+export const purchaseConversionForItem = (_request: PurchaseRequestRecord, item: PurchaseRequestRecord['items'][number]) => {
+    let snapshot: Record<string, unknown> = {};
+    try { const raw: unknown = JSON.parse(item.notes ?? ''); if (raw && typeof raw === 'object' && !Array.isArray(raw)) snapshot = raw as Record<string, unknown>; } catch { /* Agent/historical notes remain plain text. */ }
+    const factor = snapshot.schema === 'api-purchase-v1' && typeof snapshot.conversionQuantity === 'string' ? Number(snapshot.conversionQuantity) : 0;
+    const valid = factor > 0 && snapshot.baseUnit === item.ingredient.baseUnit && item.quantity / factor === Math.floor(item.quantity / factor);
+    return { purchaseQuantity: valid ? item.quantity / factor : null,
+        purchaseUnit: typeof snapshot.purchaseUnit === 'string' ? snapshot.purchaseUnit : null,
+        conversionQuantity: factor || null, conversionTargetUnit: item.ingredient.baseUnit,
+        convertedQuantity: item.quantity, inventoryUnit: item.ingredient.baseUnit, conversionMissing: !valid,
+        quantityUnit: 'BASE', conversionSnapshotMissing: snapshot.schema !== 'api-purchase-v1' };
 };
 
 const emailStatusForRequest = (request: PurchaseRequestRecord): string => {
@@ -88,8 +68,8 @@ const isSupplierEmailContentUsable = (value?: string | null): value is string =>
 
 const buildSupplierEmailItemLine = (request: PurchaseRequestRecord, item: PurchaseRequestRecord['items'][number]): string => {
     const conversion = purchaseConversionForItem(request, item);
-    const productName = item.product.name;
-    const inventoryUnit = conversion.inventoryUnit || item.inventory.unit || '';
+    const productName = item.ingredient.name;
+    const inventoryUnit = conversion.inventoryUnit || item.ingredient.baseUnit || '';
 
     if (!conversion.conversionMissing && conversion.purchaseQuantity && conversion.purchaseUnit && conversion.conversionQuantity && conversion.conversionTargetUnit) {
         return [
@@ -105,13 +85,13 @@ const buildSupplierEmailSubject = async (request: PurchaseRequestRecord): Promis
     if (request.items.length === 1) {
         const item = request.items[0];
         const conversion = purchaseConversionForItem(request, item);
-        const inventoryUnit = conversion.inventoryUnit || item.inventory.unit || '';
+        const inventoryUnit = conversion.inventoryUnit || item.ingredient.baseUnit || '';
         const quantityDisplay =
             !conversion.conversionMissing && conversion.purchaseQuantity && conversion.purchaseUnit && inventoryUnit
                 ? `${conversion.purchaseQuantity} ${conversion.purchaseUnit} = ${conversion.convertedQuantity} ${inventoryUnit}`
                 : formatQuantity(item.quantity, inventoryUnit);
 
-        return `Yêu cầu báo giá/đặt hàng ${item.product.name} - ${quantityDisplay}`;
+        return `Yêu cầu báo giá/đặt hàng ${item.ingredient.name} - ${quantityDisplay}`;
     }
 
     const storeName = await getOptionalSettingValue('store.name') || 'Cafe Admin';
@@ -125,10 +105,10 @@ export const buildPurchaseRequestAgentExplanation = (request: PurchaseRequestRec
 
     const explanations = request.items.map((item) => {
         const conversion = purchaseConversionForItem(request, item);
-        const productName = item.product.name;
-        const inventoryUnit = conversion.inventoryUnit || item.inventory.unit || '';
-        const stockText = formatQuantity(item.inventory.quantity, inventoryUnit);
-        const thresholdText = formatQuantity(item.inventory.minThreshold, inventoryUnit);
+        const productName = item.ingredient.name;
+        const inventoryUnit = conversion.inventoryUnit || item.ingredient.baseUnit || '';
+        const stockText = formatQuantity(Number(item.ingredient.quantity), inventoryUnit);
+        const thresholdText = formatQuantity(Number(item.ingredient.minThreshold), inventoryUnit);
 
         if (!conversion.conversionMissing && conversion.purchaseQuantity && conversion.purchaseUnit && conversion.conversionQuantity && conversion.conversionTargetUnit) {
             const neededQuantity = item.quantity;
@@ -219,22 +199,24 @@ const toDto = async (request: PurchaseRequestRecord) => ({
     receivedAmount: Number(request.receivedAmount),
     amountPaid: Number(request.amountPaid),
     emailDraft: await buildPurchaseRequestEmailDraft(request),
+    receipts: request.receipts.map(receipt => ({ ...receipt, note: visibleNote(receipt.note) })),
     items: request.items.map((item) => {
         const conversion = purchaseConversionForItem(request, item);
 
         return {
             id: item.id,
-            inventoryId: item.inventoryId,
-            productId: item.productId,
-            productName: item.product.name,
-            productSku: item.product.sku,
-            categoryName: item.inventory.product.category.name,
+            inventoryId: item.ingredientId,
+            ingredientId: item.ingredientId,
+            productId: item.ingredientId,
+            productName: item.ingredient.name,
+            productSku: (item.ingredient.sku),
+            categoryName: item.ingredient.category?.name ?? '',
             quantity: item.quantity,
             quantityReceived: item.quantityReceived,
             unitPrice: item.unitPrice ? Number(item.unitPrice) : 0,
-            subtotal: totalForItem(item.quantity, item.unitPrice ? Number(item.unitPrice) : 0),
-            notes: item.notes,
-            productPendingDelete: !!item.product.pendingDeleteUntil,
+            subtotal: totalForItem(item.quantity, item.unitPrice),
+            notes: visibleNote(item.notes),
+            productPendingDelete: !!item.ingredient.deletedAt,
             ...conversion
         };
     }),
@@ -257,228 +239,49 @@ const ensureStatus = (request: PurchaseRequestRecord, expected: PurchaseRequestS
     if (request.status !== expected) throw new HttpError(400, message);
 };
 
-const requestNumber = (): string => `PR-${Date.now()}`;
-
+const audit = (action: string, id: string, userId?: string) => {
+    createAgentLogViaAgentService({ action, result: 'SUCCESS', reference_type: 'PurchaseRequest', reference_id: id,
+        ...(userId ? { creator: { connect: { id: userId } } } : {}) }).catch(() => console.error('[PURCHASE] Audit dispatch unavailable'));
+};
+const ensureActive = (request: PurchaseRequestRecord) => {
+    if (request.supplier.status !== 'ACTIVE' || request.supplier.deletedAt || request.items.some(i => !i.ingredient.isActive || i.ingredient.deletedAt)) throw new HttpError(409, 'Nhà cung cấp hoặc nguyên liệu không hoạt động.');
+};
 export const purchaseService = {
-    async list(filters: PurchaseRequestFiltersInput) {
-        const requests = await purchaseRepository.findMany(filters);
-        return Promise.all(requests.map(toDto));
-    },
-
-    async get(id: string) {
-        return await toDto(await ensureRequest(id));
-    },
-
+    async list(filters: PurchaseRequestFiltersInput) { return Promise.all((await purchaseRepository.findMany(filters)).map(toDto)); },
+    async get(id: string) { return toDto(await ensureRequest(id)); },
     async create(input: CreatePurchaseRequestInput, userId: string) {
-        if (!(await purchaseRepository.supplierExists(input.supplierId))) throw new HttpError(404, 'Không thể tạo yêu cầu nhập hàng với nhà cung cấp đang ngưng hoạt động hoặc không tồn tại.');
-        for (const item of input.items) {
-            if (await purchaseRepository.hasActiveRequestForInventory(item.inventoryId)) {
-                throw new HttpError(400, ACTIVE_PURCHASE_REQUEST_MESSAGE);
-            }
-        }
-        try {
-            return await toDto(await purchaseRepository.create(input, userId, requestNumber()));
-        } catch (error) {
-            throw new HttpError(400, error instanceof Error ? error.message : 'Unable to create purchase request.');
-        }
+        return toDto(await purchaseRepository.create(input, userId, 'PR-' + randomUUID()));
     },
-
     async approve(id: string, userId: string) {
-        const request = await ensureRequest(id);
-        ensureStatus(request, PurchaseRequestStatus.PENDING, 'Only pending requests can be approved.');
-
-        const isPendingDelete = request.items.some(item => item.product.pendingDeleteUntil);
-        if (isPendingDelete) {
-            await prisma.agentLog.create({
-                data: {
-                    action: 'APPROVE_PURCHASE_REQUEST_BLOCKED',
-                    result: 'SKIPPED',
-                    reasoning: 'Không thể duyệt yêu cầu vì sản phẩm đang chờ xoá.',
-                    reference_type: 'PurchaseRequest',
-                    reference_id: id,
-                    input: serializeAgentLogField({ purchaseRequestId: id }),
-                    output: serializeAgentLogField({ 
-                        reason: 'PRODUCT_PENDING_DELETE', 
-                        message: 'Không thể duyệt yêu cầu vì sản phẩm đang chờ xoá.' 
-                    }),
-                    fallback_used: false
-                }
-            });
-            throw new HttpError(400, 'Không thể duyệt yêu cầu vì sản phẩm đang chờ xoá.');
-        }
-
-        if (request.supplier.status === 'INACTIVE') {
-            await prisma.agentLog.create({
-                data: {
-                    action: 'APPROVE_PURCHASE_REQUEST_BLOCKED',
-                    result: 'SKIPPED',
-                    reasoning: 'Không thể duyệt yêu cầu vì nhà cung cấp đang bị tắt.',
-                    reference_type: 'PurchaseRequest',
-                    reference_id: id,
-                    input: serializeAgentLogField({ purchaseRequestId: id }),
-                    output: serializeAgentLogField({ 
-                        reason: 'PURCHASE_REQUEST_SUPPLIER_INACTIVE', 
-                        message: 'Không thể duyệt yêu cầu vì nhà cung cấp đang bị tắt.' 
-                    }),
-                    fallback_used: false
-                }
-            });
-            throw new HttpError(400, 'Không thể duyệt yêu cầu vì nhà cung cấp đang bị tắt.');
-        }
-
-        return await toDto(await purchaseRepository.updateStatus(id, {
-            status: PurchaseRequestStatus.APPROVED,
-            approver: { connect: { id: userId } },
-            approvedAt: new Date()
-        }));
+        const request = await ensureRequest(id); ensureStatus(request, PurchaseRequestStatus.PENDING, 'Only pending requests can be approved.'); ensureActive(request);
+        const updated = await purchaseRepository.updateStatus(id, { status: 'APPROVED', approvedAt: new Date(), approver: { connect: { id: userId } } }, request.status);
+        audit('APPROVE_PURCHASE_REQUEST', id, userId); return toDto(updated);
     },
-
     async reject(id: string, input: RejectPurchaseRequestInput) {
         const request = await ensureRequest(id);
-        if (request.status === PurchaseRequestStatus.RECEIVED || request.status === PurchaseRequestStatus.COMPLETED) {
-            throw new HttpError(400, 'Không thể huỷ/từ chối yêu cầu đã nhận hàng hoặc hoàn thành.');
-        }
-
-        const isPendingDelete = request.items.some(item => item.product.pendingDeleteUntil);
-        if (isPendingDelete) {
-            await prisma.agentLog.create({
-                data: {
-                    action: 'CANCEL_PURCHASE_REQUEST',
-                    result: 'SUCCESS',
-                    reasoning: 'Huỷ yêu cầu do sản phẩm đang chờ xoá.',
-                    reference_type: 'PurchaseRequest',
-                    reference_id: id,
-                    input: serializeAgentLogField({ purchaseRequestId: id }),
-                    output: serializeAgentLogField({ 
-                        reason: 'PRODUCT_PENDING_DELETE', 
-                        message: 'Huỷ/Từ chối yêu cầu thành công.' 
-                    }),
-                    fallback_used: false
-                }
-            });
-        }
-
-        return await toDto(await purchaseRepository.updateStatus(id, { status: PurchaseRequestStatus.REJECTED, notes: input.reason }));
+        if (request.status === 'RECEIVED' || request.status === 'COMPLETED' || request.items.some(i => i.quantityReceived > 0)) throw new HttpError(409, 'Không hủy yêu cầu đã nhận hàng.');
+        const updated = await purchaseRepository.updateStatus(id, { status: 'REJECTED', notes: input.reason }, request.status);
+        audit('CANCEL_PURCHASE_REQUEST', id); return toDto(updated);
     },
-
     async markSent(id: string) {
-        const request = await ensureRequest(id);
-        ensureStatus(request, PurchaseRequestStatus.APPROVED, 'Only approved requests can be marked sent.');
-        return await toDto(await purchaseRepository.updateStatus(id, { status: PurchaseRequestStatus.SENT, emailSentAt: new Date() }));
+        const request = await ensureRequest(id); ensureStatus(request, PurchaseRequestStatus.APPROVED, 'Only approved requests can be marked sent.'); ensureActive(request);
+        return toDto(await purchaseRepository.updateStatus(id, { status: 'SENT', emailSentAt: new Date() }, request.status));
     },
-
     async receive(id: string, input: ReceivePurchaseRequestInput, userId: string) {
         const request = await ensureRequest(id);
-        if ((request.status as PurchaseRequestStatus) === PurchaseRequestStatus.RECEIVED || (request.status as PurchaseRequestStatus) === PurchaseRequestStatus.COMPLETED) {
-            throw new HttpError(400, 'Yêu cầu nhập hàng này đã được nhận hàng trước đó.');
-        }
-
-        const isPendingDelete = request.items.some(item => item.product.pendingDeleteUntil);
-        if (isPendingDelete) {
-            await prisma.agentLog.create({
-                data: {
-                    action: 'RECEIVE_PURCHASE_REQUEST_BLOCKED',
-                    result: 'SKIPPED',
-                    reasoning: 'Không thể nhận hàng vì sản phẩm đang chờ xoá.',
-                    reference_type: 'PurchaseRequest',
-                    reference_id: id,
-                    input: serializeAgentLogField({ purchaseRequestId: id }),
-                    output: serializeAgentLogField({ 
-                        reason: 'PRODUCT_PENDING_DELETE', 
-                        message: 'Không thể nhận hàng vì sản phẩm đang chờ xoá. Vui lòng khôi phục sản phẩm trước khi nhận hàng.' 
-                    }),
-                    fallback_used: false
-                }
-            });
-            throw new HttpError(400, 'Không thể nhận hàng vì sản phẩm đang chờ xoá. Vui lòng khôi phục sản phẩm trước khi nhận hàng.');
-        }
-
-        if ((request.status as PurchaseRequestStatus) === PurchaseRequestStatus.RECEIVED || (request.status as PurchaseRequestStatus) === PurchaseRequestStatus.COMPLETED) {
-            throw new HttpError(400, 'Yêu cầu nhập hàng này đã được nhận trước đó, không thể cộng kho lần nữa.');
-        }
-        if (request.status !== PurchaseRequestStatus.SENT && !request.emailSentAt) {
-            throw new HttpError(400, 'Chỉ có thể nhận hàng sau khi đã gửi email đặt hàng cho nhà cung cấp.');
-        }
-        try {
-            const received = await purchaseRepository.receive(request, input, userId);
-
-            let isStockSafe = true;
-            for (const item of received.items) {
-                const inventory = await prisma.inventory.findUnique({ where: { productId: item.productId } });
-                const minThreshold = inventory?.minThreshold || 0;
-                // For a more accurate check, we ideally would compute the reorderPoint,
-                // but checking against minThreshold as a base fallback is acceptable here for the flag.
-                // In a real scenario, we might just check if it's > minThreshold.
-                if (inventory && inventory.quantity <= minThreshold) {
-                    isStockSafe = false;
-                    break;
-                }
-            }
-
-            const isPartial = received.status !== PurchaseRequestStatus.RECEIVED && received.status !== PurchaseRequestStatus.COMPLETED;
-            
-            const productNames = received.items.map(item => item.product.name).join(', ');
-            await prisma.agentLog.create({
-                data: {
-                    action: 'RECEIVE_PURCHASE_REQUEST',
-                    result: 'SUCCESS',
-                    reasoning: `Đã nhận hàng. Tồn kho sản phẩm ${productNames} đã được cộng.`,
-                    reference_type: 'PurchaseRequest',
-                    reference_id: id,
-                    creator: userId ? { connect: { id: userId } } : undefined,
-                    input: serializeAgentLogField({ items: input.items, note: input.note }),
-                    output: serializeAgentLogField({
-                        isPartial,
-                        notification: {
-                            title: isPartial ? "Đã nhận một phần" : "Đã nhận hàng",
-                            description: `Bạn đã nhận ${isPartial ? 'một phần' : 'đủ'} số lượng hàng cho yêu cầu nhập hàng ${received.requestNumber}.`,
-                            actionLabel: "Xem yêu cầu",
-                            actionUrl: `/admin/purchase-requests/${id}`
-                        }
-                    }),
-                    fallback_used: false
-                }
-            });
-
-            const productIds = received.items.map((item) => item.productId);
-            scanInventoryViaAgentService({
-                productIds,
-                triggerType: 'PURCHASE_RECEIVED',
-                sourceType: 'PURCHASE_REQUEST',
-                sourceId: id,
-                note: 'Purchase request received'
-            }, userId).catch((error) => {
-                console.error('[AI_AGENT] Failed to scan inventory after purchase receive', error);
-            });
-            return { purchaseRequest: await toDto(received), isStockSafe };
-        } catch (error) {
-            throw new HttpError(400, error instanceof Error ? error.message : 'Unable to receive purchase request.');
-        }
+        const received = await purchaseRepository.receive(request, input, userId);
+        audit('RECEIVE_PURCHASE_REQUEST', id, userId);
+        return { purchaseRequest: await toDto(received), isStockSafe: received.items.every(i => i.ingredient.quantity.minus(i.ingredient.reserved).gt(i.ingredient.minThreshold)) };
     },
-
     async markPaid(id: string, input: MarkPurchaseRequestPaidInput) {
         const request = await ensureRequest(id);
-        if (request.status !== PurchaseRequestStatus.RECEIVED && request.status !== PurchaseRequestStatus.COMPLETED) {
-            throw new HttpError(400, 'Chỉ có thể thanh toán sau khi đã nhận hàng.');
-        }
-
-        return await toDto(await purchaseRepository.updateStatus(id, {
-            paymentStatus: 'PAID',
-            paidAt: new Date(),
-            paymentNote: input.paymentNote?.trim() || null,
-            amountPaid: request.receivedAmount
-        }));
+        if (request.status !== 'RECEIVED' && request.status !== 'COMPLETED') throw new HttpError(409, 'Chỉ ghi nhận thanh toán sau khi nhận đủ hàng.');
+        if (request.paymentStatus === 'PAID') return toDto(request);
+        return toDto(await purchaseRepository.updateStatus(id, { paymentStatus: 'PAID', paidAt: new Date(), paymentNote: input.paymentNote ?? null, amountPaid: request.receivedAmount }, request.status));
     },
-
     async complete(id: string) {
-        const request = await ensureRequest(id);
-        ensureStatus(request, PurchaseRequestStatus.RECEIVED, 'Cannot complete before request is received.');
-        return await toDto(await purchaseRepository.updateStatus(id, { status: PurchaseRequestStatus.COMPLETED }));
+        const request = await ensureRequest(id); ensureStatus(request, PurchaseRequestStatus.RECEIVED, 'Cannot complete before request is received.');
+        return toDto(await purchaseRepository.updateStatus(id, { status: 'COMPLETED' }, request.status));
     },
-
-    async delete(id: string) {
-        const request = await ensureRequest(id);
-        ensureNotCompleted(request);
-        return await toDto(await purchaseRepository.delete(id));
-    }
+    async delete(id: string) { return toDto(await purchaseRepository.delete(id)); }
 };

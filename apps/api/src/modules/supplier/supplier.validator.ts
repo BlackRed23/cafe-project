@@ -1,11 +1,7 @@
 import { z } from 'zod';
-import { ALLOWED_PRODUCT_UNITS } from '../../common/units';
 
-// unitSchema excludes 'ly' by design — only units in ALLOWED_PRODUCT_UNITS are accepted.
-// ALLOWED_PRODUCT_UNITS = ['gói', 'hộp', 'thùng', 'bao', 'kg', 'gram', 'chai']
-const unitSchema = z.enum(ALLOWED_PRODUCT_UNITS, {
-    message: 'Unit is not supported.'
-});
+
+const unitSchema = z.string().trim().min(1).max(50);
 
 // ─── Supplier ────────────────────────────────────────────────────────────────
 
@@ -57,7 +53,7 @@ export const updateSupplierSchema = supplierBaseSchema
 const supplierProductBaseSchema = z.object({
     supplierId: z.string().trim().min(1, 'Supplier is required.'),
     productId: z.string().trim().min(1, 'Product is required.'),
-    price: z.coerce.number().min(0, 'Price must be greater than or equal to 0.'),
+    price: z.union([z.number().finite().min(0), z.string().regex(/^(0|[1-9]\d*)(\.\d+)?$/)]),
     supplierSku: z.string().trim().optional().nullable(),
     minOrderQuantity: z.coerce
         .number()

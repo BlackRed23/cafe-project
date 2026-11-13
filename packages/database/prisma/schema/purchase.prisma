@@ -14,43 +14,47 @@ enum GoodsReceiptStatus {
 }
 
 model PurchaseRequest {
-  id             String                @id @default(cuid())
-  requestNumber  String                @unique
-  status         PurchaseRequestStatus @default(PENDING)
-  supplierId     String
-  supplier       Supplier              @relation(fields: [supplierId], references: [id])
-  notes          String?
-  aiGenerated    Boolean               @default(false)
-  totalAmount    Decimal               @default(0) @db.Decimal(12, 2)
-  requestedBy    String
-  requester      User                  @relation("PurchaseRequestRequestedBy", fields: [requestedBy], references: [id])
-  approvedBy     String?
-  approver       User?                 @relation("PurchaseRequestApprovedBy", fields: [approvedBy], references: [id])
-  approvedAt     DateTime?
-  emailSentAt    DateTime?
-  emailContent   String?
-  retryCount     Int                   @default(0)
-  lastEmailError String?
-  receivedAt     DateTime?
-  paymentStatus  String                @default("UNPAID")
-  paidAt         DateTime?
-  paymentNote    String?
-  receivedAmount Decimal               @default(0) @db.Decimal(12, 2)
-  amountPaid     Decimal               @default(0) @db.Decimal(12, 2)
+  id               String                @id @default(cuid())
+  requestNumber    String                @unique
+  status           PurchaseRequestStatus @default(PENDING)
+  supplierId       String
+  supplier         Supplier              @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  notes            String?
+  aiGenerated      Boolean               @default(false)
+  totalAmount      Decimal               @default(0) @db.Decimal(12, 2)
+  requestedBy      String
+  requester        User                  @relation("PurchaseRequestRequestedBy", fields: [requestedBy], references: [id], onDelete: Restrict)
+  approvedBy       String?
+  approver         User?                 @relation("PurchaseRequestApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
+  approvedAt       DateTime?
+  emailSentAt      DateTime?
+  emailContent     String?
+  retryCount       Int                   @default(0)
+  lastEmailError   String?
+  receivedAt       DateTime?
+  paymentStatus    String                @default("UNPAID")
+  paidAt           DateTime?
+  paymentNote      String?
+  receivedAmount   Decimal               @default(0) @db.Decimal(12, 2)
+  amountPaid       Decimal               @default(0) @db.Decimal(12, 2)
+  agentExecutionId String?
+  agentExecution   AgentExecution?       @relation(fields: [agentExecutionId], references: [id], onDelete: Restrict)
 
   items    PurchaseRequestItem[]
   receipts GoodsReceipt[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([agentExecutionId])
 }
 
 model PurchaseRequestItem {
   id               String          @id @default(cuid())
   requestId        String
-  request          PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  ingredientId     String?
-  ingredient       Ingredient?     @relation(fields: [ingredientId], references: [id])
+  request          PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  ingredientId     String
+  ingredient       Ingredient      @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
   quantity         Int
   quantityReceived Int             @default(0)
   unitPrice        Decimal?        @db.Decimal(12, 2)
@@ -58,14 +62,12 @@ model PurchaseRequestItem {
 
   receivedBatches IngredientBatch[]
 
-  // Chuyển tiếp (Transitional)
-  inventoryId String?
-  inventory   Inventory? @relation(fields: [inventoryId], references: [id])
-  productId   String?
-  product     Product?   @relation(fields: [productId], references: [id])
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([requestId, ingredientId])
+  @@unique([id, ingredientId])
+  @@index([ingredientId])
 }
 
 model GoodsReceipt {
@@ -73,9 +75,10 @@ model GoodsReceipt {
   receiptNumber     String             @unique
   status            GoodsReceiptStatus @default(DRAFT)
   purchaseRequestId String
-  purchaseRequest   PurchaseRequest    @relation(fields: [purchaseRequestId], references: [id])
+  purchaseRequest   PurchaseRequest    @relation(fields: [purchaseRequestId], references: [id], onDelete: Restrict)
   receivedAt        DateTime           @default(now())
   receivedBy        String?
+  receiver          User?              @relation("GoodsReceiptReceivedBy", fields: [receivedBy], references: [id], onDelete: Restrict)
   supplierInvoiceNo String?
   note              String?
   idempotencyKey    String?            @unique

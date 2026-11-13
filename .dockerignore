@@ -6,3 +6,15 @@ dist
 .env
 .env.*
 *.log
+
+# Local audit/cache artifacts are not application build inputs.
+.task-artifacts
+.turbo
+**/.turbo
+reports
+coverage
+**/coverage
+*.tsbuildinfo
+.codex
+.agents
+.aws

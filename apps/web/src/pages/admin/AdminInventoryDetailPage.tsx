@@ -34,6 +34,7 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
   const [inputNote, setInputNote] = useState("");
   const [adjustmentBatchId, setAdjustmentBatchId] = useState("");
   const [batchCode, setBatchCode] = useState("");
+  const [adjustmentKey, setAdjustmentKey] = useState(() => crypto.randomUUID());
   const [expirationDate, setExpirationDate] = useState("");
   const [prQuantity, setPrQuantity] = useState<number>(0);
   const [prSupplierId, setPrSupplierId] = useState<string>("");
@@ -129,6 +130,7 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
     setInputValue(0);
     setInputNote("");
     setBatchCode("");
+    setAdjustmentKey(crypto.randomUUID());
     setExpirationDate("");
     setPrQuantity(0);
     setPrSupplierId("");
@@ -214,20 +216,22 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
           setModalLoading(false);
           return;
         }
-        await inventoryApi.importInventory({ productId: inventory.productId, quantity: inputValue, note: inputNote.trim() || undefined, batchCode: batchCode.trim() || undefined, expirationDate });
+        const importBatchCode = batchCode.trim() || `MANUAL-${crypto.randomUUID()}`;
+        setBatchCode(importBatchCode);
+        await inventoryApi.importInventory({ productId: inventory.productId, quantity: inputValue, note: inputNote.trim() || undefined, batchCode: importBatchCode, expirationDate });
         showToast("Nhập kho thành công.", "success");
       } else if (modalType === "adjust") {
         const batch = eligibleAdjustmentBatches(inventory).find(item => item.id === adjustmentBatchId);
         if (!batch) throw new Error("Vui lòng chọn lô còn hạn để điều chỉnh.");
-        if (!Number.isInteger(inputValue) || inputValue < 0) throw new Error("Số lượng thực tế của lô phải là số nguyên không âm.");
-        const diff = inputValue - batch.quantity;
+        if (!Number.isFinite(inputValue) || Number(inputValue.toFixed(3)) !== inputValue || inputValue < 0) throw new Error("Số lượng thực tế của lô phải không âm, tối đa 3 số thập phân.");
+        const diff = Number((inputValue - batch.quantity).toFixed(3));
         if (diff === 0) {
           showToast("Không có thay đổi.", "success");
           handleCloseModal();
           setModalLoading(false);
           return;
         }
-        await inventoryApi.adjustInventory({ productId: inventory.productId, quantity: diff, batchId: adjustmentBatchId, note: inputNote.trim() || undefined });
+        await inventoryApi.adjustInventory({ productId: inventory.productId, quantity: diff, batchId: adjustmentBatchId, note: inputNote.trim() || undefined, idempotencyKey: adjustmentKey });
         showToast("Điều chỉnh thành công.", "success");
       } else if (modalType === "threshold") {
         await inventoryApi.updateInventory(inventory.productId, { minThreshold: inputValue });

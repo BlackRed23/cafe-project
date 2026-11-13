@@ -5,18 +5,186 @@
       "dependsOn": [
         "^build"
       ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env",
+        ".env.*",
+        "$TURBO_ROOT$/.env",
+        "$TURBO_ROOT$/.env.*"
+      ],
       "outputs": [
-        "dist/**",
-        ".next/**"
+        "dist/**"
+      ],
+      "env": [
+        "NODE_ENV"
       ]
     },
     "lint": {},
     "dev": {
+      "dependsOn": [
+        "^build"
+      ],
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "passThroughEnv": [
+        "NODE_ENV"
+      ]
     },
     "db:generate": {
       "cache": false
+    },
+    "@cafe-project/database#build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env",
+        ".env.*",
+        "$TURBO_ROOT$/.env",
+        "$TURBO_ROOT$/.env.*"
+      ],
+      "outputs": [
+        "dist/**"
+      ],
+      "cache": false,
+      "env": [
+        "NODE_ENV"
+      ],
+      "passThroughEnv": [
+        "DATABASE_URL"
+      ]
+    },
+    "check-types": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env",
+        ".env.*",
+        "$TURBO_ROOT$/.env",
+        "$TURBO_ROOT$/.env.*"
+      ],
+      "outputs": []
+    },
+    "@cafe-project/types#build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env",
+        ".env.*",
+        "$TURBO_ROOT$/.env",
+        "$TURBO_ROOT$/.env.*"
+      ],
+      "outputs": []
+    },
+    "@cafe-project/web#build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env",
+        ".env.*",
+        "$TURBO_ROOT$/.env",
+        "$TURBO_ROOT$/.env.*"
+      ],
+      "outputs": [
+        "dist/**"
+      ],
+      "env": [
+        "NODE_ENV",
+        "VITE_*"
+      ]
+    },
+    "@cafe-project/api#dev": {
+      "dependsOn": [
+        "^build"
+      ],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "NODE_ENV",
+        "PORT",
+        "DATABASE_URL",
+        "JWT_SECRET",
+        "JWT_EXPIRES_IN",
+        "FRONTEND_URL",
+        "CORS_ORIGIN",
+        "CLIENT_URL",
+        "AGENT_BASE_URL",
+        "AGENT_INTERNAL_TOKEN",
+        "AGENT_SERVICE_TIMEOUT_MS",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USER",
+        "SMTP_PASS",
+        "SMTP_FROM",
+        "CLOUDINARY_CLOUD_NAME",
+        "CLOUDINARY_API_KEY",
+        "CLOUDINARY_API_SECRET",
+        "Cloud_Name",
+        "API_Key",
+        "API_Secret",
+        "ENABLE_PRODUCT_PURGE_CRON",
+        "PRODUCT_PURGE_CRON_SCHEDULE",
+        "RUN_CRON_ON_START"
+      ]
+    },
+    "@cafe-project/agent#dev": {
+      "dependsOn": [
+        "^build"
+      ],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "NODE_ENV",
+        "PORT",
+        "AGENT_PORT",
+        "AGENT_HOST",
+        "DATABASE_URL",
+        "AGENT_INTERNAL_TOKEN",
+        "GEMINI_API_KEY",
+        "GEMINI_API_KEY1",
+        "GEMINI_API_KEY2",
+        "GEMINI_API_KEY3",
+        "GEMINI_MODEL",
+        "AGENT_SCAN_CRON",
+        "RUN_ON_START",
+        "DEBUG_MODE",
+        "AGENT_RECOMMENDATION_MODE",
+        "AGENT_DEMO_FAILURE_MODE"
+      ]
+    },
+    "@cafe-project/web#dev": {
+      "dependsOn": [
+        "^build"
+      ],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "NODE_ENV"
+      ],
+      "env": [
+        "VITE_*"
+      ]
+    },
+    "@cafe-project/database#check-types": {
+      "dependsOn": [
+        "build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env",
+        ".env.*",
+        "$TURBO_ROOT$/.env",
+        "$TURBO_ROOT$/.env.*"
+      ],
+      "outputs": []
     }
-  }
+  },
+  "envMode": "strict"
 }

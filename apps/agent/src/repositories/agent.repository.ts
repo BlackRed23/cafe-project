@@ -1,409 +1,429 @@
-import { requireAgentUser } from '../internal-auth';
-import { prisma, PurchaseRequestStatus, OrderStatus, type Prisma } from '@cafe-project/database';
-import { fixAgentLogDisplayOutputJson, fixVietnameseMojibakeText } from '../utils/textEncoding';
 
-export const ACTIVE_PURCHASE_REQUEST_MESSAGE = 'Sản phẩm này đã có yêu cầu nhập hàng đang xử lý.';
+import { requireAgentUser } from '../internal-auth';
+import {
+  prisma,
+  PurchaseRequestStatus,
+  OrderStatus,
+  ExecutionStatus,
+  ToolCallStatus,
+  Prisma,
+} from '@cafe-project/database';
+
+export const ACTIVE_PURCHASE_REQUEST_MESSAGE =
+  'Nguyên liệu này đã có yêu cầu nhập hàng đang xử lý.';
 export const ACTIVE_PURCHASE_REQUEST_STATUSES = [
-    PurchaseRequestStatus.PENDING,
-    PurchaseRequestStatus.APPROVED,
-    PurchaseRequestStatus.SENT
+  PurchaseRequestStatus.PENDING,
+  PurchaseRequestStatus.APPROVED,
+  PurchaseRequestStatus.SENT,
+  PurchaseRequestStatus.RECEIVED,
 ] as const;
 
-const inventoryInclude = {
-    product: {
-        include: {
-            category: true,
-            supplierProducts: {
-                include: { supplier: true },
-                orderBy: [{ isPreferred: 'desc' }, { price: 'asc' }, { leadTimeDays: 'asc' }]
-            }
-        }
-    },
-    batches: true
-} satisfies Prisma.InventoryInclude;
+const ingredientInclude = {
+  category: true,
+  supplierLinks: {
+    include: { supplier: true },
+    orderBy: [
+      { isPreferred: 'desc' },
+      { pricePerBaseUnit: 'asc' },
+      { leadTimeDays: 'asc' },
+    ],
+  },
+  batches: true,
+} satisfies Prisma.IngredientInclude;
 
-const logInclude = {
-    creator: {
-        select: {
-            id: true,
-            name: true,
-            email: true
-        }
-    }
-} satisfies Prisma.AgentLogInclude;
+const executionInclude = {
+  triggeredByUser: {
+    select: { id: true, name: true, email: true },
+  },
+  toolCalls: { orderBy: { stepNo: 'asc' } },
+  purchaseRequests: { select: { id: true, status: true, requestNumber: true } },
+} satisfies Prisma.AgentExecutionInclude;
 
-export type AgentInventoryRecord = Prisma.InventoryGetPayload<{ include: typeof inventoryInclude }>;
+export type AgentIngredientRecord = Prisma.IngredientGetPayload<{
+  include: typeof ingredientInclude;
+}>;
+/** @deprecated Use AgentIngredientRecord. */
+export type AgentInventoryRecord = AgentIngredientRecord;
+export type AgentSupplierIngredient = AgentIngredientRecord['supplierLinks'][number];
 
-const convertRecommendedQuantity = (
-    inventory: AgentInventoryRecord,
-    supplierProduct: AgentInventoryRecord['product']['supplierProducts'][number],
-    quantity: number
-) => {
-    const purchaseUnit = supplierProduct.purchaseUnit;
-    const conversionQuantity = supplierProduct.conversionQuantity;
-    const conversionTargetUnit = supplierProduct.conversionTargetUnit;
+const amount = (value: Prisma.Decimal | number): number => Number(value);
 
-    if (!purchaseUnit || !conversionQuantity || !conversionTargetUnit || conversionTargetUnit !== inventory.unit) {
-        return {
-            quantity,
-            note: `Sản phẩm ${inventory.product.name} hiện còn ${inventory.quantity} ${inventory.unit}, thấp hơn hoặc bằng ngưỡng tồn kho cần bổ sung.
+function assertPositiveNumber(value: number, label: string): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} phải là số dương hữu hạn.`);
+  }
+}
 
-Hệ thống đề xuất nhập thêm ${quantity} ${inventory.unit} để đưa tồn kho về mức an toàn.
+function assertPositiveSafeInteger(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > 2147483647) {
+    throw new Error(`${label} phải là số nguyên dương trong giới hạn Int của Prisma.`);
+  }
+}
 
-Sản phẩm này chưa có quy cách nhập hàng theo nhà cung cấp, nên số lượng đề xuất đang được hiển thị theo đơn vị tồn kho.`
-        };
-    }
+function assertMatchingSupplier(
+  ingredient: AgentIngredientRecord,
+  link: AgentSupplierIngredient,
+): void {
+  if (link.ingredientId !== ingredient.id) {
+    throw new Error('Nhà cung cấp không khớp nguyên liệu.');
+  }
+  if (link.supplier.status !== 'ACTIVE' || link.supplier.deletedAt !== null) {
+    throw new Error('Nhà cung cấp không còn hoạt động.');
+  }
+}
 
-    const purchaseQuantity = Math.ceil(quantity / conversionQuantity);
-    const convertedQuantity = Math.ceil(purchaseQuantity * conversionQuantity);
+/**
+ * quantity is requested in ingredient.baseUnit; persisted purchase quantity is
+ * whole base units because PurchaseRequestItem.quantity is Int in this schema.
+ * A supplier conversion is used only when its target unit matches baseUnit.
+ */
+export function convertRecommendedQuantity(
+  ingredient: AgentIngredientRecord,
+  supplierIngredient: AgentSupplierIngredient,
+  quantity: number,
+): { quantity: number; unitPrice: Prisma.Decimal; totalAmount: Prisma.Decimal; note: string } {
+  assertPositiveNumber(quantity, 'Số lượng đề xuất');
+  assertMatchingSupplier(ingredient, supplierIngredient);
 
-    return {
-        quantity: convertedQuantity,
-        note: `Nhu cầu bổ sung tối thiểu là ${quantity} ${inventory.unit}. Theo quy cách nhập hàng của nhà cung cấp: 1 ${purchaseUnit} = ${conversionQuantity} ${conversionTargetUnit}.
+  const factor = amount(supplierIngredient.conversionQuantity);
+  const matchesBaseUnit =
+    supplierIngredient.conversionTargetUnit === ingredient.baseUnit &&
+    Number.isFinite(factor) && factor > 0;
+  const minimum = Math.max(1, supplierIngredient.minOrderQuantity);
 
-Vì vậy hệ thống làm tròn theo quy cách nhập hàng và đề xuất nhập ${purchaseQuantity} ${purchaseUnit} = ${convertedQuantity} ${inventory.unit} để đảm bảo đủ hàng và đúng quy cách nhập.`
-    };
-};
-
-const safeJsonParse = (value: unknown): any => {
-    if (typeof value !== 'string' || !value.trim()) return null;
-    try {
-        return JSON.parse(value);
-    } catch {
-        return null;
-    }
-};
+  let adjusted: number;
+  let conversionNote: string;
+  if (matchesBaseUnit) {
+    const packs = Math.max(minimum, Math.ceil(quantity / factor));
+    assertPositiveSafeInteger(packs, 'Số đơn vị mua');
+    adjusted = Math.ceil(packs * factor);
+    conversionNote = `Quy cách: 1 ${supplierIngredient.purchaseUnit} = ${factor} ${ingredient.baseUnit}. Đặt tối thiểu ${packs} ${supplierIngredient.purchaseUnit}.`;
+  } else {
+    // Do not pretend to convert between unrelated units.
+    // For non-matching units, only use whole base units, never a guessed ratio.
+    adjusted = Math.ceil(quantity);
+    conversionNote = 'Không có quy đổi đơn vị khớp với baseUnit; đề xuất theo đơn vị gốc nguyên.';
+  }
+  assertPositiveSafeInteger(adjusted, 'Số lượng nhập theo đơn vị gốc');
+  const unitPrice = new Prisma.Decimal(supplierIngredient.pricePerBaseUnit);
+  if (unitPrice.isNegative()) throw new Error('Đơn giá nguyên liệu không hợp lệ.');
+  if (!unitPrice.equals(unitPrice.toDecimalPlaces(2))) {
+    throw new Error('PurchaseRequestItem.unitPrice chỉ lưu 2 chữ số thập phân; không thể lưu chính xác pricePerBaseUnit của nhà cung cấp.');
+  }
+  const totalAmount = unitPrice.mul(adjusted).toDecimalPlaces(2);
+  if (totalAmount.greaterThan('9999999999.99')) {
+    throw new Error('Tổng tiền vượt giới hạn Decimal(12,2).');
+  }
+  return {
+    quantity: adjusted,
+    unitPrice: unitPrice.toDecimalPlaces(2),
+    totalAmount,
+    note: `Nguyên liệu ${ingredient.name}: tồn ${ingredient.quantity} ${ingredient.baseUnit}, đã giữ ${ingredient.reserved} ${ingredient.baseUnit}. Cần bổ sung ${quantity} ${ingredient.baseUnit}; đề xuất nhập ${adjusted} ${ingredient.baseUnit}. ${conversionNote}`,
+  };
+}
 
 export const serializeAgentLogField = (value: unknown): string | null => {
-    if (value === undefined || value === null) return null;
-    if (typeof value === "string") return value;
-
-    try {
-        return JSON.stringify(value);
-    } catch {
-        return String(value);
-    }
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value); } catch { return String(value); }
 };
 
-const asString = (value: unknown): string | undefined =>
-    typeof value === 'string' && value.trim() ? value.trim() : undefined;
+function jsonValue(value: unknown): Prisma.InputJsonValue {
+  if (value === undefined) return {};
+  if (value === null) return {}; // Prisma JSON null is not a JSON input object.
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
 
-const findDuplicateSimulationLog = async (data: Prisma.AgentLogCreateInput) => {
-    const input = safeJsonParse(data.input);
-    const output = safeJsonParse(data.output);
-    const triggerType = asString(input?.triggerType);
-    const sourceType = asString(input?.sourceType);
-    const sourceId = asString(input?.sourceId);
-    const productId = asString(input?.productId) || asString(output?.productId);
-    const reason = asString(output?.reason);
-    const result = asString(data.result);
-    const action = asString(data.action);
+function makeRequestNumber(prefix: string): string {
+  const nonce = Math.random().toString(36).slice(2, 10).toUpperCase();
+  return `${prefix}-${Date.now()}-${nonce}`;
+}
 
-    if (!sourceId || !productId || !action || !result) return null;
-    if (triggerType !== 'SIMULATE_SALE' && sourceType !== 'SIMULATE_SALE') return null;
-
-    const and: Prisma.AgentLogWhereInput[] = [
-        { action },
-        { result },
-        { input: { contains: sourceId } },
-        { input: { contains: productId } }
-    ];
-
-    if (reason) {
-        and.push({ output: { contains: reason } });
-    }
-
-    return prisma.agentLog.findFirst({
-        where: { AND: and },
-        include: logInclude,
-        orderBy: { triggered_at: 'asc' }
-    });
+export type CreateRecommendationPurchaseRequest = {
+  executionId: string;
+  ingredientId: string;
+  supplierId: string;
+  recommendedQuantity: number; // base units, not product count
+  reasoning?: string | null;
+  emailDraft?: string | null;
+  userId: string;
 };
 
 export const agentRepository = {
-    async findInventories(productIds?: string[]): Promise<AgentInventoryRecord[]> {
-        return prisma.inventory.findMany({
-            where: {
-                ...(productIds?.length ? { productId: { in: productIds } } : {}),
-                product: { isActive: true }
+  /** List active ingredients. The optional IDs are ingredient IDs. */
+  async findIngredients(ingredientIds?: string[]): Promise<AgentIngredientRecord[]> {
+    return prisma.ingredient.findMany({
+      where: {
+        isActive: true,
+        deletedAt: null,
+        ...(ingredientIds?.length ? { id: { in: ingredientIds } } : {}),
+      },
+      include: ingredientInclude,
+    });
+  },
+
+  /** Compatibility name only: this returns ingredients, NOT Product inventory. */
+  async findInventories(ingredientIds?: string[]): Promise<AgentIngredientRecord[]> {
+    return agentRepository.findIngredients(ingredientIds);
+  },
+
+  async hasOpenPurchaseRequest(ingredientId: string): Promise<boolean> {
+    const item = await prisma.purchaseRequestItem.findFirst({
+      where: {
+        ingredientId,
+        request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } },
+      },
+      select: { id: true },
+    });
+    return Boolean(item);
+  },
+
+  async findOpenPurchaseRequest(ingredientId: string) {
+    const item = await prisma.purchaseRequestItem.findFirst({
+      where: {
+        ingredientId,
+        request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } },
+      },
+      select: {
+        request: {
+          select: {
+            id: true,
+            status: true,
+            supplier: {
+              select: { id: true, name: true, status: true, deletedAt: true },
             },
-            include: inventoryInclude
-        });
-    },
+          },
+        },
+      },
+    });
+    return item?.request ?? null;
+  },
 
-    async hasOpenPurchaseRequest(productId: string, inventoryId: string): Promise<boolean> {
-        const item = await prisma.purchaseRequestItem.findFirst({
-            where: {
-                productId,
-                inventoryId,
-                request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } }
+  /** Product sales metrics remain product-based, unlike purchasing. */
+  async getSalesData(productId: string) {
+    const now = Date.now();
+    const from7d = new Date(now - 7 * 86400000);
+    const from30d = new Date(now - 30 * 86400000);
+    const [recent7d, recent30d] = await Promise.all([
+      prisma.orderItem.aggregate({
+        where: {
+          productId,
+          order: { status: { not: OrderStatus.CANCELLED }, createdAt: { gte: from7d } },
+        },
+        _sum: { quantity: true },
+      }),
+      prisma.orderItem.aggregate({
+        where: {
+          productId,
+          order: { status: { not: OrderStatus.CANCELLED }, createdAt: { gte: from30d } },
+        },
+        _sum: { quantity: true },
+      }),
+    ]);
+    const totalSold7d = recent7d._sum.quantity ?? 0;
+    const totalSold30d = recent30d._sum.quantity ?? 0;
+    return {
+      totalSold7d,
+      totalSold30d,
+      salesVelocity7d: totalSold7d / 7,
+      salesVelocity30d: totalSold30d / 30,
+    };
+  },
+
+  /** Map a PRODUCT to per-serving ingredient requirements through its active recipe. */
+  async getProductIngredientRequirements(productId: string) {
+    const recipe = await prisma.recipe.findFirst({
+      where: { productId, isActive: true },
+      orderBy: { version: 'desc' },
+      include: { ingredients: { include: { ingredient: true } } },
+    });
+    if (!recipe) throw new Error(`Không tìm thấy công thức đang hoạt động của sản phẩm ${productId}.`);
+    if (amount(recipe.yieldQuantity) <= 0) throw new Error('Recipe.yieldQuantity phải lớn hơn 0.');
+    return recipe.ingredients
+      .filter((line) => !line.isOptional)
+      .map((line) => ({
+        ingredientId: line.ingredientId,
+        ingredient: line.ingredient,
+        quantityBasePerServing: line.quantityBase.div(recipe.yieldQuantity),
+        recipeId: recipe.id,
+        recipeVersion: recipe.version,
+      }));
+  },
+
+  async getSettingValue(key: string): Promise<string | null> {
+    const setting = await prisma.systemSetting.findUnique({
+      where: { key }, select: { value: true },
+    });
+    return setting?.value ?? null;
+  },
+
+  /**
+   * Create a pending purchase request for a single INGREDIENT.
+   * Requires a real authenticated user and optionally a preexisting execution ID.
+   * Does not receive stock or write inventory transactions.
+   */
+  async createAiPurchaseRequest(
+    ingredient: AgentIngredientRecord,
+    supplierIngredient: AgentSupplierIngredient,
+    quantity: number,
+    reasoning: string,
+    userId?: string,
+    emailDraft?: string,
+    executionId?: string,
+  ) {
+    const requesterId = await requireAgentUser(userId);
+    const converted = convertRecommendedQuantity(ingredient, supplierIngredient, quantity);
+    const supplierId = supplierIngredient.supplierId;
+    const ingredientId = ingredient.id;
+    return prisma.$transaction(async (tx) => {
+      const freshIngredient = await tx.ingredient.findUnique({
+        where: { id: ingredientId }, select: { isActive: true, deletedAt: true },
+      });
+      if (!freshIngredient?.isActive || freshIngredient.deletedAt) {
+        throw new Error('Nguyên liệu không còn hoạt động.');
+      }
+      const activeItem = await tx.purchaseRequestItem.findFirst({
+        where: {
+          ingredientId,
+          request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } },
+        },
+        select: { id: true },
+      });
+      if (activeItem) throw new Error(ACTIVE_PURCHASE_REQUEST_MESSAGE);
+      // Never create a request on behalf of an absent execution.
+      if (executionId) {
+        const execution = await tx.agentExecution.findUnique({
+          where: { id: executionId }, select: { id: true },
+        });
+        if (!execution) throw new Error('AgentExecution không tồn tại.');
+      }
+      return tx.purchaseRequest.create({
+        data: {
+          requestNumber: makeRequestNumber('AI-PR'),
+          status: PurchaseRequestStatus.PENDING,
+          supplierId,
+          requestedBy: requesterId,
+          aiGenerated: true,
+          ...(executionId ? { agentExecutionId: executionId } : {}),
+          notes: `${reasoning.trim()}\n\n${converted.note}`.trim(),
+          emailContent: emailDraft ?? null,
+          totalAmount: converted.totalAmount,
+          items: {
+            create: {
+              ingredientId,
+              quantity: converted.quantity,
+              unitPrice: converted.unitPrice,
+              notes: converted.note,
             },
-            select: { id: true }
-        });
-        return Boolean(item);
-    },
+          },
+        },
+        include: {
+          supplier: true,
+          items: { include: { ingredient: true } },
+        },
+      });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  },
 
-    async findOpenPurchaseRequest(productId: string, inventoryId: string): Promise<{ id: string, status: string, supplier: { id: string, name: string, status: string, deletedAt: Date | null } } | null> {
-        const item = await prisma.purchaseRequestItem.findFirst({
-            where: {
-                productId,
-                inventoryId,
-                request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } }
-            },
-            select: {
-                request: {
-                    select: { 
-                        id: true,
-                        status: true,
-                        supplier: {
-                            select: {
-                                id: true,
-                                name: true,
-                                status: true,
-                                deletedAt: true
-                            }
-                        }
-                    }
-                }
-            }
-        });
-        return item?.request ?? null;
-    },
-
-    async getSalesData(productId: string) {
-        const now = new Date();
-        const date7d = new Date();
-        date7d.setDate(now.getDate() - 7);
-        const date30d = new Date();
-        date30d.setDate(now.getDate() - 30);
-
-        const items7d = await prisma.orderItem.findMany({
-            where: {
-                productId,
-                order: {
-                    status: { not: OrderStatus.CANCELLED },
-                    createdAt: { gte: date7d }
-                }
-            },
-            select: { quantity: true }
-        });
-
-        const items30d = await prisma.orderItem.findMany({
-            where: {
-                productId,
-                order: {
-                    status: { not: OrderStatus.CANCELLED },
-                    createdAt: { gte: date30d }
-                }
-            },
-            select: { quantity: true }
-        });
-
-        const totalSold7d = items7d.reduce((sum: number, item: { quantity: number }) => sum + item.quantity, 0);
-        const totalSold30d = items30d.reduce((sum: number, item: { quantity: number }) => sum + item.quantity, 0);
-
-        return {
-            totalSold7d,
-            totalSold30d,
-            salesVelocity7d: totalSold7d / 7,
-            salesVelocity30d: totalSold30d / 30
-        };
-    },
-
-    async getSettingValue(key: string): Promise<string | null> {
-        const setting = await prisma.systemSetting.findUnique({
-            where: { key },
-            select: { value: true }
-        });
-        return setting?.value ?? null;
-    },
-
-    async createAiPurchaseRequest(
-        inventory: AgentInventoryRecord,
-        supplierProduct: AgentInventoryRecord['product']['supplierProducts'][number],
-        quantity: number,
-        reasoning: string,
-        userId?: string,
-        emailDraft?: string
-    ) {
-        userId = await requireAgentUser(userId);
-
-        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            const converted = convertRecommendedQuantity(inventory, supplierProduct, quantity);
-            const finalReasoning = `${reasoning.trim()}\n\n${converted.note}`;
-
-            const activeItem = await tx.purchaseRequestItem.findFirst({
-                where: {
-                    productId: inventory.productId,
-                    inventoryId: inventory.id,
-                    request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } }
-                },
-                select: { id: true }
-            });
-            if (activeItem) throw new Error(ACTIVE_PURCHASE_REQUEST_MESSAGE);
-
-            return tx.purchaseRequest.create({
-                data: {
-                    requestNumber: `AI-PR-${Date.now()}-${inventory.productId.slice(-4)}`,
-                    status: PurchaseRequestStatus.PENDING,
-                    supplierId: supplierProduct.supplierId,
-                    requestedBy: userId as string,
-                    aiGenerated: true,
-                    notes: finalReasoning,
-                    emailContent: emailDraft,
-                    totalAmount: Number(supplierProduct.price) * converted.quantity,
-                    items: {
-                        create: {
-                            inventoryId: inventory.id,
-                            productId: inventory.productId,
-                            quantity: converted.quantity,
-                            unitPrice: supplierProduct.price,
-                            notes: finalReasoning
-                        }
-                    }
-                },
-                include: { supplier: true, items: { include: { product: true, inventory: true } } }
-            });
-        });
-    },
-
-    async createPurchaseRequestFromRecommendation(data: {
-        logId: string;
-        productId: string;
-        supplierId: string;
-        recommendedQuantity: number;
-        reasoning?: string | null;
-        emailDraft?: string | null;
-        userId: string;
-    }) {
-        await requireAgentUser(data.userId);
-        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            const inventory = await tx.inventory.findUnique({
-                where: { productId: data.productId }
-            });
-
-            if (!inventory) {
-                throw new Error('Inventory record for product not found.');
-            }
-
-            const activeItem = await tx.purchaseRequestItem.findFirst({
-                where: {
-                    productId: data.productId,
-                    inventoryId: inventory.id,
-                    request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } }
-                },
-                select: { id: true }
-            });
-            if (activeItem) throw new Error(ACTIVE_PURCHASE_REQUEST_MESSAGE);
-
-            const supplierProduct = await tx.supplierProduct.findUnique({
-                where: {
-                    supplierId_productId: {
-                        supplierId: data.supplierId,
-                        productId: data.productId
-                    }
-                }
-            });
-
-            const price = supplierProduct ? Number(supplierProduct.price) : 0;
-            let finalQuantity = data.recommendedQuantity;
-            let finalReasoning = data.reasoning ?? null;
-
-            if (supplierProduct?.purchaseUnit && supplierProduct.conversionQuantity && supplierProduct.conversionTargetUnit === inventory.unit) {
-                const purchaseQuantity = Math.ceil(data.recommendedQuantity / supplierProduct.conversionQuantity);
-                finalQuantity = Math.ceil(purchaseQuantity * supplierProduct.conversionQuantity);
-                finalReasoning = `${data.reasoning ?? ''}
-
-Nhu cầu bổ sung tối thiểu là ${data.recommendedQuantity} ${inventory.unit}. Theo quy cách nhập hàng của nhà cung cấp: 1 ${supplierProduct.purchaseUnit} = ${supplierProduct.conversionQuantity} ${supplierProduct.conversionTargetUnit}.
-
-Vì vậy hệ thống làm tròn theo quy cách nhập hàng và đề xuất nhập ${purchaseQuantity} ${supplierProduct.purchaseUnit} = ${finalQuantity} ${inventory.unit} để đảm bảo đủ hàng và đúng quy cách nhập.`.trim();
-            } else {
-                finalReasoning = `${data.reasoning ?? ''}
-
-Hệ thống đề xuất nhập thêm ${data.recommendedQuantity} ${inventory.unit} để đưa tồn kho về mức an toàn.
-
-Sản phẩm này chưa có quy cách nhập hàng theo nhà cung cấp, nên số lượng đề xuất đang được hiển thị theo đơn vị tồn kho.`.trim();
-            }
-
-            const pr = await tx.purchaseRequest.create({
-                data: {
-                    requestNumber: `AI-REC-${Date.now()}`,
-                    supplierId: data.supplierId,
-                    requestedBy: data.userId,
-                    aiGenerated: true,
-                    notes: finalReasoning,
-                    emailContent: data.emailDraft,
-                    totalAmount: price * finalQuantity,
-                    items: {
-                        create: {
-                            inventoryId: inventory.id,
-                            productId: data.productId,
-                            quantity: finalQuantity,
-                            unitPrice: price,
-                            notes: finalReasoning
-                        }
-                    }
-                }
-            });
-
-            await tx.agentLog.update({
-                where: { id: data.logId },
-                data: {
-                    reference_type: 'PurchaseRequest',
-                    reference_id: pr.id,
-                    result: 'CONVERTED_TO_PR'
-                }
-            });
-
-            return pr;
-        });
-    },
-
-    async createLog(data: Prisma.AgentLogCreateInput) {
-        const sanitizedData: Prisma.AgentLogCreateInput = {
-            ...data,
-            input: serializeAgentLogField(data.input),
-            output: typeof data.output === 'string' ? fixAgentLogDisplayOutputJson(data.output) : serializeAgentLogField(data.output),
-            reasoning: typeof data.reasoning === 'string' ? fixVietnameseMojibakeText(data.reasoning) : data.reasoning,
-            error_message: typeof data.error_message === 'string' ? fixVietnameseMojibakeText(data.error_message) : data.error_message
-        };
-        const duplicate = await findDuplicateSimulationLog(sanitizedData);
-        if (duplicate) return duplicate;
-        return prisma.agentLog.create({ data: sanitizedData, include: logInclude });
-    },
-
-    async findLogs(where: Prisma.AgentLogWhereInput = {}) {
-        return prisma.agentLog.findMany({
-            where,
-            include: logInclude,
-            orderBy: { triggered_at: 'desc' },
-            take: 1000
-        });
-    },
-
-    async updateLog(id: string, data: Prisma.AgentLogUpdateInput) {
-        const sanitizedData: Prisma.AgentLogUpdateInput = { ...data };
-        if (data.input !== undefined) sanitizedData.input = serializeAgentLogField(data.input);
-        if (data.output !== undefined) sanitizedData.output = typeof data.output === 'string' ? fixAgentLogDisplayOutputJson(data.output) : serializeAgentLogField(data.output);
-
-        return prisma.agentLog.update({
-            where: { id },
-            data: sanitizedData,
-            include: logInclude
-        });
-    },
-
-    async findRecommendationLog(logId: string) {
-        return prisma.agentLog.findUnique({
-            where: { id: logId }
-        });
-    },
-
-    async findActiveProductIds() {
-        const products = await prisma.product.findMany({
-            where: { isActive: true },
-            select: { id: true }
-        });
-        return products.map((product: { id: string }) => product.id);
+  /** Convert an ingredient recommendation to PR; executionId replaces legacy logId. */
+  async createPurchaseRequestFromRecommendation(data: CreateRecommendationPurchaseRequest) {
+    const requesterId = await requireAgentUser(data.userId);
+    const ingredient = await prisma.ingredient.findUnique({
+      where: { id: data.ingredientId },
+      include: ingredientInclude,
+    });
+    if (!ingredient || !ingredient.isActive || ingredient.deletedAt) {
+      throw new Error('Không tìm thấy nguyên liệu đang hoạt động.');
     }
+    const supplierIngredient = ingredient.supplierLinks.find(
+      (item) => item.supplierId === data.supplierId,
+    );
+    if (!supplierIngredient) throw new Error('Nhà cung cấp không bán nguyên liệu này.');
+    return agentRepository.createAiPurchaseRequest(
+      ingredient,
+      supplierIngredient,
+      data.recommendedQuantity,
+      data.reasoning ?? '',
+      requesterId,
+      data.emailDraft ?? undefined,
+      data.executionId,
+    );
+  },
+
+  /** AgentExecution replaces free-form AgentLog. */
+  async createExecution(data: Prisma.AgentExecutionCreateInput) {
+    return prisma.agentExecution.create({ data, include: executionInclude });
+  },
+
+  async findExecutions(where: Prisma.AgentExecutionWhereInput = {}) {
+    return prisma.agentExecution.findMany({
+      where, include: executionInclude,
+      orderBy: { startedAt: 'desc' },
+      take: 1000,
+    });
+  },
+
+  async updateExecution(id: string, data: Prisma.AgentExecutionUpdateInput) {
+    return prisma.agentExecution.update({
+      where: { id }, data, include: executionInclude,
+    });
+  },
+
+  async findRecommendationExecution(executionId: string) {
+    return prisma.agentExecution.findUnique({
+      where: { id: executionId }, include: executionInclude,
+    });
+  },
+
+  async createToolCall(data: {
+    executionId: string;
+    stepNo: number;
+    toolName: string;
+    arguments: unknown;
+    result?: unknown;
+    status?: ToolCallStatus;
+    errorMessage?: string | null;
+    latencyMs?: number | null;
+  }) {
+    assertPositiveSafeInteger(data.stepNo, 'stepNo');
+    return prisma.agentToolCall.create({
+      data: {
+        executionId: data.executionId,
+        stepNo: data.stepNo,
+        toolName: data.toolName,
+        arguments: jsonValue(data.arguments),
+        ...(data.result === undefined ? {} : { result: jsonValue(data.result) }),
+        status: data.status ?? ToolCallStatus.PENDING,
+        errorMessage: data.errorMessage ?? null,
+        latencyMs: data.latencyMs ?? null,
+      },
+    });
+  },
+
+  async updateToolCall(id: string, data: Prisma.AgentToolCallUpdateInput) {
+    return prisma.agentToolCall.update({ where: { id }, data });
+  },
+
+  async markExecutionSucceeded(executionId: string) {
+    return agentRepository.updateExecution(executionId, {
+      status: ExecutionStatus.SUCCEEDED,
+      endedAt: new Date(),
+    });
+  },
+
+  async markExecutionFailed(executionId: string, errorMessage: string) {
+    return agentRepository.updateExecution(executionId, {
+      status: ExecutionStatus.FAILED,
+      endedAt: new Date(),
+      errorMessage,
+    });
+  },
+
+  async findActiveProductIds(): Promise<string[]> {
+    const products = await prisma.product.findMany({
+      where: { isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    return products.map((product) => product.id);
+  },
 };

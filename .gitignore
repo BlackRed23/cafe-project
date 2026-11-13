@@ -86,3 +86,25 @@ _archive/
 
 # Local rollback checkpoints, verification logs and screenshots
 .task-artifacts/
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and build outputs
+node_modules/
+dist/
+.turbo/
+*.log
+
+# Database backups
+backups/
+*.dump
+*.sql.gz.env
+.env.*
+!.env.example
+apps/**/.env
+apps/**/.env.*
+!apps/**/.env.example
+backups/
+*.dump
