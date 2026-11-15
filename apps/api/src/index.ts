@@ -3,10 +3,12 @@ import cors from 'cors';
 import agentRoutes from './modules/agent/agent.route';
 import authRoutes from './modules/auth/auth.routes';
 import categoryRoutes from './modules/category/category.route';
+import { ingredientRoutes } from './modules/ingredient/ingredient.route';
 import { inventoryRoutes, inventoryTransactionRoutes } from './modules/inventory/inventory.route';
 import orderRoutes from './modules/order/order.route';
 import paymentRoutes from './modules/payment/payment.route';
 import productRoutes from './modules/product/product.route';
+import { productRecipeRoutes, toppingRoutes } from './modules/recipe/recipe.route';
 import purchaseRoutes from './modules/purchase/purchase.route';
 import simulateSaleRoutes from './modules/simulate-sale/simulate-sale.route';
 import systemSettingRoutes from './modules/system-setting/system-setting.route';
@@ -65,6 +67,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/agent', agentRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/products', productRecipeRoutes);
+app.use('/api/toppings', toppingRoutes);
+app.use('/api/ingredients', ingredientRoutes);
 app.use('/api/inventories', inventoryRoutes);
 app.use('/api/inventory-transactions', inventoryTransactionRoutes);
 app.use('/api/orders', orderRoutes);
@@ -88,6 +93,14 @@ app.use(errorHandler);
 const server = app.listen(PORT, () => {
     console.log(`[api] Server is running at ${SERVER_URL}`);
     console.log(`[api] Health check: ${SERVER_URL}/health`);
+
+    const configuredApiBaseUrl = (process.env.API_BASE_URL || env.apiBaseUrl || '').trim();
+    if (configuredApiBaseUrl.includes('localhost') || configuredApiBaseUrl.includes('127.0.0.1')) {
+        console.warn(
+            '[PAYMENT] API_BASE_URL đang là localhost – cổng thanh toán sẽ không gọi được IPN. Dùng ngrok/cloudflared để test.'
+        );
+    }
+
     scheduleJobs();
 });
 

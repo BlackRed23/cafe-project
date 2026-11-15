@@ -16,10 +16,12 @@ const normalizeSimulateItems = (input: SimulateSaleInput) => {
   return [];
 };
 
-const runAgentScan = async (input: { productIds: string[]; userId: string; sourceId?: string }) => {
+const runAgentScan = async (input: { productIds: string[]; ingredientIds?: string[]; userId: string; sourceId?: string }) => {
     try {
         const scan = await scanInventoryViaAgentService({
             productIds: input.productIds,
+            ...(input.ingredientIds?.length ? { ingredientIds: input.ingredientIds } : {}),
+            scope: 'ALL',
             triggerType: 'SIMULATE_SALE',
             sourceType: 'SIMULATE_SALE',
             sourceId: input.sourceId
@@ -39,35 +41,45 @@ export const simulateSaleService = {
     async run(input: SimulateSaleInput, userId: string) {
         // Multi-product support
     if (input.items && input.items.length > 0) {
-        // Resolve inventories for all items
         const allInventories = await simulateSaleRepository.findInventories();
-        const plans = input.items.map((it) => {
-            const inv = allInventories.find((i) => i.productId === it.productId);
-            if (!inv) {
-                throw new HttpError(404, `Inventory not found for product ${it.productId}.`);
-            }
-            if (!inv.product.isActive) {
-                throw new HttpError(400, `Selected product ${it.productId} is inactive.`);
-            }
-            const available = (inv.quantity ?? 0) - (inv.reservedStock ?? 0);
-            if (available < it.quantity) {
-                const unit = inv.product?.unit || 'đơn vị';
-                throw new HttpError(400, `Không đủ tồn kho để mô phỏng bán hàng cho sản phẩm ${it.productId}. Tồn kho hiện tại: ${available} ${unit}, yêu cầu: ${it.quantity} ${unit}.`);
-            }
-            return { inventory: inv, decrease: it.quantity };
+        const hasMissingInventory = input.items.some((it) => !allInventories.find((i) => i.productId === it.productId));
+
+        let affectedProducts: any[];
+        if (hasMissingInventory) {
+            affectedProducts = await simulateSaleRepository.applyRecipeSale(
+                input.items.map((it) => ({ productId: it.productId, decrease: it.quantity })),
+                input.note ?? null,
+                userId
+            );
+        } else {
+            const plans = input.items.map((it) => {
+                const inv = allInventories.find((i) => i.productId === it.productId);
+                if (!inv) {
+                    throw new HttpError(404, `Inventory not found for product ${it.productId}.`);
+                }
+                if (!inv.product.isActive) {
+                    throw new HttpError(400, `Selected product ${it.productId} is inactive.`);
+                }
+                const available = (inv.quantity ?? 0) - (inv.reservedStock ?? 0);
+                if (available < it.quantity) {
+                    const unit = inv.product?.servingUnit || 'đơn vị';
+                    throw new HttpError(400, `Không đủ tồn kho để mô phỏng bán hàng cho sản phẩm ${it.productId}. Tồn kho hiện tại: ${available} ${unit}, yêu cầu: ${it.quantity} ${unit}.`);
+                }
+                return { inventory: inv, decrease: it.quantity };
+            });
+            affectedProducts = await simulateSaleRepository.applySale(plans, input.note ?? null, userId);
+        }
+
+        const allProductIds = affectedProducts.map((a: any) => a.productId);
+        const allIngredientIds = Array.from(new Set(affectedProducts.flatMap((a: any) => a.ingredientIds ?? []))) as string[];
+        const scan = await runAgentScan({
+            productIds: allProductIds,
+            ingredientIds: allIngredientIds,
+            sourceId: affectedProducts[0]?.transactionId,
+            userId
         });
-        const affectedProducts = await simulateSaleRepository.applySale(plans, input.note ?? null, userId);
-        const allAgentResults: any[] = [];
-        const allCreatedPurchaseRequests: any[] = [];
-        let anyWarning: string | null = null;
-        let lastScanSessionId: string | undefined;
 
         for (const affected of affectedProducts) {
-            const scan = await runAgentScan({
-                productIds: [affected.productId],
-                sourceId: affected.transactionId,
-                userId
-            });
             createAgentLogViaAgentService({
                 action: 'SIMULATE_SALE_COMPLETED',
                 result: 'SUCCESS',
@@ -88,33 +100,20 @@ export const simulateSaleService = {
                 },
                 creator: userId ? { connect: { id: userId } } : undefined
             }).catch(console.error);
-
-            allAgentResults.push(...scan.results);
-            allCreatedPurchaseRequests.push(...scan.createdPurchaseRequests);
-            if (scan.agentWarning) anyWarning = scan.agentWarning;
-            if (scan.scanSessionId) lastScanSessionId = scan.scanSessionId;
         }
 
         return {
             affectedProducts,
-            createdPurchaseRequests: allCreatedPurchaseRequests,
-            agentLogs: allAgentResults,
-            agentResults: allAgentResults,
-            agentWarning: anyWarning,
-            scanSessionId: lastScanSessionId,
+            createdPurchaseRequests: scan.createdPurchaseRequests ?? [],
+            agentLogs: scan.results ?? [],
+            agentResults: scan.results ?? [],
+            agentWarning: scan.agentWarning,
+            scanSessionId: scan.scanSessionId,
             newQuantity: affectedProducts[0]?.stockAfter ?? 0,
         };
     }
     if (input.productId) {
             const inventory = await simulateSaleRepository.findInventoryByProductId(input.productId);
-
-            if (!inventory) {
-                throw new HttpError(404, 'Inventory not found for selected product.');
-            }
-
-            if (!inventory.product.isActive) {
-                throw new HttpError(400, 'Selected product is inactive.');
-            }
 
             let quantity = input.quantity ?? 0;
 
@@ -139,19 +138,35 @@ export const simulateSaleService = {
                 }
             }
 
-            if (inventory.quantity < quantity) {
-                let unit = inventory.product?.unit || 'đơn vị';
-                if (unit.toLowerCase() === 'ly') unit = 'đơn vị';
-                throw new HttpError(400, `Không đủ tồn kho để mô phỏng bán hàng. Tồn kho hiện tại: ${inventory.quantity} ${unit}, yêu cầu: ${quantity} ${unit}.`);
+            let affectedProduct: any;
+            if (!inventory) {
+                affectedProduct = await simulateSaleRepository.applyRecipeProductSale(
+                    input.productId,
+                    quantity,
+                    input.note ?? null,
+                    userId
+                );
+            } else {
+                if (!inventory.product.isActive) {
+                    throw new HttpError(400, 'Selected product is inactive.');
+                }
+
+                if (inventory.quantity < quantity) {
+                    let unit = inventory.product?.servingUnit || 'đơn vị';
+                    if (unit.toLowerCase() === 'ly') unit = 'đơn vị';
+                    throw new HttpError(400, `Không đủ tồn kho để mô phỏng bán hàng. Tồn kho hiện tại: ${inventory.quantity} ${unit}, yêu cầu: ${quantity} ${unit}.`);
+                }
+
+                affectedProduct = await simulateSaleRepository.applyProductSale(inventory, quantity, input.note ?? null, userId);
             }
 
-            const affectedProduct = await simulateSaleRepository.applyProductSale(inventory, quantity, input.note ?? null, userId);
             if (!affectedProduct) {
                 throw new HttpError(404, 'Inventory not found for selected product.');
             }
 
             const scan = await runAgentScan({
                 productIds: [affectedProduct.productId],
+                ingredientIds: affectedProduct.ingredientIds,
                 sourceId: affectedProduct.transactionId,
                 userId
             });
@@ -177,6 +192,16 @@ export const simulateSaleService = {
                 creator: userId ? { connect: { id: userId } } : undefined
             }).catch(console.error);
 
+            const taggedResults = (scan.results ?? []).map((r: any) => ({
+                ...r,
+                productId: r.productId ?? affectedProduct.productId,
+                productName: r.productName ?? r.ingredientName ?? affectedProduct.productName
+            }));
+            const taggedPrs = (scan.createdPurchaseRequests ?? []).map((pr: any) => ({
+                ...pr,
+                productId: pr.productId ?? affectedProduct.productId
+            }));
+
             return {
                 affectedProduct,
                 affectedProducts: [affectedProduct],
@@ -188,26 +213,38 @@ export const simulateSaleService = {
                 stockAfter: affectedProduct.stockAfter,
                 newQuantity: affectedProduct.stockAfter,
                 decreasedQuantity: affectedProduct.decreasedQuantity,
-                createdPurchaseRequests: scan.createdPurchaseRequests,
-                agentLogs: scan.results,
-                agentResults: scan.results,
+                createdPurchaseRequests: taggedPrs,
+                agentLogs: taggedResults,
+                agentResults: taggedResults,
                 agentWarning: scan.agentWarning,
                 scanSessionId: scan.scanSessionId
             };
         }
 
         const inventories = await simulateSaleRepository.findInventories();
-        if (inventories.length === 0) throw new HttpError(404, 'No inventory found.');
         const productCount = input.productCount ?? 1;
         const minDecrease = input.minDecrease ?? 1;
         const maxDecrease = input.maxDecrease ?? minDecrease;
-        const shuffled = [...inventories].sort(() => Math.random() - 0.5);
-        const selected = shuffled.slice(0, Math.min(productCount, shuffled.length));
-        const plans = selected.map((inventory) => ({ inventory, decrease: randomInt(minDecrease, maxDecrease) }));
-        const affectedProducts = await simulateSaleRepository.applySale(plans, input.note ?? null, userId);
+
+        let affectedProducts: any[];
+        if (inventories.length === 0) {
+            const recipeProducts = await simulateSaleRepository.findRecipeProducts();
+            if (recipeProducts.length === 0) throw new HttpError(404, 'No active products found.');
+            const shuffled = [...recipeProducts].sort(() => Math.random() - 0.5);
+            const selected = shuffled.slice(0, Math.min(productCount, shuffled.length));
+            const plans = selected.map((p) => ({ productId: p.id, decrease: randomInt(minDecrease, maxDecrease) }));
+            affectedProducts = await simulateSaleRepository.applyRecipeSale(plans, input.note ?? null, userId);
+        } else {
+            const shuffled = [...inventories].sort(() => Math.random() - 0.5);
+            const selected = shuffled.slice(0, Math.min(productCount, shuffled.length));
+            const plans = selected.map((inventory) => ({ inventory, decrease: randomInt(minDecrease, maxDecrease) }));
+            affectedProducts = await simulateSaleRepository.applySale(plans, input.note ?? null, userId);
+        }
         const productIds = affectedProducts.map((item: any) => item.productId);
+        const ingredientIds = Array.from(new Set(affectedProducts.flatMap((item: any) => item.ingredientIds ?? [])));
         const scan = await runAgentScan({
             productIds,
+            ingredientIds,
             userId
         });
 

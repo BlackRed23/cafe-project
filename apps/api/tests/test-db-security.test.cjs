@@ -18,7 +18,7 @@ function evaluate(file, requireMock) {
     const exports = {};
     vm.runInNewContext(compiled.outputText, {
         exports, require: requireMock, process: { env: {} },
-        console: { log() {}, error() {} }
+        console: { log() {}, error() {}, warn() {} }
     });
     return exports;
 }
@@ -60,6 +60,7 @@ test('bootstrap preserves health and route mounting; unauthenticated /test-db is
             routes.set(name, router);
             return {
                 __esModule: true, default: router,
+                ingredientRoutes: router, productRecipeRoutes: router, toppingRoutes: router,
                 inventoryRoutes: router, inventoryTransactionRoutes: router,
                 productSupplierRoutes: router, supplierProductRoutes: router, supplierRoutes: router
             };
@@ -70,12 +71,12 @@ test('bootstrap preserves health and route mounting; unauthenticated /test-db is
     assert.equal(typeof errorListener, 'function');
     startupCallback();
     assert.equal(scheduled, 1);
-    assert.equal(routes.size, 14);
+    assert.equal(routes.size, 16);
     // Each imported API router remains mounted (supplier/inventory routers mount more than once).
     for (const router of routes.values()) {
         assert.ok(app._router.stack.some(layer => layer.handle === router));
     }
-    assert.equal(app._router.stack.filter(layer => layer.handle?.stack).length, 17);
+    assert.equal(app._router.stack.filter(layer => layer.handle?.stack).length, 20);
     const inProcess = process.env.TEST_IN_PROCESS === '1';
     const server = inProcess ? undefined : http.createServer(app);
     if (server) await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

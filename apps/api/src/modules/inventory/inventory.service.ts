@@ -53,6 +53,9 @@ export type InventoryTransactionDto = {
     productId: string;
     productName: string;
     productSku: string;
+    itemType: 'INGREDIENT' | 'PRODUCT';
+    unit: string;
+    batchCode: string | null;
     type: string;
     quantity: number;
     previousQty: number | null;
@@ -119,20 +122,68 @@ const toInventoryDto = (inventory: InventoryRecord): InventoryDto => {
     };
 };
 
-const toTransactionDto = (transaction: InventoryTransactionRecord): InventoryTransactionDto => ({
-    id: transaction.id,
-    productId: transaction.productId,
-    productName: transaction.product.name,
-    productSku: transaction.product.sku,
-    type: transaction.type === 'ADJUSTMENT' ? 'ADJUST' : transaction.type,
-    quantity: transaction.quantity,
-    previousQty: null,
-    newQty: null,
-    note: transaction.reason,
-    createdBy: transaction.user?.name ?? null,
-    createdByEmail: transaction.user?.email ?? null,
-    createdAt: transaction.createdAt
-});
+const toTransactionDto = (transaction: InventoryTransactionRecord): InventoryTransactionDto => {
+    const rawQty = Number(transaction.quantity);
+    const rawType = String(transaction.type);
+    const reason = transaction.reason ?? '';
+
+    let normalizedType = rawType === 'ADJUSTMENT' ? 'ADJUST' : rawType;
+    let signedQty = rawQty;
+
+    if (rawType === 'RESERVE' || (rawType === 'ORDER' && reason.startsWith('Giữ '))) {
+        normalizedType = 'RESERVE';
+        signedQty = -Math.abs(rawQty);
+    } else if (rawType === 'RELEASE' || rawType === 'CANCEL') {
+        normalizedType = 'RELEASE';
+        signedQty = Math.abs(rawQty);
+    } else if (rawType === 'DEDUCT' || rawType === 'CONSUME') {
+        normalizedType = 'DEDUCT';
+        signedQty = -Math.abs(rawQty);
+    } else if (rawType === 'WASTE' || rawType === 'EXPIRE' || rawType === 'VOID') {
+        normalizedType = rawType;
+        signedQty = -Math.abs(rawQty);
+    } else if (rawType === 'ORDER' || rawType === 'SIMULATE_SALE') {
+        signedQty = -Math.abs(rawQty);
+    } else if (rawType === 'IMPORT' || rawType === 'RESTORE_SIMULATION') {
+        signedQty = Math.abs(rawQty);
+    }
+
+    const isIngredient = Boolean(transaction.ingredientId || transaction.ingredient);
+    const itemName =
+        transaction.ingredient?.name ??
+        transaction.product?.name ??
+        'Nguyên liệu / Sản phẩm';
+    const itemSku =
+        transaction.ingredient?.sku ??
+        transaction.product?.sku ??
+        '';
+    const itemUnit =
+        transaction.ingredient?.baseUnit ??
+        (transaction.product as any)?.servingUnit ??
+        '';
+    const batchCode =
+        transaction.batch?.batchCode ??
+        transaction.legacyBatch?.batchCode ??
+        null;
+
+    return {
+        id: transaction.id,
+        productId: transaction.productId ?? transaction.ingredientId ?? '',
+        productName: itemName,
+        productSku: itemSku,
+        itemType: isIngredient ? 'INGREDIENT' : 'PRODUCT',
+        unit: itemUnit,
+        batchCode,
+        type: normalizedType,
+        quantity: signedQty,
+        previousQty: null,
+        newQty: null,
+        note: transaction.reason,
+        createdBy: transaction.user?.name ?? null,
+        createdByEmail: transaction.user?.email ?? null,
+        createdAt: transaction.createdAt
+    };
+};
 
 const normalizeNote = (note: string | null | undefined): string | null => {
     if (!note) return null;
@@ -252,7 +303,7 @@ export const getInventories = async (): Promise<InventoryDto[]> => {
         _sum: { quantity: true }
     });
 
-    const salesMap = new Map<string, number>(salesGroups.map((g: any) => [g.productId, Math.abs(g._sum.quantity ?? 0)]));
+    const salesMap = new Map<string, number>(salesGroups.map((g: any) => [g.productId, Math.abs(Number(g._sum.quantity ?? 0))]));
 
     const supplierProducts = await prisma.supplierProduct.findMany({
         where: {
@@ -520,7 +571,7 @@ export const getInventoryThresholdSuggestion = async (inventoryId: string) => {
         _sum: { quantity: true }
     });
 
-    const totalSalesInWindow = Math.abs(salesTransactions._sum.quantity ?? 0);
+    const totalSalesInWindow = Math.abs(Number(salesTransactions._sum.quantity ?? 0));
     const avgDailySales = totalSalesInWindow / salesWindowDays;
     const baseDailySales = avgDailySales > 0 ? avgDailySales : 1;
     

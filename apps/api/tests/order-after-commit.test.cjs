@@ -12,6 +12,8 @@ function fixture({ failCommit = false, failLedger = false, failAgent = false } =
     const updated = { id: 'order-1', status: 'COMPLETED' };
     const tx = {
         order: { updateMany: async () => ({ count: 1 }), findUnique: async () => updated },
+        orderItem: { update: async () => ({}), updateMany: async () => ({ count: 0 }) },
+        payment: { updateMany: async () => ({ count: 0 }) },
         inventory: { findUnique: async () => ({ id: 'inventory-1' }), updateMany: async () => ({ count: 1 }) },
         inventoryBatch: { findMany: async () => [{ id: 'batch-1', quantity: 10 }], updateMany: async () => ({ count: 1 }) },
         inventoryTransaction: { create: async () => { if (failLedger) throw new Error('Injected ledger failure'); } }
@@ -28,7 +30,15 @@ function fixture({ failCommit = false, failLedger = false, failAgent = false } =
     vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, {
         exports, Date, console: { error: (...args) => errors.push(args) },
         require(name) {
-            if (name === '@cafe-project/database') return { prisma, OrderStatus: { COMPLETED: 'COMPLETED', CANCELLED: 'CANCELLED', PROCESSING: 'PROCESSING', PENDING: 'PENDING' }, InventoryTransactionType: { ORDER: 'ORDER', CANCEL: 'CANCEL' } };
+            if (name === '@cafe-project/database') return { prisma, OrderStatus: { COMPLETED: 'COMPLETED', CANCELLED: 'CANCELLED', PROCESSING: 'PROCESSING', PENDING: 'PENDING' }, InventoryTransactionType: { ORDER: 'ORDER', CANCEL: 'CANCEL' }, PaymentStatus: { PAID: 'PAID' }, TransactionStatus: { PAID: 'PAID' }, ConsumptionStatus: { COMMITTED: 'COMMITTED', VOIDED: 'VOIDED' } };
+            if (name === '../../common/ingredient-cost.utils') return {
+                toDecimal: () => ({ mul: () => 0, abs: () => ({ lte: () => true }) }),
+                roundCost4: v => v,
+                roundMoney2: v => v,
+                roundQty3: v => v,
+                calculateOrderItemCostSnapshot: () => ({ ingredientCost: 0, toppingCost: 0, totalCost: 0, grossProfit: 0 })
+            };
+            if (name === '../payment/payment.repository') return { appendManualPaymentAudit: () => ({}) };
             if (name === './shipping.service') return {};
             if (name === '../agent/agent.client') return { scanInventoryViaAgentService: async (...args) => {
                 scans.push(args);

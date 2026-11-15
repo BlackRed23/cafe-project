@@ -7,19 +7,19 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const valid = () => ({ recommendedQuantity: 12, recommendedSupplierId: 'supplier-1', confidence: 0.8, reasoning: 'Stock is low.', emailDraft: 'Please quote.' });
-function fixture(text, failure) {
+function fixture(text, failure, usageMetadata, envOverrides = {}) {
     let calls = 0;
     const exports = {};
     const source = fs.readFileSync(path.resolve(__dirname, '../src/services/gemini.service.ts'), 'utf8');
     vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
         exports,
         require(name) {
-            if (name === '../config/env') return { env: { GEMINI_API_KEY: 'synthetic-test-key', GEMINI_MODEL: 'mock-model' } };
+            if (name === '../config/env') return { env: { GEMINI_API_KEY: 'synthetic-test-key', GEMINI_MODEL: 'gemini-1.5-flash', ...envOverrides } };
             if (name === '@google/generative-ai') return { GoogleGenerativeAI: class {
                 getGenerativeModel() { return { generateContent: async () => {
                     calls++;
                     if (failure) throw failure;
-                    return { response: { text: () => text } };
+                    return { response: { text: () => text, usageMetadata } };
                 } }; }
             } };
             throw new Error(`Unexpected import: ${name}`);
@@ -70,4 +70,23 @@ test('SDK failure details are not propagated to callers', async () => {
         assert.equal(error.message.includes('PRIVATE_PROVIDER_ERROR_MARKER'), false);
         return /failed/i.test(error.message);
     });
+});
+
+test('usageMetadata and token pricing calculate deterministic Cost / request metrics', async () => {
+    const f = fixture(
+        JSON.stringify(valid()),
+        null,
+        { promptTokenCount: 1000, candidatesTokenCount: 500, totalTokenCount: 1500 },
+        { GEMINI_INPUT_PRICE_PER_1M_USD: 0.075, GEMINI_OUTPUT_PRICE_PER_1M_USD: 0.30 }
+    );
+    const { recommendation, metrics } = await f.service.getRecommendationWithMetrics('synthetic prompt');
+    assert.deepEqual(JSON.parse(JSON.stringify(recommendation)), valid());
+    assert.equal(metrics.promptTokens, 1000);
+    assert.equal(metrics.completionTokens, 500);
+    assert.equal(metrics.totalTokens, 1500);
+    assert.equal(metrics.inputPricePer1MUsd, 0.075);
+    assert.equal(metrics.outputPricePer1MUsd, 0.30);
+    assert.equal(metrics.estimatedCostUsd, 0.000225);
+    assert.equal(typeof metrics.latencyMs, 'number');
+    assert.ok(metrics.latencyMs >= 0);
 });

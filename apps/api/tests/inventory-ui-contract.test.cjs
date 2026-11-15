@@ -61,7 +61,7 @@ test('simulation uses fresh quantity, preserves reservations and restores origin
  await f.repo.applyProductSale({ id: 'inv', quantity: 999 }, 3, null, 'admin');
  assert.equal(f.state().quantity, 17); assert.equal(f.state().batch, 17); assert.equal(f.state().reservedStock, 5);
  await f.repo.restoreSale('sale', 'admin');
- assert.equal(f.state().quantity, 20); assert.equal(f.state().batch, 20); assert.equal(f.state().history[1].batchId, 'b');
+ assert.equal(f.state().quantity, 20); assert.equal(f.state().batch, 20); assert.equal(f.state().history[1].legacyBatchId ?? f.state().history[1].batchId, 'b');
  await assert.rejects(f.repo.restoreSale('sale', 'admin')); assert.equal(f.state().quantity, 20);
 });
 test('simulation cannot consume reserved stock or restore a legacy movement with no source batch', async () => {
@@ -81,13 +81,21 @@ for (const nextStatus of ['COMPLETED', 'CANCELLED']) test(`order ${nextStatus} u
   const d = structuredClone(state);
   const tx = {
    order: { updateMany: async ({ where, data }) => { if (where.status !== d.status) return { count: 0 }; d.status = data.status; return { count: 1 }; }, findUnique: async () => ({ status: d.status }) },
+   orderItem: { update: async () => ({}), updateMany: async () => ({ count: 0 }) },
+   payment: { updateMany: async () => ({ count: 0 }) },
    inventory: { findUnique: async () => ({ id: 'inv', quantity: 999, reservedStock: 999 }), updateMany: async ({ data }) => { if (data.quantity) { assert.equal(data.quantity.decrement, 3); d.quantity -= 3; } assert.equal(data.reservedStock.decrement, 3); d.reservedStock -= 3; return { count: 1 }; } },
    inventoryBatch: { findMany: async () => [{ id: 'b', quantity: d.batch }], updateMany: async ({ data }) => { d.batch -= data.quantity.decrement; return { count: 1 }; } },
    inventoryTransaction: { create: async ({ data }) => { d.history.push(data); } }
   };
   const result = await callback(tx); state = d; return result;
  } };
- const { orderRepository } = load('apps/api/src/modules/order/order.repository.ts', { '@cafe-project/database': { prisma, InventoryTransactionType: { ORDER: 'ORDER', CANCEL: 'CANCEL' }, OrderStatus: { PENDING: 'PENDING', PROCESSING: 'PROCESSING', COMPLETED: 'COMPLETED', CANCELLED: 'CANCELLED' } }, './shipping.service': {}, '../agent/agent.client': { scanInventoryViaAgentService: async () => {} } });
+ const { orderRepository } = load('apps/api/src/modules/order/order.repository.ts', {
+  '@cafe-project/database': { prisma, InventoryTransactionType: { ORDER: 'ORDER', CANCEL: 'CANCEL' }, OrderStatus: { PENDING: 'PENDING', PROCESSING: 'PROCESSING', COMPLETED: 'COMPLETED', CANCELLED: 'CANCELLED' }, PaymentStatus: { PAID: 'PAID' }, TransactionStatus: { PAID: 'PAID' }, ConsumptionStatus: { COMMITTED: 'COMMITTED', VOIDED: 'VOIDED' } },
+  '../../common/ingredient-cost.utils': { toDecimal: () => ({ mul: () => 0, abs: () => ({ lte: () => true }) }), roundCost4: v => v, roundMoney2: v => v, roundQty3: v => v, calculateOrderItemCostSnapshot: () => ({ ingredientCost: 0, toppingCost: 0, totalCost: 0, grossProfit: 0 }) },
+  '../payment/payment.repository': { appendManualPaymentAudit: () => ({}) },
+  './shipping.service': {},
+  '../agent/agent.client': { scanInventoryViaAgentService: async () => {} }
+ });
  const stale = { id: 'order', status: 'PROCESSING', stockDeductedAt: null, items: [{ productId: 'p', quantity: 3 }] };
  await orderRepository.updateStatus(stale, nextStatus, 'admin');
  assert.equal(state.quantity, nextStatus === 'COMPLETED' ? 17 : 20); assert.equal(state.batch, state.quantity); assert.equal(state.reservedStock, 2); assert.equal(state.history.length, 1);

@@ -149,6 +149,7 @@ const normalizeOrderPayload = (payload: CreateOrderPayload): CreateOrderPayload 
     items: payload.items.map((item) => ({
       productId: String(item.productId ?? "").trim(),
       quantity: Number(item.quantity),
+      ...(item.toppings && item.toppings.length > 0 ? { toppings: item.toppings } : {}),
     })),
     paymentMethod: payload.paymentMethod,
     shippingName: payload.shippingName.trim(),
@@ -195,28 +196,31 @@ export const ordersApi = {
     return ordersApi.updateOrderStatus(id, { status: "PROCESSING" });
   },
 
-  updateOrderStatus: async (id: string, payload: { status?: string; paymentStatus?: string }): Promise<Order> => {
+  confirmPayment: async (id: string, note?: string): Promise<Order> => {
     try {
-      const response = await apiClient.patch(`/orders/${id}/status`, { status: payload.status });
-      let order = unwrapApiField<any>(response.data, "order");
+      const response = await apiClient.post(`/orders/${id}/confirm-payment`, {
+        ...(note ? { note } : {}),
+      });
+      return normalizeOrder(unwrapApiField<any>(response.data, "order"));
+    } catch (error: any) {
+      error.friendlyMessage = getOrderErrorMessage(
+        error,
+        "Không thể xác nhận thanh toán đơn hàng, vui lòng thử lại."
+      );
+      throw error;
+    }
+  },
 
-      if (payload.paymentStatus && order?.payment?.id) {
-        try {
-          const paymentResponse = await apiClient.patch(`/payments/${order.payment.id}/status`, {
-            status: payload.paymentStatus,
-          });
-          order = {
-            ...order,
-            payment: unwrapApiField<any>(paymentResponse.data, "payment"),
-          };
-        } catch (error: any) {
-          error.partialPaymentUpdateFailed = true;
-          error.friendlyMessage =
-            "Đã cập nhật đơn hàng nhưng cập nhật thanh toán thất bại. Vui lòng kiểm tra lại trạng thái thanh toán.";
-          throw error;
-        }
-      }
-
+  updateOrderStatus: async (
+    id: string,
+    payload: { status?: string; paymentStatus?: string }
+  ): Promise<Order> => {
+    try {
+      const response = await apiClient.patch(`/orders/${id}/status`, {
+        status: payload.status,
+        ...(payload.paymentStatus ? { paymentStatus: payload.paymentStatus } : {}),
+      });
+      const order = unwrapApiField<any>(response.data, "order");
       return normalizeOrder(order);
     } catch (error: any) {
       if (!error.friendlyMessage) {

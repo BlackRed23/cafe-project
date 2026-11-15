@@ -45,6 +45,9 @@ test('direct receipt repository rejects duplicate payload before any transaction
     const { HttpError } = load('common/http-error.ts');
     const { purchaseRepository } = load('modules/purchase/purchase.repository.ts', {
         '@cafe-project/database': { ...deps['@cafe-project/database'], prisma },
+        '../../common/ingredient-cost.utils': {},
+        '../../common/unit-conversion': {},
+        '../recipe/recipe.service': {},
         '../../common/http-error': { HttpError },
         './purchase.receipt-validation': deps['./purchase.receipt-validation']
     });

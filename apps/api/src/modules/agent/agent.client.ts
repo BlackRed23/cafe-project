@@ -6,6 +6,8 @@ import { agentFailureLogService } from './agent-failure-log.service';
 
 type ScanInventoryInput = {
     productIds?: string[];
+    ingredientIds?: string[];
+    scope?: 'ALL' | 'PRODUCT' | 'INGREDIENT';
     triggerType?: string;
     sourceType?: string;
     sourceId?: string;
@@ -14,6 +16,8 @@ type ScanInventoryInput = {
 
 type RecommendReorderInput = {
     productIds?: string[];
+    ingredientIds?: string[];
+    scope?: 'ALL' | 'PRODUCT' | 'INGREDIENT';
     force?: boolean;
 };
 

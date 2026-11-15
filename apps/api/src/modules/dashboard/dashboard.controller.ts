@@ -31,6 +31,36 @@ export const getRevenue = async (req: AuthenticatedRequest, res: Response): Prom
     }
 };
 
+export const getProfit = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+        const days = Number(req.query.days) || 30;
+        const profit = await dashboardService.getProfit(days);
+        sendSuccess(res, 200, 'Lấy thống kê giá vốn và lợi nhuận gộp thành công.', profit);
+    } catch (error: any) {
+        sendError(res, 500, error.message || 'Không thể lấy thống kê lợi nhuận.');
+    }
+};
+
+export const getProductMargins = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+        const days = Number(req.query.days) || 30;
+        const margins = await dashboardService.getProductMargins(days);
+        sendSuccess(res, 200, 'Lấy thống kê biên lợi nhuận theo sản phẩm thành công.', margins);
+    } catch (error: any) {
+        sendError(res, 500, error.message || 'Không thể lấy thống kê biên lợi nhuận sản phẩm.');
+    }
+};
+
+export const getIngredientUsage = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+        const days = Number(req.query.days) || 30;
+        const usage = await dashboardService.getIngredientUsage(days);
+        sendSuccess(res, 200, 'Lấy thống kê tiêu hao nguyên liệu thành công.', usage);
+    } catch (error: any) {
+        sendError(res, 500, error.message || 'Không thể lấy thống kê tiêu hao nguyên liệu.');
+    }
+};
+
 export const getLowStock = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
         const lowStock = await dashboardService.getLowStock();

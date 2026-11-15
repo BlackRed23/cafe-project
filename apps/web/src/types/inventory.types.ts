@@ -57,11 +57,31 @@ export interface InventoryTransaction {
   id: string;
   productId: string;
   product_id?: string;
+  productName?: string;
+  productSku?: string;
+  itemType?: "INGREDIENT" | "PRODUCT";
+  unit?: string;
+  batchCode?: string | null;
   product?: {
     id: string;
     name: string;
+    sku?: string;
+    unit?: string;
   };
-  type: "IMPORT" | "ORDER" | "SIMULATE_SALE" | "ADJUST" | "CANCEL" | "RETURN";
+  type:
+    | "IMPORT"
+    | "ORDER"
+    | "RESERVE"
+    | "RELEASE"
+    | "DEDUCT"
+    | "CONSUME"
+    | "WASTE"
+    | "SIMULATE_SALE"
+    | "RESTORE_SIMULATION"
+    | "ADJUST"
+    | "CANCEL"
+    | "RETURN"
+    | string;
   quantityChange?: number;
   quantity_change?: number;
   note?: string;

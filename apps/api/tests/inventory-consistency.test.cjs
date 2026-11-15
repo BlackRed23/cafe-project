@@ -106,8 +106,8 @@ test('import increments current stock and records batch/history inside transacti
     assert.equal(s.batches.reduce((sum, b) => sum + b.quantity, 0), 24);
     assert.equal(s.history[0].quantity, 4);
     assert.equal(s.history[0].productId, 'product');
-    assert.equal(s.history[0].batchId, s.batches[1].id);
-    assert.equal(s.history[0].userId, 'admin');
+    assert.equal(s.history[0].legacyBatchId ?? s.history[0].batchId, s.batches[1].id);
+    assert.equal(s.history[0].performedBy ?? s.history[0].userId, 'admin');
     assert.equal(f.calls[0], 'lock');
 });
 
@@ -128,7 +128,7 @@ for (const delta of [4, -4, -15]) {
         assert.equal(s.batches[0].quantity, 20 + delta);
         assert.equal(s.inventory.reservedStock, 5);
         assert.equal(s.history[0].quantity, delta);
-        assert.equal(s.history[0].batchId, 'batch');
+        assert.equal(s.history[0].legacyBatchId ?? s.history[0].batchId, 'batch');
         assert.equal(s.history[0].productId, 'product');
         // Stock count does not silently change expiry or reclassify a batch as usable.
         assert.equal(s.batches[0].expirationDate.toISOString(), '2099-01-01T00:00:00.000Z');

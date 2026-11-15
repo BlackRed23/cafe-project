@@ -124,15 +124,21 @@ export const AdminSimulateSalePage: React.FC = () => {
     loadData(true);
   }, []);
 
+  const getProductAvailableStock = (productId: string): number => {
+    const inv = inventories.find((i) => i.productId === productId);
+    if (inv && typeof inv.sellableQuantity === "number") return inv.sellableQuantity;
+    const prod = products.find((p) => p.id === productId) as any;
+    return Number(prod?.availableStock ?? prod?.inventory?.quantity ?? 0);
+  };
+
   const selectedInventory = inventories.find((inv) => inv.productId === selectedProductId);
   const selectedProduct = products.find((p) => p.id === selectedProductId);
 
-  const currentQty = selectedInventory?.quantity ?? 0;
-  const threshold = selectedInventory?.minThreshold ?? selectedInventory?.min_threshold ?? 0;
+  const currentQty = selectedInventory?.quantity ?? (selectedProduct as any)?.inventory?.quantity ?? (selectedProduct as any)?.availableStock ?? 0;
+  const threshold = selectedInventory?.minThreshold ?? selectedInventory?.min_threshold ?? (selectedProduct as any)?.inventory?.min_threshold ?? 5;
   // Compute availableStock per rules
-  const availableStock = selectedInventory?.sellableQuantity ?? 0;
-  let unit = selectedProduct?.unit || "đơn vị";
-  if (unit.toLowerCase() === "ly") unit = "đơn vị";
+  const availableStock = getProductAvailableStock(selectedProductId);
+  const unit = selectedProduct?.unit || "Ly";
 
   let localNumberOfDays = 1;
   if (simulationMode === "WEEK") localNumberOfDays = 7;
@@ -167,8 +173,7 @@ export const AdminSimulateSalePage: React.FC = () => {
         return;
       }
       const overStock = validItems.find(item => {
-        const inv = inventories.find(i => i.productId === item.productId);
-        const available = inv?.sellableQuantity ?? 0;
+        const available = getProductAvailableStock(item.productId);
         return item.quantity > (available ?? 0);
       });
       if (overStock) {
@@ -184,8 +189,7 @@ export const AdminSimulateSalePage: React.FC = () => {
         toast.error('Số lượng mô phỏng phải lớn hơn 0.');
         return;
       }
-      const inv = inventories.find(i => i.productId === selectedProductId);
-      const available = inv?.sellableQuantity ?? 0;
+      const available = getProductAvailableStock(selectedProductId);
       if (localSimulatedDemand > (available ?? 0)) {
         toast.error('Số lượng mô phỏng không được vượt quá tồn kho khả dụng.');
         return;
@@ -198,9 +202,10 @@ export const AdminSimulateSalePage: React.FC = () => {
 
     try {
       // Prepare payload based on mode
+      const validSubmittedItems = items.filter(i => i.productId?.trim() && i.quantity > 0);
       const payload = multiMode
-        ? { items }
-        : { productId: selectedProductId, quantity: localSimulatedDemand };
+        ? { items: validSubmittedItems, ...(note.trim() ? { note: note.trim() } : {}) }
+        : { productId: selectedProductId, quantity: localSimulatedDemand, ...(note.trim() ? { note: note.trim() } : {}) };
       // Call simulate sale API
       const res = await simulateSaleApi.simulateSale(payload);
 
@@ -262,30 +267,35 @@ export const AdminSimulateSalePage: React.FC = () => {
         const affected = affectedProducts.find((x: any) => x.productId === item.productId);
         const inv = inventories.find(i => i.productId === item.productId);
 
-        // Filter agent logs for this product
+        // Filter agent logs for this product (including its recipe ingredient logs)
+        const productIngredientIds: string[] = Array.isArray(affected?.ingredientIds) ? affected.ingredientIds : [];
         const productLogs = allLogs.filter((log: any) => {
           const input = parseJson(log.input);
           const output = parseJson(log.output);
+          const logIngId = log.ingredientId || input?.ingredientId || output?.ingredientId;
           return (
             log.productId === item.productId ||
             input?.productId === item.productId ||
             output?.productId === item.productId ||
             log.productName === product?.name ||
             input?.productName === product?.name ||
-            output?.productName === product?.name
+            output?.productName === product?.name ||
+            (logIngId && productIngredientIds.includes(logIngId))
           );
         });
 
-        // Find purchase request for this product
+        // Find purchase request for this product (or any of its recipe ingredients)
         const pr = createdPRs.find((p: any) =>
           p.productId === item.productId ||
           p.inventory?.productId === item.productId ||
-          p.items?.some((prItem: any) => prItem.inventory?.productId === item.productId)
+          p.items?.some((prItem: any) =>
+            prItem.inventory?.productId === item.productId ||
+            (prItem.ingredientId && productIngredientIds.includes(prItem.ingredientId))
+          )
         );
 
         const agentStatus = resolveAgentStatus(productLogs);
-        let pUnit = product?.unit || affected?.unit || 'đơn vị';
-        if (pUnit.toLowerCase() === 'ly') pUnit = 'đơn vị';
+        const pUnit = product?.unit || affected?.unit || 'Ly';
 
         const stockBefore = affected?.stockBefore ?? affected?.previousQuantity;
         const stockAfter = affected?.stockAfter ?? affected?.newQuantity;
@@ -304,13 +314,14 @@ export const AdminSimulateSalePage: React.FC = () => {
           availableBefore,
           availableAfter,
           decreasedQuantity: affected?.decreasedQuantity ?? item.quantity,
-          minThreshold: affected?.minThreshold ?? inv?.minThreshold ?? inv?.min_threshold ?? 0,
+          minThreshold: affected?.minThreshold ?? inv?.minThreshold ?? inv?.min_threshold ?? 5,
           agentStatus,
           agentMessage: resolveAgentMessage(agentStatus),
           agentLogs: productLogs,
           purchaseRequest: pr,
           transactionId: affected?.transactionId,
           inventoryId: affected?.inventoryId,
+          ingredientIds: productIngredientIds,
           scanSessionId: productLogs[0]?.scanSessionId || scanSessionId,
         };
       });
@@ -394,7 +405,7 @@ export const AdminSimulateSalePage: React.FC = () => {
       if (firstTransactionId) {
         localStorage.setItem(LAST_SIMULATION_TRANSACTION_KEY, firstTransactionId);
       }
-      await loadData(false);
+      await loadData(true);
     } catch (err: any) {
       // Case Error toasts
       const status = err.response?.status;
@@ -466,9 +477,7 @@ export const AdminSimulateSalePage: React.FC = () => {
     const validPool = products
       .filter((p) => p.isActive !== false && !p.pendingDeleteUntil)
       .map((p) => {
-        const inv = inventories.find((i) => i.productId === p.id);
-        if (!inv) return null;
-        const available = inv.sellableQuantity ?? 0;
+        const available = getProductAvailableStock(p.id);
         if (available <= 0) return null;
         return { product: p, available };
       })
@@ -682,8 +691,7 @@ export const AdminSimulateSalePage: React.FC = () => {
                   <span />
                 </div>
                 {items.map((item, idx) => {
-                  const inv = inventories.find(i => i.productId === item.productId);
-                  const available = inv ? (inv.sellableQuantity ?? 0) : 0;
+                  const available = item.productId ? getProductAvailableStock(item.productId) : 0;
                   const isOverStock = item.quantity > available && available > 0;
                   return (
                     <div key={idx} className="grid grid-cols-[1fr_100px_44px] gap-2 items-center">
@@ -1025,7 +1033,9 @@ export const AdminSimulateSalePage: React.FC = () => {
                   {simulationProductResults.map((item) => {
                     const getProductAgentLogUrl = () => {
                       const params = new URLSearchParams();
-                      if (item.productId) params.set('productId', item.productId);
+                      if (item.productId && (!item.ingredientIds || item.ingredientIds.length === 0)) {
+                        params.set('productId', item.productId);
+                      }
                       if (item.scanSessionId) params.set('scanSessionId', item.scanSessionId);
                       return `/admin/agent-logs?${params.toString()}`;
                     };

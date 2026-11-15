@@ -18,7 +18,21 @@ export type InventoryRecord = Inventory & {
 };
 
 export type InventoryTransactionRecord = InventoryTransaction & {
-    product: Product;
+    product: Product | null;
+    ingredient?: {
+        id: string;
+        name: string;
+        sku: string;
+        baseUnit: string;
+    } | null;
+    batch?: {
+        id: string;
+        batchCode: string;
+    } | null;
+    legacyBatch?: {
+        id: string;
+        batchCode: string;
+    } | null;
     user: Pick<User, 'id' | 'name' | 'email'> | null;
 };
 
@@ -36,8 +50,27 @@ const inventoryInclude = {
 } satisfies Prisma.InventoryInclude;
 
 const transactionInclude = {
-    product: true,
-    user: {
+    ingredient: {
+        select: {
+            id: true,
+            name: true,
+            sku: true,
+            baseUnit: true
+        }
+    },
+    batch: {
+        select: {
+            id: true,
+            batchCode: true
+        }
+    },
+    legacyBatch: {
+        select: {
+            id: true,
+            batchCode: true
+        }
+    },
+    performedByUser: {
         select: {
             id: true,
             name: true,
@@ -48,43 +81,26 @@ const transactionInclude = {
 
 export const inventoryRepository = {
     async createMissingForActiveProducts(): Promise<void> {
-        const productsWithoutInventory = await prisma.product.findMany({
-            where: {
-                isActive: true,
-                inventory: {
-                    is: null
-                }
-            },
-            select: {
-                id: true,
-                unit: true
-            }
-        });
-
-        if (productsWithoutInventory.length === 0) {
-            return;
-        }
-
-        const defaultMinThresholdSetting = await getOptionalSettingValue('inventory.defaultMinThreshold');
-        const defaultMinThreshold = parseInt(defaultMinThresholdSetting || '10', 10);
-        const minThreshold = isNaN(defaultMinThreshold) ? 10 : defaultMinThreshold;
-
-        await prisma.inventory.createMany({
-            data: productsWithoutInventory.map((product: any) => ({
-                productId: product.id,
-                quantity: 0,
-                minThreshold,
-                unit: product.unit || 'hộp'
-            })),
-            skipDuplicates: true
-        });
+        // Hệ thống quản lý 100% sản phẩm pha chế theo Công thức (Recipe) & Nguyên liệu (Ingredient).
+        // Không tự động sinh bản ghi Inventory cho Product.
+        return;
     },
 
     async findMany(): Promise<InventoryRecord[]> {
         return prisma.inventory.findMany({
             where: {
                 product: {
-                    isActive: true
+                    isActive: true,
+                    recipes: {
+                        none: {
+                            isActive: true
+                        }
+                    },
+                    category: {
+                        name: {
+                            not: 'Thức uống pha chế'
+                        }
+                    }
                 }
             },
             include: inventoryInclude,
@@ -107,12 +123,24 @@ export const inventoryRepository = {
     },
 
     async findTransactions(): Promise<InventoryTransactionRecord[]> {
-        return prisma.inventoryTransaction.findMany({
+        const txns = await prisma.inventoryTransaction.findMany({
             include: transactionInclude,
             orderBy: {
                 createdAt: 'desc'
             }
         });
+
+        const productIds = Array.from(new Set(txns.map((t) => t.productId).filter((id): id is string => Boolean(id))));
+        const products = productIds.length > 0
+            ? await prisma.product.findMany({ where: { id: { in: productIds } } })
+            : [];
+        const productById = new Map(products.map((p) => [p.id, p]));
+
+        return txns.map((t) => ({
+            ...t,
+            product: t.productId ? productById.get(t.productId) ?? null : null,
+            user: t.performedByUser ?? null
+        }));
     },
 
     async importStock(inventory: InventoryRecord, quantity: number, note: string | null, userId: string, batchCode?: string, expirationDate?: string): Promise<InventoryRecord> {
@@ -149,11 +177,11 @@ export const inventoryRepository = {
             await tx.inventoryTransaction.create({
                 data: {
                     productId: current.productId,
-                    userId,
+                    performedBy: userId,
                     type: InventoryTransactionType.IMPORT,
                     quantity,
                     reason: note,
-                    batchId: batch.id
+                    legacyBatchId: batch.id
                 }
             });
 
@@ -205,11 +233,11 @@ export const inventoryRepository = {
             await tx.inventoryTransaction.create({
                 data: {
                     productId: current.productId,
-                    userId,
+                    performedBy: userId,
                     type: InventoryTransactionType.ADJUSTMENT,
                     quantity,
                     reason: note,
-                    batchId: batch.id
+                    legacyBatchId: batch.id
                 }
             });
 

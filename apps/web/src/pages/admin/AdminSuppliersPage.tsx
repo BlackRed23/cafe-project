@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { suppliersApi } from "../../api/suppliers.api";
-import { productsApi } from "../../api/products.api";
+import { ingredientsApi } from "../../api/ingredients.api";
 import { purchaseRequestsApi } from "../../api/purchaseRequests.api";
 import type { Supplier, SupplierProduct } from "../../types/supplier.types";
 import type { Product } from "../../types/product.types";
@@ -22,9 +22,12 @@ const calculateConversionQty = (weightStr: string, weightUnit: string, targetUni
   const weight = Number(weightStr);
   if (!weight || weight <= 0) return { qty: 0, error: "Khối lượng phải lớn hơn 0" };
   if (!weightUnit || !targetUnit) return { qty: 0, error: "" };
-  if (weightUnit.toLowerCase() === "kg" && targetUnit.toLowerCase() === "gram") return { qty: weight * 1000, error: "" };
-  if (weightUnit.toLowerCase() === "gram" && targetUnit.toLowerCase() === "gram") return { qty: weight, error: "" };
-  if (weightUnit.toLowerCase() === targetUnit.toLowerCase()) return { qty: weight, error: "" };
+  const w = weightUnit.toLowerCase();
+  const t = targetUnit.toLowerCase();
+  if (w === "kg" && (t === "gram" || t === "g")) return { qty: weight * 1000, error: "" };
+  if ((w === "gram" || w === "g") && (t === "gram" || t === "g")) return { qty: weight, error: "" };
+  if ((w === "l" || w === "lít" || w === "lit") && t === "ml") return { qty: weight * 1000, error: "" };
+  if (w === t) return { qty: weight, error: "" };
   return { qty: 0, error: "Chưa hỗ trợ tự quy đổi giữa hai đơn vị này, vui lòng kiểm tra lại." };
 };
 
@@ -84,15 +87,23 @@ export const AdminSuppliersPage: React.FC = () => {
   const fetchData = async () => {
     try {
       setIsLoading(true);
-      const [sups, prodLinks, prods, prs] = await Promise.all([
+      const [sups, prodLinks, ings, prs] = await Promise.all([
         suppliersApi.getSuppliers(),
         suppliersApi.getSupplierProducts().catch(() => [] as SupplierProduct[]),
-        productsApi.getProducts().catch(() => [] as Product[]),
+        ingredientsApi.getIngredients().catch(() => []),
         purchaseRequestsApi.getPurchaseRequests().catch(() => []),
       ]);
       setSuppliers(sups);
       setSupplierProducts(prodLinks);
-      setProducts(prods);
+      setProducts(
+        ings.map((ing) => ({
+          id: ing.id,
+          name: ing.name,
+          sku: ing.sku,
+          unit: ing.baseUnit,
+          price: ing.costPerBaseUnit,
+        })) as any
+      );
       setPurchaseRequests(prs);
     } catch (err: any) {
       setError("Không thể tải thông tin nhà cung cấp.");
@@ -547,9 +558,12 @@ export const AdminSuppliersPage: React.FC = () => {
       },
     },
     {
-      header: "Sản phẩm gán",
+      header: "Nguyên liệu gán",
       render: (sp: SupplierProduct) => {
-        const pName = products.find((p) => p.id === (sp.productId || sp.product_id))?.name || "N/A";
+        const pName =
+          (sp as any).productName ||
+          products.find((p) => p.id === (sp.productId || sp.product_id))?.name ||
+          "N/A";
         return <span className="font-semibold text-slate-800">{pName}</span>;
       },
     },

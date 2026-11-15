@@ -2,12 +2,46 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { getOrderErrorMessage, ordersApi } from "../api/orders.api";
+import { paymentsApi } from "../api/payments.api";
 import type { PaymentMethod } from "../types/order.types";
 import { formatCurrency } from "../utils/formatCurrency";
 import { detectShippingZone, calculateShippingFee, getZoneLabel, FREE_SHIPPING_THRESHOLD } from "../utils/shipping";
+import { STORE_BANK_INFO } from "../utils/payment";
 import { Button } from "../components/common/Button";
 import { ArrowLeft, ShoppingBag, Sparkles, AlertCircle, User, Phone, MapPin, MessageSquare, CreditCard, Truck, Gift } from "lucide-react";
 import { useToast } from "../contexts/ToastContext";
+
+const PAYMENT_OPTIONS: Array<{
+  method: PaymentMethod;
+  title: string;
+  desc: string;
+  badge: string;
+}> = [
+  {
+    method: "CASH",
+    title: "Tiền mặt khi nhận hàng (CASH)",
+    desc: "Thanh toán trực tiếp cho nhân viên giao hàng khi nhận được sản phẩm.",
+    badge: "COD",
+  },
+  {
+    method: "BANK_TRANSFER",
+    title: "Chuyển khoản ngân hàng",
+    desc: `Chuyển khoản tới ${STORE_BANK_INFO.bankName} - STK ${STORE_BANK_INFO.accountNo} (${STORE_BANK_INFO.accountName}).`,
+    badge: "24/7",
+  },
+  {
+    method: "MOMO",
+    title: "Ví điện tử MoMo",
+    desc: "Chuyển hướng sang cổng thanh toán MoMo để quét mã QR hoặc mở ứng dụng MoMo.",
+    badge: "Online",
+  },
+  {
+    method: "VNPAY",
+    title: "Cổng thanh toán VNPay",
+    desc: "Thanh toán qua thẻ ATM nội địa, tài khoản ngân hàng hoặc VNPay QR.",
+    badge: "Online",
+  },
+];
 
 export const CheckoutPage: React.FC = () => {
   const { items, totalAmount: subtotal, clearCart } = useCart();
@@ -18,7 +52,7 @@ export const CheckoutPage: React.FC = () => {
   const [shippingPhone, setShippingPhone] = useState("");
   const [address, setAddress] = useState("");
   const [note, setNote] = useState("");
-  const [paymentMethod] = useState<PaymentMethod>("CASH");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
 
   // Location states
   const [provinces, setProvinces] = useState<any[]>([]);
@@ -31,16 +65,16 @@ export const CheckoutPage: React.FC = () => {
 
   useEffect(() => {
     fetch("https://provinces.open-api.vn/api/p/")
-      .then(res => res.json())
-      .then(data => setProvinces(data))
+      .then((res) => res.json())
+      .then((data) => setProvinces(data))
       .catch(console.error);
   }, []);
 
   useEffect(() => {
     if (selectedProvinceCode) {
       fetch(`https://provinces.open-api.vn/api/p/${selectedProvinceCode}?depth=2`)
-        .then(res => res.json())
-        .then(data => setDistricts(data.districts || []))
+        .then((res) => res.json())
+        .then((data) => setDistricts(data.districts || []))
         .catch(console.error);
     } else {
       setDistricts([]);
@@ -52,8 +86,8 @@ export const CheckoutPage: React.FC = () => {
   useEffect(() => {
     if (selectedDistrictCode) {
       fetch(`https://provinces.open-api.vn/api/d/${selectedDistrictCode}?depth=2`)
-        .then(res => res.json())
-        .then(data => setWards(data.wards || []))
+        .then((res) => res.json())
+        .then((data) => setWards(data.wards || []))
         .catch(console.error);
     } else {
       setWards([]);
@@ -61,9 +95,18 @@ export const CheckoutPage: React.FC = () => {
     setSelectedWardCode("");
   }, [selectedDistrictCode]);
 
-  const provinceName = useMemo(() => provinces.find(p => p.code === selectedProvinceCode)?.name || "", [provinces, selectedProvinceCode]);
-  const districtName = useMemo(() => districts.find(d => d.code === selectedDistrictCode)?.name || "", [districts, selectedDistrictCode]);
-  const wardName = useMemo(() => wards.find(w => w.code === selectedWardCode)?.name || "", [wards, selectedWardCode]);
+  const provinceName = useMemo(
+    () => provinces.find((p) => p.code === selectedProvinceCode)?.name || "",
+    [provinces, selectedProvinceCode]
+  );
+  const districtName = useMemo(
+    () => districts.find((d) => d.code === selectedDistrictCode)?.name || "",
+    [districts, selectedDistrictCode]
+  );
+  const wardName = useMemo(
+    () => wards.find((w) => w.code === selectedWardCode)?.name || "",
+    [wards, selectedWardCode]
+  );
 
   const shippingAddress = [address, wardName, districtName, provinceName].filter(Boolean).join(", ");
 
@@ -82,6 +125,7 @@ export const CheckoutPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setApiError(null);
 
     if (items.length === 0) {
@@ -128,12 +172,29 @@ export const CheckoutPage: React.FC = () => {
       paymentMethod,
       note: note.trim() || undefined,
     };
-    // Lưu ý: Backend sẽ tự tính lại shippingFee từ địa chỉ để đảm bảo an toàn
 
     try {
-      await ordersApi.createOrder(payload);
-      toast.success("Tạo đơn hàng thành công.");
+      const createdOrder = await ordersApi.createOrder(payload);
       clearCart();
+
+      if (paymentMethod === "MOMO" || paymentMethod === "VNPAY") {
+        try {
+          toast.info(`Đang chuyển hướng sang cổng thanh toán ${paymentMethod}...`);
+          const paymentRes = await paymentsApi.createPaymentUrl(createdOrder.id, paymentMethod);
+          window.location.assign(paymentRes.payUrl);
+          return;
+        } catch (payErr: any) {
+          const payMsg = getOrderErrorMessage(
+            payErr,
+            "Đã tạo đơn hàng nhưng chưa thể kết nối cổng thanh toán. Bạn có thể bấm Thanh toán lại trong Đơn hàng của tôi."
+          );
+          toast.error(payMsg);
+          navigate("/my-orders");
+          return;
+        }
+      }
+
+      toast.success("Tạo đơn hàng thành công.");
       navigate("/my-orders?success=true");
     } catch (err: any) {
       const message = getOrderErrorMessage(err, "Không thể tạo đơn hàng, vui lòng thử lại.");
@@ -159,13 +220,18 @@ export const CheckoutPage: React.FC = () => {
     <div className="flex flex-col gap-12 pb-24">
       {/* Small Hero Header */}
       <section className="relative bg-[#1e130e] text-white py-16 px-4 text-center overflow-hidden">
-        <div className="absolute inset-0 opacity-10 mix-blend-overlay bg-cover bg-center" style={{ backgroundImage: "url('/images/page-header-bg.jpg')" }}></div>
+        <div
+          className="absolute inset-0 opacity-10 mix-blend-overlay bg-cover bg-center"
+          style={{ backgroundImage: "url('/images/page-header-bg.jpg')" }}
+        ></div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative z-10 flex flex-col items-center gap-2">
           <span className="text-[#c49b76] text-xs font-bold uppercase tracking-widest flex items-center gap-1">
             <Sparkles size={12} /> Hoàn tất đơn hàng
           </span>
           <h1 className="text-3xl sm:text-4xl font-extrabold font-serif">Thanh Toán</h1>
-          <p className="text-sm text-amber-200/60 font-light max-w-md">Điền đầy đủ thông tin giao hàng và chọn phương thức thanh toán</p>
+          <p className="text-sm text-amber-200/60 font-light max-w-md">
+            Điền đầy đủ thông tin giao hàng và chọn phương thức thanh toán
+          </p>
         </div>
       </section>
 
@@ -184,8 +250,10 @@ export const CheckoutPage: React.FC = () => {
 
         <div className="grid lg:grid-cols-3 gap-8 items-start">
           {/* Left Form */}
-          <form onSubmit={handleSubmit} className="lg:col-span-2 bg-white border border-amber-900/5 rounded-3xl p-6 sm:p-10 shadow-xl space-y-8">
-
+          <form
+            onSubmit={handleSubmit}
+            className="lg:col-span-2 bg-white border border-amber-900/5 rounded-3xl p-6 sm:p-10 shadow-xl space-y-8"
+          >
             {apiError && (
               <div className="p-4 bg-rose-50 border border-rose-100 text-rose-800 text-sm font-semibold rounded-xl flex items-center gap-2">
                 <AlertCircle size={16} className="text-rose-600 shrink-0" />
@@ -246,7 +314,9 @@ export const CheckoutPage: React.FC = () => {
                   >
                     <option value="">Chọn Tỉnh / Thành phố</option>
                     {provinces.map((p) => (
-                      <option key={p.code} value={p.code}>{p.name}</option>
+                      <option key={p.code} value={p.code}>
+                        {p.name}
+                      </option>
                     ))}
                   </select>
 
@@ -259,7 +329,9 @@ export const CheckoutPage: React.FC = () => {
                   >
                     <option value="">Chọn Quận / Huyện</option>
                     {districts.map((d) => (
-                      <option key={d.code} value={d.code}>{d.name}</option>
+                      <option key={d.code} value={d.code}>
+                        {d.name}
+                      </option>
                     ))}
                   </select>
 
@@ -272,7 +344,9 @@ export const CheckoutPage: React.FC = () => {
                   >
                     <option value="">Chọn Phường / Xã</option>
                     {wards.map((w) => (
-                      <option key={w.code} value={w.code}>{w.name}</option>
+                      <option key={w.code} value={w.code}>
+                        {w.name}
+                      </option>
                     ))}
                   </select>
 
@@ -308,27 +382,51 @@ export const CheckoutPage: React.FC = () => {
               <h3 className="text-lg font-bold text-slate-800 border-b border-amber-900/5 pb-4 flex items-center gap-2 uppercase tracking-wider">
                 <CreditCard size={20} className="text-amber-800" /> Phương thức thanh toán
               </h3>
-              <div className="p-4 border-2 border-amber-800 bg-amber-50/20 rounded-2xl flex items-center gap-3">
-                <div className="text-2xl">💵</div>
-                <div>
-                  <p className="font-bold text-sm text-slate-800">Thanh toán tiền mặt (COD)</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Thanh toán trực tiếp cho nhân viên giao hàng khi nhận được sản phẩm.</p>
-                </div>
+              <div className="grid sm:grid-cols-2 gap-3.5">
+                {PAYMENT_OPTIONS.map((opt) => {
+                  const selected = paymentMethod === opt.method;
+                  return (
+                    <label
+                      key={opt.method}
+                      className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
+                        selected
+                          ? "border-amber-800 bg-amber-50/40 shadow-sm"
+                          : "border-slate-200 hover:border-amber-300 bg-white"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value={opt.method}
+                        checked={selected}
+                        onChange={() => setPaymentMethod(opt.method)}
+                        className="mt-1 accent-amber-800"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-sm text-slate-800">{opt.title}</span>
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                            {opt.badge}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">{opt.desc}</p>
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </div>
-
-            {/* Note */}
-            {/* <div className="p-4 bg-amber-50 border border-amber-900/5 text-amber-900 rounded-2xl text-xs font-light leading-relaxed">
-              <strong>Lưu ý:</strong> Đây là thanh toán mô phỏng phục vụ demo, hệ thống không xử lý giao dịch tiền thật.
-            </div> */}
 
             <div className="pt-4 border-t border-amber-900/5 flex justify-end">
               <Button
                 type="submit"
+                disabled={isLoading}
                 isLoading={isLoading}
                 className="px-8 py-3.5 bg-amber-800 hover:bg-amber-900 border-none text-white font-bold shadow-lg shadow-amber-900/15"
               >
-                Đặt hàng ngay
+                {paymentMethod === "MOMO" || paymentMethod === "VNPAY"
+                  ? `Đặt hàng & Thanh toán ${paymentMethod}`
+                  : "Đặt hàng ngay"}
               </Button>
             </div>
           </form>

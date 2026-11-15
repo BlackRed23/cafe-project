@@ -21,6 +21,10 @@ export interface AgentLog {
   sourceId?: string;
   productId?: string;
   productName?: string;
+  ingredientId?: string;
+  ingredientName?: string;
+  itemType?: "INGREDIENT" | "PRODUCT";
+  baseUnit?: string;
   inventoryId?: string;
   purchaseRequestId?: string;
   purchaseRequestCode?: string;
@@ -68,6 +72,8 @@ export interface AgentLogsQuery {
 
 export interface ScanInventoryRequest {
   productIds?: string[];
+  ingredientIds?: string[];
+  scope?: "ALL" | "PRODUCT" | "INGREDIENT";
   triggerType: string;
 }
 

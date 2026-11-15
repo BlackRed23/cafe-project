@@ -4,6 +4,25 @@ import { prisma } from '@cafe-project/database';
 export type ProductRecord = Product & {
     category: Category;
     inventory: Inventory | null;
+    recipes?: Array<{
+        id: string;
+        isActive: boolean;
+        ingredients: Array<{
+            id: string;
+            quantity: Prisma.Decimal;
+            quantityBase: Prisma.Decimal;
+            unit: string;
+            isOptional: boolean;
+            ingredient: {
+                id: string;
+                name: string;
+                sku: string;
+                quantity: Prisma.Decimal;
+                reserved: Prisma.Decimal;
+                baseUnit: string;
+            };
+        }>;
+    }>;
 };
 
 export type ProductDeleteBlockers = {
@@ -14,7 +33,17 @@ export type ProductDeleteBlockers = {
 
 const productInclude = {
     category: true,
-    inventory: true
+    inventory: true,
+    recipes: {
+        where: { isActive: true },
+        include: {
+            ingredients: {
+                include: {
+                    ingredient: true
+                }
+            }
+        }
+    }
 } satisfies Prisma.ProductInclude;
 
 export const productRepository = {
@@ -56,25 +85,16 @@ export const productRepository = {
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const product = await tx.product.create({ data });
 
-            await tx.inventory.create({
-                data: {
-                    productId: product.id,
-                    quantity: 0,
-                    minThreshold: 10,
-                    unit: product.unit
-                }
-            });
-
-            const productWithInventory = await tx.product.findUnique({
+            const productWithRelations = await tx.product.findUnique({
                 where: { id: product.id },
                 include: productInclude
             });
 
-            if (!productWithInventory) {
+            if (!productWithRelations) {
                 throw new Error('Product creation failed.');
             }
 
-            return productWithInventory;
+            return productWithRelations;
         });
     },
 

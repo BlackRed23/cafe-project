@@ -10,8 +10,9 @@ export type PurchaseRequestPaymentStatus = "UNPAID" | "PAID";
 
 export interface PurchaseRequestItem {
   id: string;
-  inventoryId: string;
-  productId: string;
+  inventoryId?: string | null;
+  ingredientId?: string | null;
+  productId?: string | null;
   productName: string;
   productSku?: string | null;
   categoryName?: string | null;

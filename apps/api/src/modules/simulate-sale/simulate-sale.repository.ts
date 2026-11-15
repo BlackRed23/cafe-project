@@ -54,7 +54,7 @@ export const simulateSaleRepository = {
                 });
                 
                 const txn = await tx.inventoryTransaction.create({
-                    data: { productId: current.productId, userId, type: InventoryTransactionType.SIMULATE_SALE, quantity: -deduction, reason: note ?? 'Simulate sale', batchId: batch.id }
+                    data: { productId: current.productId, performedBy: userId, type: InventoryTransactionType.SIMULATE_SALE, quantity: -deduction, reason: note ?? 'Simulate sale', legacyBatchId: batch.id }
                 });
                 deductionTransactions.push(txn);
                 remainingToDeduct -= deduction;
@@ -115,7 +115,7 @@ export const simulateSaleRepository = {
                     });
                     
                     const txn = await tx.inventoryTransaction.create({
-                        data: { productId: plan.inventory.productId, userId, type: InventoryTransactionType.SIMULATE_SALE, quantity: -deduction, reason: note ?? 'Simulate sale', batchId: batch.id }
+                        data: { productId: plan.inventory.productId, performedBy: userId, type: InventoryTransactionType.SIMULATE_SALE, quantity: -deduction, reason: note ?? 'Simulate sale', legacyBatchId: batch.id }
                     });
                     deductionTransactions.push(txn);
                     remainingToDeduct -= deduction;
@@ -144,30 +144,125 @@ export const simulateSaleRepository = {
     async restoreSale(transactionId: string, userId: string) {
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const originalTransaction = await tx.inventoryTransaction.findUnique({
-                where: { id: transactionId },
-                include: { product: true }
+                where: { id: transactionId }
             });
 
-            if (!originalTransaction) {
+            if (!originalTransaction || !originalTransaction.productId) {
                 throw new HttpError(404, 'Simulation transaction not found.');
             }
 
-            if (originalTransaction.type !== InventoryTransactionType.SIMULATE_SALE || originalTransaction.quantity >= 0) {
+            if (originalTransaction.type !== InventoryTransactionType.SIMULATE_SALE || Number(originalTransaction.quantity) >= 0) {
                 throw new HttpError(400, 'Transaction is not a valid simulate sale transaction.');
+            }
+
+            if (originalTransaction.ingredientId) {
+                const marker = restoreMarker(originalTransaction.id);
+                const existingRestore = await tx.inventoryTransaction.findFirst({
+                    where: {
+                        productId: originalTransaction.productId,
+                        type: InventoryTransactionType.ADJUSTMENT,
+                        reason: { contains: marker }
+                    }
+                });
+                if (existingRestore) {
+                    throw new HttpError(409, 'Mô phỏng này đã được khôi phục trước đó.');
+                }
+
+                const groupTxns = originalTransaction.referenceId
+                    ? await tx.inventoryTransaction.findMany({
+                          where: {
+                              referenceType: 'SimulateSaleRecipe',
+                              referenceId: originalTransaction.referenceId,
+                              productId: originalTransaction.productId,
+                              type: InventoryTransactionType.SIMULATE_SALE
+                          }
+                      })
+                    : [originalTransaction];
+
+                let lastRestoreTxnId = '';
+                for (const gTxn of groupTxns) {
+                    if (!gTxn.ingredientId) continue;
+                    const gMarker = restoreMarker(gTxn.id);
+                    const gRestoredQty = Math.abs(Number(gTxn.quantity));
+                    await tx.ingredient.update({
+                        where: { id: gTxn.ingredientId },
+                        data: { quantity: { increment: gRestoredQty } }
+                    });
+                    if (gTxn.batchId) {
+                        await tx.ingredientBatch.update({
+                            where: { id: gTxn.batchId },
+                            data: { quantityRemaining: { increment: gRestoredQty } }
+                        });
+                    }
+                    const rTxn = await tx.inventoryTransaction.create({
+                        data: {
+                            productId: gTxn.productId,
+                            ingredientId: gTxn.ingredientId,
+                            batchId: gTxn.batchId,
+                            performedBy: userId,
+                            type: InventoryTransactionType.ADJUSTMENT,
+                            quantity: gRestoredQty,
+                            reason: `Khôi phục mô phỏng bán ${gMarker}${gTxn.id !== originalTransaction.id ? ` ${marker}` : ''}`
+                        }
+                    });
+                    lastRestoreTxnId = rTxn.id;
+                }
+
+                const cupsMatch = /\[sim-cups:(\d+)\]/.exec(originalTransaction.reason || '');
+                const cupsRestored = cupsMatch ? Number(cupsMatch[1]) : Math.abs(Number(originalTransaction.quantity));
+                const product = await tx.product.findUnique({
+                    where: { id: originalTransaction.productId },
+                    include: {
+                        recipes: {
+                            where: { isActive: true },
+                            include: { ingredients: { include: { ingredient: true } } },
+                            take: 1
+                        }
+                    }
+                });
+                const activeRecipe = product?.recipes?.[0];
+                const restoredStock =
+                    activeRecipe && activeRecipe.ingredients.length > 0
+                        ? Math.max(
+                              0,
+                              Math.min(
+                                  ...activeRecipe.ingredients.map((ri: any) => {
+                                      const req = Number(ri.quantityBase || 0);
+                                      if (req <= 0) return 999999;
+                                      const avail = Math.max(0, Number(ri.ingredient?.quantity || 0) - Number(ri.ingredient?.reserved || 0));
+                                      return Math.floor(avail / req);
+                                  })
+                              )
+                          )
+                        : cupsRestored;
+
+                return {
+                    transactionId: originalTransaction.id,
+                    restoreTransactionId: lastRestoreTxnId,
+                    productId: originalTransaction.productId,
+                    inventoryId: originalTransaction.productId,
+                    productName: product?.name ?? 'Sản phẩm pha chế',
+                    decreasedQuantity: cupsRestored,
+                    stockBeforeRestore: Math.max(0, restoredStock - cupsRestored),
+                    restoredStock,
+                    restored: true
+                };
             }
 
             const target = await tx.inventory.findUnique({ where: { productId: originalTransaction.productId } });
             if (!target) throw new HttpError(404, 'Inventory not found.');
             await tx.$queryRaw`SELECT "id" FROM "Inventory" WHERE "id" = ${target.id} FOR UPDATE`;
-            if (!originalTransaction.batchId) throw new HttpError(409, 'Mô phỏng không có lô nguồn cần được đối soát, không tự tạo lô.');
-            const batch = await tx.inventoryBatch.findFirst({ where: { id: originalTransaction.batchId, inventoryId: target.id } });
+            const sourceBatchId = originalTransaction.legacyBatchId ?? originalTransaction.batchId;
+            if (!sourceBatchId) throw new HttpError(409, 'Mô phỏng không có lô nguồn cần được đối soát, không tự tạo lô.');
+            const batch = await tx.inventoryBatch.findFirst({ where: { id: sourceBatchId, inventoryId: target.id } });
             if (!batch) throw new HttpError(409, 'Không tìm thấy lô nguồn để khôi phục.');
             const marker = restoreMarker(originalTransaction.id);
+            const restoredQuantity = Math.abs(Number(originalTransaction.quantity));
             const existingRestore = await tx.inventoryTransaction.findFirst({
                 where: {
                     productId: originalTransaction.productId,
                     type: InventoryTransactionType.ADJUSTMENT,
-                    quantity: Math.abs(originalTransaction.quantity),
+                    quantity: restoredQuantity,
                     reason: { contains: marker }
                 }
             });
@@ -185,7 +280,6 @@ export const simulateSaleRepository = {
                 throw new HttpError(404, 'Inventory not found for simulation transaction.');
             }
 
-            const restoredQuantity = Math.abs(originalTransaction.quantity);
             const stockBeforeRestore = inventory.quantity;
             const restoredStock = stockBeforeRestore + restoredQuantity;
 
@@ -198,10 +292,10 @@ export const simulateSaleRepository = {
             const restoreTransaction = await tx.inventoryTransaction.create({
                 data: {
                     productId: originalTransaction.productId,
-                    userId,
+                    performedBy: userId,
                     type: InventoryTransactionType.ADJUSTMENT,
                     quantity: restoredQuantity,
-                    batchId: batch.id,
+                    legacyBatchId: batch.id,
                     reason: `Khôi phục mô phỏng bán ${marker}`
                 }
             });
@@ -219,50 +313,302 @@ export const simulateSaleRepository = {
             };
         });
     },
+    async findRecipeProducts() {
+        return prisma.product.findMany({
+            where: {
+                isActive: true,
+                deletedAt: null,
+                recipes: { some: { isActive: true } }
+            },
+            include: {
+                recipes: {
+                    where: { isActive: true },
+                    include: { ingredients: { include: { ingredient: true } } },
+                    take: 1
+                }
+            }
+        });
+    },
+    async findRecipeProductById(productId: string) {
+        return prisma.product.findUnique({
+            where: { id: productId },
+            include: {
+                recipes: {
+                    where: { isActive: true },
+                    include: { ingredients: { include: { ingredient: true } } },
+                    take: 1
+                }
+            }
+        });
+    },
+    async applyRecipeProductSale(productId: string, quantity: number, note: string | null, userId: string) {
+        const res = await this.applyRecipeSale([{ productId, decrease: quantity }], note, userId);
+        return res[0] ?? null;
+    },
+    async applyRecipeSale(plans: Array<{ productId: string; decrease: number }>, note: string | null, userId: string) {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const affected: Array<{
+                productId: string;
+                inventoryId: string;
+                transactionId: string;
+                productName: string;
+                stockBefore: number;
+                previousQuantity: number;
+                decreasedQuantity: number;
+                stockAfter: number;
+                newQuantity: number;
+                minThreshold: number;
+                ingredientIds: string[];
+            }> = [];
+
+            const computeDrinkAvailableCups = (recipe: any): number => {
+                if (!recipe || !Array.isArray(recipe.ingredients) || recipe.ingredients.length === 0) return 0;
+                const capacities = recipe.ingredients.map((ri: any) => {
+                    const req = Number(ri.quantityBase || 0);
+                    if (req <= 0) return 999999;
+                    const avail = Math.max(0, Number(ri.ingredient?.quantity || 0) - Number(ri.ingredient?.reserved || 0));
+                    return Math.floor(avail / req);
+                });
+                return Math.max(0, Math.min(...capacities));
+            };
+
+            for (const plan of plans) {
+                if (!Number.isInteger(plan.decrease) || plan.decrease <= 0) {
+                    throw new HttpError(400, 'Số lượng mô phỏng phải là số nguyên dương.');
+                }
+                const product = await tx.product.findUnique({
+                    where: { id: plan.productId },
+                    include: {
+                        recipes: {
+                            where: { isActive: true },
+                            include: { ingredients: { include: { ingredient: true } } },
+                            take: 1
+                        }
+                    }
+                });
+                if (!product || !product.isActive) {
+                    throw new HttpError(404, 'Không tìm thấy sản phẩm pha chế đang hoạt động.');
+                }
+                const recipe = product.recipes?.[0];
+                if (!recipe || recipe.ingredients.length === 0) {
+                    throw new HttpError(400, `Món "${product.name}" chưa có công thức định mức (Recipe BOM) để mô phỏng trừ kho nguyên liệu.`);
+                }
+
+                const stockBefore = computeDrinkAvailableCups(recipe);
+                if (stockBefore < plan.decrease) {
+                    throw new HttpError(
+                        400,
+                        `Không đủ tồn kho nguyên liệu để mô phỏng bán "${product.name}". Có thể pha tối đa: ${stockBefore} Ly, yêu cầu: ${plan.decrease} Ly.`
+                    );
+                }
+
+                const simGroupId = `SIM-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+                let firstTxnId = '';
+                const ingredientIds: string[] = [];
+
+                for (const ri of recipe.ingredients) {
+                    const ingId = ri.ingredientId;
+                    ingredientIds.push(ingId);
+                    const neededBase = Math.round(plan.decrease * Number(ri.quantityBase || 0) * 1000) / 1000;
+                    if (neededBase <= 0) continue;
+
+                    await tx.$queryRaw`SELECT "id" FROM "Ingredient" WHERE "id" = ${ingId} FOR UPDATE`;
+                    const currentIng = await tx.ingredient.findUnique({ where: { id: ingId } });
+                    if (!currentIng) {
+                        throw new HttpError(404, 'Không tìm thấy nguyên liệu trong kho.');
+                    }
+
+                    const availIng = Number(currentIng.quantity) - Number(currentIng.reserved);
+                    if (availIng + 1e-6 < neededBase) {
+                        throw new HttpError(
+                            400,
+                            `Nguyên liệu "${currentIng.name}" không đủ tồn khả dụng (cần ${neededBase} ${currentIng.baseUnit}, còn ${availIng} ${currentIng.baseUnit}).`
+                        );
+                    }
+
+                    const batches = await tx.ingredientBatch.findMany({
+                        where: {
+                            ingredientId: ingId,
+                            quantityRemaining: { gt: 0 },
+                            OR: [{ expirationDate: null }, { expirationDate: { gte: startOfToday } }]
+                        },
+                        orderBy: [{ expirationDate: 'asc' }, { receivedAt: 'asc' }]
+                    });
+
+                    let remainingToDeduct = neededBase;
+                    for (const batch of batches) {
+                        if (remainingToDeduct <= 1e-6) break;
+                        const batchRem = Number(batch.quantityRemaining);
+                        const deduction = Math.min(batchRem, remainingToDeduct);
+                        await tx.ingredientBatch.update({
+                            where: { id: batch.id },
+                            data: { quantityRemaining: { decrement: deduction } }
+                        });
+                        const txn = await tx.inventoryTransaction.create({
+                            data: {
+                                productId: product.id,
+                                ingredientId: ingId,
+                                batchId: batch.id,
+                                performedBy: userId,
+                                type: InventoryTransactionType.SIMULATE_SALE,
+                                quantity: -deduction,
+                                unitCost: batch.unitCost,
+                                totalCost: Number(batch.unitCost) * deduction,
+                                referenceType: 'SimulateSaleRecipe',
+                                referenceId: simGroupId,
+                                reason: `${note ?? `Mô phỏng bán ${plan.decrease} Ly ${product.name}`} [sim-cups:${plan.decrease}]`
+                            }
+                        });
+                        if (!firstTxnId) firstTxnId = txn.id;
+                        remainingToDeduct = Math.round((remainingToDeduct - deduction) * 1000) / 1000;
+                    }
+
+                    if (remainingToDeduct > 1e-6) {
+                        const txn = await tx.inventoryTransaction.create({
+                            data: {
+                                productId: product.id,
+                                ingredientId: ingId,
+                                performedBy: userId,
+                                type: InventoryTransactionType.SIMULATE_SALE,
+                                quantity: -remainingToDeduct,
+                                unitCost: currentIng.costPerBaseUnit,
+                                totalCost: Number(currentIng.costPerBaseUnit) * remainingToDeduct,
+                                referenceType: 'SimulateSaleRecipe',
+                                referenceId: simGroupId,
+                                reason: `${note ?? `Mô phỏng bán ${plan.decrease} Ly ${product.name}`} [sim-cups:${plan.decrease}]`
+                            }
+                        });
+                        if (!firstTxnId) firstTxnId = txn.id;
+                    }
+
+                    await tx.ingredient.update({
+                        where: { id: ingId },
+                        data: {
+                            quantity: { decrement: neededBase },
+                            rowVersion: { increment: 1 }
+                        }
+                    });
+                }
+
+                const refreshedProduct = await tx.product.findUnique({
+                    where: { id: plan.productId },
+                    include: {
+                        recipes: {
+                            where: { isActive: true },
+                            include: { ingredients: { include: { ingredient: true } } },
+                            take: 1
+                        }
+                    }
+                });
+                const stockAfter = computeDrinkAvailableCups(refreshedProduct?.recipes?.[0]);
+
+                affected.push({
+                    productId: product.id,
+                    inventoryId: product.id,
+                    transactionId: firstTxnId,
+                    productName: product.name,
+                    stockBefore,
+                    previousQuantity: stockBefore,
+                    decreasedQuantity: plan.decrease,
+                    stockAfter,
+                    newQuantity: stockAfter,
+                    minThreshold: 5,
+                    ingredientIds
+                });
+            }
+
+            return affected;
+        });
+    },
     async findPendingRestore(userId: string) {
         const createdAfter = new Date();
         createdAfter.setDate(createdAfter.getDate() - RESTORE_LOOKBACK_DAYS);
 
         const transactions = await prisma.inventoryTransaction.findMany({
             where: {
-                userId,
+                performedBy: userId,
                 type: InventoryTransactionType.SIMULATE_SALE,
                 quantity: { lt: 0 },
-                createdAt: { gte: createdAfter }
+                createdAt: { gte: createdAfter },
+                productId: { not: null }
             },
-            include: { product: { include: { inventory: true } } },
             orderBy: { createdAt: 'desc' },
-            take: 25
+            take: 50
         });
 
+        const productIds = Array.from(new Set(transactions.map((t) => t.productId).filter((id): id is string => Boolean(id))));
+        const products = productIds.length > 0
+            ? await prisma.product.findMany({
+                  where: { id: { in: productIds } },
+                  include: {
+                      inventory: true,
+                      recipes: {
+                          where: { isActive: true },
+                          include: { ingredients: { include: { ingredient: true } } },
+                          take: 1
+                      }
+                  }
+              })
+            : [];
+        const productById = new Map(products.map((p) => [p.id, p]));
+
         const pendingRestores = [];
+        const seenRecipeGroups = new Set<string>();
 
         for (const transaction of transactions) {
+            if (!transaction.productId) continue;
+            const product = productById.get(transaction.productId);
+            if (!product) continue;
+
+            if (transaction.referenceType === 'SimulateSaleRecipe' && transaction.referenceId) {
+                const groupKey = `${transaction.productId}:${transaction.referenceId}`;
+                if (seenRecipeGroups.has(groupKey)) continue;
+                seenRecipeGroups.add(groupKey);
+            }
+
             const marker = restoreMarker(transaction.id);
+            const decreasedQuantity = Math.abs(Number(transaction.quantity));
             const existingRestore = await prisma.inventoryTransaction.findFirst({
                 where: {
                     productId: transaction.productId,
                     type: InventoryTransactionType.ADJUSTMENT,
-                    quantity: Math.abs(transaction.quantity),
                     reason: { contains: marker }
                 },
                 select: { id: true }
             });
 
             if (!existingRestore) {
-                const inventory = transaction.product.inventory;
-                const decreasedQuantity = Math.abs(transaction.quantity);
-                const stockAfter = inventory?.quantity;
+                const cupsMatch = /\[sim-cups:(\d+)\]/.exec(transaction.reason || '');
+                const effectiveDecreased = cupsMatch ? Number(cupsMatch[1]) : decreasedQuantity;
+                const activeRecipe = (product as any).recipes?.[0];
+                const recipeCupsAfter =
+                    activeRecipe && activeRecipe.ingredients?.length > 0
+                        ? Math.max(
+                              0,
+                              Math.min(
+                                  ...activeRecipe.ingredients.map((ri: any) => {
+                                      const req = Number(ri.quantityBase || 0);
+                                      if (req <= 0) return 999999;
+                                      const avail = Math.max(0, Number(ri.ingredient?.quantity || 0) - Number(ri.ingredient?.reserved || 0));
+                                      return Math.floor(avail / req);
+                                  })
+                              )
+                          )
+                        : undefined;
+                const inventory = product.inventory;
+                const stockAfter = inventory?.quantity ?? recipeCupsAfter;
 
                 pendingRestores.push({
                     transactionId: transaction.id,
-                    inventoryId: inventory?.id ?? '',
+                    inventoryId: inventory?.id ?? product.id,
                     productId: transaction.productId,
-                    productName: transaction.product.name,
-                    stockBefore: typeof stockAfter === 'number' ? stockAfter + decreasedQuantity : undefined,
+                    productName: product.name,
+                    stockBefore: typeof stockAfter === 'number' ? stockAfter + effectiveDecreased : undefined,
                     stockAfter,
-                    decreasedQuantity,
-                    unit: transaction.product.unit || 'đơn vị',
+                    decreasedQuantity: effectiveDecreased,
+                    unit: product.servingUnit || 'Ly',
                     createdAt: transaction.createdAt,
                     type: transaction.type,
                     restored: false

@@ -56,7 +56,7 @@ const normalizePurchaseRequest = (request: any): PurchaseRequest => {
     convertedQuantity: request?.convertedQuantity ?? firstItem?.convertedQuantity,
     inventoryUnit: request?.inventoryUnit ?? firstItem?.inventoryUnit,
     conversionMissing: request?.conversionMissing ?? firstItem?.conversionMissing,
-    product: request?.product ?? (firstItem ? { id: firstItem.productId, name: firstItem.productName } : undefined),
+    product: request?.product ?? (firstItem ? { id: firstItem.productId || firstItem.ingredientId || firstItem.id, name: firstItem.productName } : undefined),
     items: Array.isArray(request?.items)
       ? request.items.map((item: any) => ({
         ...item,
@@ -96,7 +96,7 @@ export const purchaseRequestsApi = {
   createPurchaseRequest: async (payload: {
     supplierId: string;
     notes?: string;
-    items: Array<{ inventoryId: string; quantity: number }>;
+    items: Array<{ inventoryId?: string; ingredientId?: string; quantity: number }>;
   }): Promise<PurchaseRequest> => {
     const response = await apiClient.post("/purchase-requests", payload);
     return normalizePurchaseRequest(unwrapApiField<any>(response.data, "purchaseRequest"));

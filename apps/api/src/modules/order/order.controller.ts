@@ -1,8 +1,20 @@
 import type { Response } from 'express';
 import { sendError, sendSuccess } from '../../common/response';
 import type { AuthenticatedRequest } from '../auth/auth.middleware';
-import { createOrder, getAllOrders, getMyOrders, getOrderById, updateOrderStatus } from './order.service';
-import type { CreateOrderInput, OrderFiltersInput, OrderStatusInput } from './order.validator';
+import {
+    confirmOrderPayment,
+    createOrder,
+    getAllOrders,
+    getMyOrders,
+    getOrderById,
+    updateOrderStatus
+} from './order.service';
+import type {
+    ConfirmPaymentInput,
+    CreateOrderInput,
+    OrderFiltersInput,
+    OrderStatusInput
+} from './order.validator';
 
 export const storeOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     if (!req.user) return sendError(res, 401, 'Authentication is required.');
@@ -43,4 +55,10 @@ export const patchOrderStatus = async (req: AuthenticatedRequest, res: Response)
     console.log(`\n📦 [CẬP NHẬT TRẠNG THÁI ĐƠN HÀNG] ID: ${order.id} | Trạng thái mới: ${order.status}\n`);
 
     sendSuccess(res, 200, 'Update order status successfully.', { order });
+};
+
+export const confirmOrderPaymentHandler = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    if (!req.user) return sendError(res, 401, 'Authentication is required.');
+    const order = await confirmOrderPayment(req.params.id, req.body as ConfirmPaymentInput, req.user.id);
+    sendSuccess(res, 200, 'Đã xác nhận thanh toán thành công.', { order });
 };
