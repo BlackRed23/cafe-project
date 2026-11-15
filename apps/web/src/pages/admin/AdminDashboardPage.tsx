@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -40,7 +42,9 @@ import {
   BarChart3,
 } from "lucide-react";
 
-export const AdminDashboardPage: React.FC = () => {
+export const AdminDashboardPage: React.FC = () => mockEnabled ? <MockWorkspace area="inventory" /> : <LegacyAdminDashboardPage />;
+
+const LegacyAdminDashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { isStaff } = useAuth();
   const [stats, setStats] = useState({

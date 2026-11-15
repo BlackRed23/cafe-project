@@ -1,0 +1,56 @@
+{
+  "recordedAt": "2026-11-05T17:02:23.730Z",
+  "baseline": "33366f714b288310580d69247e47c58aa4ea062f",
+  "dirtyBaseline": true,
+  "physicalDatabase": "UNKNOWN",
+  "typechecks": {
+    "api": {
+      "exitCode": 0
+    },
+    "agent": {
+      "exitCode": 0
+    }
+  },
+  "files": [
+    {
+      "path": "apps/api/src/common/ingredient-policy.ts",
+      "sha256": "d5e0adca622ea9e9d489eff2ba54274cc0bed7e5176cf16a791a8864ca68f977"
+    },
+    {
+      "path": "apps/api/tests/ingredient-policy.test.cjs",
+      "sha256": "ae6ace9d54336cf7b911913324cc228c9f7149b3cd7080490213e4a49392c83e"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/R4_DECISION_REGISTER.md",
+      "sha256": "c7e52bde5ad7c47ec38741f26bcb8bd4b0124c5ea71907c57b3a092b1300c8ae"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/R5_DRAFT_CONTRACTS.md",
+      "sha256": "654439cdc516ac71a67134cd4e0a5428696ea52139e751dc984006dcbf848390"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/R5_IMPLEMENTATION_REPORT.md",
+      "sha256": "8cfd81d68b755bb4e18a0988b96d143bc56d1b2055bd5f8ca9484b5c4faacb4a"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/REQUIREMENTS_AND_INVENTORY_DESIGN.md",
+      "sha256": "2a8c674708c7ef9ee7723583f8685d71d24faae8f70a18f62f72fb3739f5df78"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/R3_BUSINESS_RULES.md",
+      "sha256": "487343da30ac54cf05a20a49dc2659dae5bea40703188a0e6c6ac031bf01b9bf"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/R3_TRACEABILITY.md",
+      "sha256": "ca78eed7e0cd567152af6a15249ba080ceecd45a7147c12a5a4ff6ae7d8ac926"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/BACKLOG_W01_W04.md",
+      "sha256": "b25fbea3078de4ac59c956ce45d9ff95bc26d2782d1f4841ed7dc899f6f7aa1b"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/evidence/r5/regression.tap",
+      "sha256": "7114895a1e3dd198c0b6d9a12f9acc762f1c56571c7cb9a275a610e00b631f9d"
+    }
+  ]
+}

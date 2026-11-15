@@ -964,3 +964,106 @@ px tsx prisma/seed_cafe.ts --apply tr? v�o Production.
 🎉 HOÀN THÀNH SEED DỮ LIỆU CÀ PHÊ THẬT:
 - Tổng sản phẩm đã nạp: 0/25
 ==================================================
+==================================================
+🚀 CÀ PHÊ PROJECT - SEED DATA RUN
+📌 CHẾ ĐỘ: 🔥 CẬP NHẬT THẬT VÀO DATABASE
+⏰ Thời gian: 22:18:08 15/11/2026
+🔌 Database Target: postgresql://postgres:postgres@localhost:5432/cafe_project?schema=public
+==================================================
+
+📂 Đã nạp từ file:
+  - categories.json : 4 danh mục
+  - products.json   : 11 sản phẩm
+
+--------------------------------------------------
+1️⃣ DANH SÁCH DANH MỤC SẼ TẠO:
+--------------------------------------------------
+
+--------------------------------------------------
+2️⃣ DANH SÁCH SẢN PHẨM CÀ PHÊ THẬT SẼ TẠO:
+--------------------------------------------------
+
+⚡ ĐANG THỰC HIỆN NẠP DỮ LIỆU THẬT VÀO DATABASE...
+
+[1/3] Nạp Người Dùng...
+  - Tồn tại người dùng: "admin@cafe.com" (ADMIN) -> Bỏ qua.
+  - Tồn tại người dùng: "staff@cafe.com" (STAFF) -> Bỏ qua.
+  - Tồn tại người dùng: "customer@cafe.com" (CUSTOMER) -> Bỏ qua.
+
+[2/3] Nạp Danh Mục Thức Uống Pha Chế...
+  + Đã tạo danh mục: "Cà phê Máy (Espresso Bar)" (ID: cmwhzbew10000ulz05k6agc5u)
+  + Đã tạo danh mục: "Cà phê Truyền thống & Cold Brew" (ID: cmwhzbewe0001ulz0trxp03hs)
+  + Đã tạo danh mục: "Trà & Matcha Pha Chế" (ID: cmwhzbewh0002ulz0vnjlpesb)
+  + Đã tạo danh mục: "Sô-cô-la & Đá Xay" (ID: cmwhzbewj0003ulz0xr6rsuqx)
+
+[3/3] Nạp Sản Phẩm Pha Chế...
+  - Đã đồng bộ món pha chế [DRK-ESP-001]: "Espresso (Nóng)"
+  - Đã đồng bộ món pha chế [DRK-AME-002]: "Americano (Đá)"
+  - Đã đồng bộ món pha chế [DRK-LAT-003]: "Caffe Latte"
+  - Đã đồng bộ món pha chế [DRK-CAP-004]: "Cappuccino"
+  - Đã đồng bộ món pha chế [DRK-MAC-006]: "Caramel Macchiato"
+  + Đã tạo món pha chế [DRK-PHIN-008]: "Cà Phê Sữa Đá Phin Truyền Thống"
+  + Đã tạo món pha chế [DRK-BACXIU-009]: "Bạc Xỉu Đá Kem Béo"
+  - Đã đồng bộ món pha chế [DRK-CLB-007]: "Cold Brew Vanilla Arabica"
+  + Đã tạo món pha chế [DRK-MAT-010]: "Matcha Latte Uji Nhật Bản"
+  - Đã đồng bộ món pha chế [DRK-MOC-005]: "Caffe Mocha (Đá)"
+  + Đã tạo món pha chế [DRK-CHOC-011]: "Cacao Sữa Đá Kem Béo"
+
+[4/4] Nạp Dữ Liệu Luồng Nghiệp Vụ (Orders pha chế & Purchase Requests Nguyên liệu)...
+  + Đã tạo lô nguyên liệu cận hạn (LOT-EXP-ING-MILK-FRESH) cho Sữa tươi thanh trùng không đường
+
+==================================================
+🎉 HOÀN THÀNH SEED DỮ LIỆU CÀ PHÊ THẬT:
+- Tổng sản phẩm đã nạp: 4/11
+==================================================
+==================================================
+🚀 CÀ PHÊ PROJECT - SEED DATA RUN
+📌 CHẾ ĐỘ: 🔥 CẬP NHẬT THẬT VÀO DATABASE
+⏰ Thời gian: 22:18:13 15/11/2026
+🔌 Database Target: postgresql://postgres:postgres@localhost:5432/cafe_project?schema=public
+==================================================
+
+📂 Đã nạp từ file:
+  - categories.json : 4 danh mục
+  - products.json   : 11 sản phẩm
+
+--------------------------------------------------
+1️⃣ DANH SÁCH DANH MỤC SẼ TẠO:
+--------------------------------------------------
+
+--------------------------------------------------
+2️⃣ DANH SÁCH SẢN PHẨM CÀ PHÊ THẬT SẼ TẠO:
+--------------------------------------------------
+
+⚡ ĐANG THỰC HIỆN NẠP DỮ LIỆU THẬT VÀO DATABASE...
+
+[1/3] Nạp Người Dùng...
+  - Tồn tại người dùng: "admin@cafe.com" (ADMIN) -> Bỏ qua.
+  - Tồn tại người dùng: "staff@cafe.com" (STAFF) -> Bỏ qua.
+  - Tồn tại người dùng: "customer@cafe.com" (CUSTOMER) -> Bỏ qua.
+
+[2/3] Nạp Danh Mục Thức Uống Pha Chế...
+  - Đã có danh mục: "Cà phê Máy (Espresso Bar)" (ID: cmwhzbew10000ulz05k6agc5u)
+  - Đã có danh mục: "Cà phê Truyền thống & Cold Brew" (ID: cmwhzbewe0001ulz0trxp03hs)
+  - Đã có danh mục: "Trà & Matcha Pha Chế" (ID: cmwhzbewh0002ulz0vnjlpesb)
+  - Đã có danh mục: "Sô-cô-la & Đá Xay" (ID: cmwhzbewj0003ulz0xr6rsuqx)
+
+[3/3] Nạp Sản Phẩm Pha Chế...
+  - Đã đồng bộ món pha chế [DRK-ESP-001]: "Espresso (Nóng)"
+  - Đã đồng bộ món pha chế [DRK-AME-002]: "Americano (Đá)"
+  - Đã đồng bộ món pha chế [DRK-LAT-003]: "Caffe Latte"
+  - Đã đồng bộ món pha chế [DRK-CAP-004]: "Cappuccino"
+  - Đã đồng bộ món pha chế [DRK-MAC-006]: "Caramel Macchiato"
+  - Đã đồng bộ món pha chế [DRK-PHIN-008]: "Cà Phê Sữa Đá Phin Truyền Thống"
+  - Đã đồng bộ món pha chế [DRK-BACXIU-009]: "Bạc Xỉu Đá Kem Béo"
+  - Đã đồng bộ món pha chế [DRK-CLB-007]: "Cold Brew Vanilla Arabica"
+  - Đã đồng bộ món pha chế [DRK-MAT-010]: "Matcha Latte Uji Nhật Bản"
+  - Đã đồng bộ món pha chế [DRK-MOC-005]: "Caffe Mocha (Đá)"
+  - Đã đồng bộ món pha chế [DRK-CHOC-011]: "Cacao Sữa Đá Kem Béo"
+
+[4/4] Nạp Dữ Liệu Luồng Nghiệp Vụ (Orders pha chế & Purchase Requests Nguyên liệu)...
+
+==================================================
+🎉 HOÀN THÀNH SEED DỮ LIỆU CÀ PHÊ THẬT:
+- Tổng sản phẩm đã nạp: 0/11
+==================================================

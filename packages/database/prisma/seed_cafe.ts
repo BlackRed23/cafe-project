@@ -8,6 +8,7 @@ import { seedWorkflows } from "./seed_workflows";
 function loadEnvFiles() {
   const envPaths = [
     path.join(__dirname, "../.env"),
+    path.join(__dirname, "../../../apps/api/.env"),
     path.join(__dirname, "../../../apps/web/.env"),
     path.join(__dirname, "../../../.env"),
   ];
@@ -143,10 +144,10 @@ async function main() {
   }
 
   // 2. Categories
-  log("\n[2/3] Nạp Danh Mục Cà Phê...");
+  log("\n[2/3] Nạp Danh Mục Thức Uống Pha Chế...");
   const categoryIdMap = new Map<string, string>();
   for (const cat of categories) {
-    let categoryRecord = await prisma.category.findUnique({ where: { name: cat.name } });
+    let categoryRecord = await prisma.category.findFirst({ where: { name: cat.name } });
     if (!categoryRecord) {
       categoryRecord = await prisma.category.create({
         data: {
@@ -161,8 +162,8 @@ async function main() {
     categoryIdMap.set(cat.name, categoryRecord.id);
   }
 
-  // 3. Products & Inventory
-  log("\n[3/3] Nạp Sản Phẩm & Khởi Tạo Kho...");
+  // 3. Products (100% Thức uống pha chế theo Công thức & Nguyên liệu)
+  log("\n[3/3] Nạp Sản Phẩm Pha Chế...");
   let createdCount = 0;
   for (const prod of products) {
     const catId = categoryIdMap.get(prod.categoryName);
@@ -172,17 +173,16 @@ async function main() {
     }
 
     const existingProduct = await prisma.product.findUnique({ where: { sku: prod.sku } });
-    let productRecord = existingProduct;
 
     if (!existingProduct) {
-      productRecord = await prisma.product.create({
+      await prisma.product.create({
         data: {
           sku: prod.sku,
           name: prod.name,
           description: prod.description,
           price: prod.price,
           costPrice: prod.costPrice,
-          unit: prod.unit,
+          servingUnit: prod.unit,
           categoryId: catId,
           imageUrl: prod.imageUrl,
           origin: prod.origin,
@@ -194,35 +194,28 @@ async function main() {
           isActive: true,
         },
       });
-      log(`  + Đã tạo sản phẩm [${prod.sku}]: "${prod.name}"`);
+      log(`  + Đã tạo món pha chế [${prod.sku}]: "${prod.name}"`);
       createdCount++;
     } else {
-      log(`  - Sản phẩm [${prod.sku}] đã tồn tại -> Bỏ qua.`);
-    }
-
-    // Inventory record
-    if (productRecord) {
-      const existingInv = await prisma.inventory.findUnique({ where: { productId: productRecord.id } });
-      if (!existingInv) {
-        const expDate = new Date();
-        expDate.setFullYear(expDate.getFullYear() + 1);
-        await prisma.inventory.create({
-          data: {
-            productId: productRecord.id,
-            quantity: 50,
-            minThreshold: 10,
-            unit: prod.unit,
-            batches: {
-              create: {
-                batchCode: `BATCH-SEED-${productRecord.sku}`,
-                quantity: 50,
-                expirationDate: expDate
-              }
-            }
-          },
-        });
-        log(`    └ Tự động tạo bản ghi Kho (Tồn: 50 ${prod.unit}) và 1 Lô hàng kèm theo`);
-      }
+      await prisma.product.update({
+        where: { id: existingProduct.id },
+        data: {
+          name: prod.name,
+          description: prod.description,
+          price: prod.price,
+          servingUnit: prod.unit,
+          categoryId: catId,
+          imageUrl: prod.imageUrl,
+          origin: prod.origin,
+          usageInstructions: prod.usageInstructions,
+          storageInstructions: prod.storageInstructions,
+          expiryInfo: prod.expiryInfo,
+          isActive: true,
+          deletedAt: null,
+          pendingDeleteUntil: null,
+        },
+      });
+      log(`  - Đã đồng bộ món pha chế [${prod.sku}]: "${prod.name}"`);
     }
   }
 

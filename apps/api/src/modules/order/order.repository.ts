@@ -405,7 +405,7 @@ export const orderRepository = {
         const auditActor = actorId ?? 'SYSTEM_CRON';
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);
-        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const updatedOrder = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const isStatusSame = order.status === nextStatus;
             const shouldFinalizeStock = !order.stockDeductedAt && nextStatus === OrderStatus.COMPLETED;
             const shouldReleaseReserved =
@@ -803,7 +803,7 @@ export const orderRepository = {
                             }
 
                             let remainingToDeduct = item.quantity;
-                            const fallbackUnitCost = roundCost4(toDecimal(item.product.costPrice));
+                            const fallbackUnitCost = roundCost4(toDecimal(item.product?.costPrice));
 
                             for (const batch of batches) {
                                 if (remainingToDeduct <= 0) break;
@@ -863,7 +863,7 @@ export const orderRepository = {
                             price: item.price,
                             quantity: item.quantity,
                             recipe: null,
-                            fallbackProductCostPrice: item.product.costPrice
+                            fallbackProductCostPrice: item.product?.costPrice
                         });
 
                         await tx.orderItem.update({
@@ -880,17 +880,6 @@ export const orderRepository = {
                         });
                     }
                 }
-
-                const productIds = order.items.map((item) => item.productId);
-                scanInventoryViaAgentService({
-                    productIds,
-                    triggerType: 'ORDER_COMPLETED',
-                    sourceType: 'ORDER',
-                    sourceId: order.id,
-                    note: 'Order completed, stock finalized'
-                }, actorId ?? undefined).catch((error) => {
-                    console.error('[AI_AGENT] Failed to scan inventory after order completion', error);
-                });
             }
 
             if (shouldReleaseReserved) {
@@ -989,5 +978,20 @@ export const orderRepository = {
 
             return updatedOrder!;
         });
+
+        // The transaction promise resolves only after commit. Do not start remote work
+        // from its callback: callback success can still be followed by a commit failure.
+        if (!order.stockDeductedAt && nextStatus === OrderStatus.COMPLETED) {
+            scanInventoryViaAgentService({
+                productIds: order.items.map(item => item.productId),
+                triggerType: 'ORDER_COMPLETED',
+                sourceType: 'ORDER',
+                sourceId: order.id,
+                note: 'Order completed, stock finalized'
+            }, userId ?? undefined).catch(() => {
+                console.error('[AI_AGENT] Failed to scan inventory after order completion');
+            });
+        }
+        return updatedOrder;
     }
 };

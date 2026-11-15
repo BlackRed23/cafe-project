@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ordersApi, getOrderErrorMessage } from "../../api/orders.api";
@@ -29,7 +31,9 @@ import { getPaymentMethodLabel } from "../../utils/payment";
 
 const MANUAL_CONFIRMABLE_METHODS = new Set(["CASH", "BANK_TRANSFER", "VIET_QR"]);
 
-export const AdminOrderDetailPage: React.FC = () => {
+export const AdminOrderDetailPage: React.FC = () => mockEnabled ? <MockWorkspace area="orders" /> : <LegacyAdminOrderDetailPage />;
+
+const LegacyAdminOrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const toast = useToast();
   const { isStaff } = useAuth();

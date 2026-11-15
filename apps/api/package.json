@@ -3,11 +3,18 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
+        "dev:mock": "ts-node src/workflows/server.ts",
+        "predev:mock": "npm run build --workspace @cafe-project/agent",
+        "start:mock": "node dist/workflows/server.js",
+        "mock:scan": "node dist/workflows/server.js --scan-once",
+        "mock:token": "node dist/workflows/server.js --token",
+        "check-types": "tsc --noEmit",
         "dev": "nodemon src/index.ts",
         "build": "tsc",
         "start": "node dist/index.js"
     },
     "dependencies": {
+        "@cafe-project/agent": "*",
         "@cafe-project/database": "*",
         "@cafe-project/types": "*",
         "@google/generative-ai": "^0.24.1",

@@ -1,3 +1,4 @@
+import { mockEnabled } from './mock/config';
 
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -6,6 +7,7 @@ import { ToastProvider } from "./contexts/ToastContext";
 import { AppRoutes } from "./routes/AppRoutes";
 
 function App() {
+  if (mockEnabled) return <AuthProvider><AppRoutes /></AuthProvider>;
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "723731125344-qc4stoana3lits6t9r96voo7sdflfmc8.apps.googleusercontent.com";
 
   return (

@@ -207,7 +207,7 @@ test('API-to-Agent E2E: JWT/validation/controller/client and Agent gate verify m
         assert.equal((await valid.json()).data.newRecommendationsCount, 1);
         assert.deepEqual(audit, [{ action: 'RECOMMEND_REORDER', actor: 'admin', input: { productIds: ['p'], force: false } }]);
         calls.length = 0; audit.length = 0;
-        for (const [bearer, expected] of [[undefined, 401], ['invalid', 401], [token('customer', 'CUSTOMER'), 403], [token('customer'), 403], [token('disabled'), 403], [token('removed'), 403]]) {
+        for (const [bearer, expected] of [[undefined, 401], ['invalid', 401], [token('customer', 'CUSTOMER'), 403], [token('customer'), 403], [token('disabled'), 403], [token('removed'), 401]]) {
             assert.equal((await request(bearer, { userId: 'admin', role: 'ADMIN' })).status, expected);
         }
         assert.equal((await request(token('admin'), { productIds: [null] })).status, 400);

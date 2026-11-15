@@ -1,0 +1,64 @@
+{
+  "recordedAt": "2026-11-05T17:15:35.309Z",
+  "baseline": "33366f714b288310580d69247e47c58aa4ea062f",
+  "dirtyBaseline": true,
+  "sourceDeclarations": {
+    "models": 31,
+    "enums": 16
+  },
+  "physicalDatabase": "UNKNOWN",
+  "files": [
+    {
+      "path": "apps/api/src/common/ingredient-policy.ts",
+      "sha256": "d5e0adca622ea9e9d489eff2ba54274cc0bed7e5176cf16a791a8864ca68f977"
+    },
+    {
+      "path": "apps/api/src/common/inventory-core.ts",
+      "sha256": "3a9b3e9b6e086b9573b8d17c1137f18cc680c7d29479f42f99c1aec1894f28cc"
+    },
+    {
+      "path": "apps/api/tests/inventory-core.test.cjs",
+      "sha256": "3f2b138b25a2599dcf2c44ff9117220682d0dc218906f2d088a2d6324bc6e655"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/R6_IMPLEMENTATION_REPORT.md",
+      "sha256": "8a9e4c2fb97faaef31e8708223b9c4e41eb80966fe03daa0661b80e6ff403aea"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/BACKLOG_W01_W04.md",
+      "sha256": "5da7d861e475a56347bf719ae0d362ef2c728db42f80f41e22c0c92ec4bb8cf3"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/evidence/r6/agent-typecheck.log",
+      "sha256": "e05222033cd2c7b46b6fad5ec87b44b62f844dbb6f004476498f71d0e3c9875b"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/evidence/r6/api-typecheck-final.log",
+      "sha256": "e05222033cd2c7b46b6fad5ec87b44b62f844dbb6f004476498f71d0e3c9875b"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/evidence/r6/api-typecheck.log",
+      "sha256": "e05222033cd2c7b46b6fad5ec87b44b62f844dbb6f004476498f71d0e3c9875b"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/evidence/r6/core-unit-final.tap",
+      "sha256": "9e12b6f2e7a8780b34651e89c70fbe7d8c48dd7277448b384ba12ec105b5d456"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/evidence/r6/core-unit.tap",
+      "sha256": "e45e5219a605a4c23af7e3ee990232960abd8f3e27782e9cebc63da673a5e96b"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/evidence/r6/loopback-probe.log",
+      "sha256": "bb0bb0280f15f2e66327c93e344cfebf34670453d883a5b06852d7c584497668"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/evidence/r6/regression-final.tap",
+      "sha256": "18e17a0f582c4d69f6dd3d99a8d2334cf66e6259c385d02699b0c71313bd3985"
+    },
+    {
+      "path": "docs/KLTN_PLAN/RECOVERY/evidence/r6/regression-in-process.tap",
+      "sha256": "43b39e9fc1488cbc250f61dfd030c1efcdf5c65485121f4c52a5247a82a16784"
+    }
+  ]
+}

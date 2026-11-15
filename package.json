@@ -2,6 +2,8 @@
   "name": "cafe-project-system",
   "private": true,
   "scripts": {
+    "test": "node --test apps/api/tests/*.test.cjs apps/agent/tests/*.test.cjs apps/web/tests/*.test.cjs",
+    "test:mock": "node --test apps/api/tests/mock-workflows.test.cjs apps/api/tests/mock-http.test.cjs apps/agent/tests/mock-agent-workflow.test.cjs apps/api/tests/mock-phase3.test.cjs apps/web/tests/*.test.cjs",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",

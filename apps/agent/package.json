@@ -4,10 +4,13 @@
     "private": true,
     "main": "dist/public-api.js",
     "types": "dist/public-api.d.ts",
+    "typesVersions": { "*": { "workflows": ["dist/workflows/agent-workflow.d.ts"] } },
     "exports": {
+        "./workflows": "./dist/workflows/agent-workflow.js",
         ".": "./dist/public-api.js"
     },
     "scripts": {
+        "check-types": "tsc -p tsconfig.json --noEmit",
         "dev": "tsx watch src/index.ts",
         "dev:server": "tsx src/server.ts",
         "dev:worker": "tsx src/worker.ts",

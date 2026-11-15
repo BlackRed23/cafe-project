@@ -1,0 +1,2156 @@
+{
+  "STATUS": {
+    "date": "2026-11-07",
+    "timezone": "Asia/Saigon",
+    "value": "BLOCKED_U1_NO_VALID_PHYSICAL_OWNER",
+    "freeze": "Target identities and responsibility boundaries fixed; complete physical persistence contract NOT FROZEN",
+    "implementation_ready": false,
+    "postgres_verified": false,
+    "authorization": "Design and source inspection only. No PostgreSQL connection, migration, production data change, schema/client generation or provider dispatch.",
+    "requirements": "D01-D11 retained in full. No reduced release, extra table, hidden journal, fake stock event or fabricated Agent dispatch.",
+    "evidence": [
+      "docs/MOCK_FIRST_BACKEND.md: workflow/legacy repository inventory and Phase 4 evidence boundaries",
+      "docs/KLTN_PLAN/ARCHITECTURE_FINAL/27_TABLE_CONTRACT.md: responsibility rules and U1 counterexamples",
+      "docs/KLTN_PLAN/ARCHITECTURE_FINAL/OPEN_BLOCKERS.md",
+      "docs/KLTN_PLAN/ARCHITECTURE_FINAL/IMPLEMENTATION_SEQUENCE.md",
+      "docs/KLTN_PLAN/ARCHITECTURE_FINAL/REQUIREMENTS_STORAGE_MATRIX.md",
+      "docs/KLTN_PLAN/ARCHITECTURE_FINAL/INVARIANT_TEST_PLAN.md",
+      "apps/api/src/workflows/contracts.ts",
+      "apps/api/src/workflows/business-service.ts: command effects savepoint, receipt write and UNKNOWN handling",
+      "apps/api/src/workflows/provider.ts: target manifest and fail-closed PostgreSQL boundary",
+      "apps/agent/src/workflows/agent-workflow.ts: AgentState operations, approvals, revisions, memory and callback enlistment",
+      "packages/database/prisma/schema/*.prisma; both historical migration.sql files; migration_27_tables/00 through 05"
+    ],
+    "limits": "Static source evidence only; generated client, deployed catalog, runtime grants, live data and provider capabilities unknown. No new application/database test execution claimed. Prior 184/184 mock result is historical evidence only.",
+    "input_sha256": {
+      "packages/database/prisma/schema/category.prisma": "ec3022cb917423ceeee089942c7e1fb6301bfee8fc11fdd7c4b96770cd76720c",
+      "packages/database/prisma/schema/inventory.prisma": "602a215a05efdee96bb8c16e74c5a3c7088217616991c4dd4833896b7ab3d5a3",
+      "packages/database/prisma/schema/main.prisma": "d6ba2e4d55dc9336acb9fece8e4ba1361aac8bdb4203aa06150c48035f67286a",
+      "packages/database/prisma/schema/order.prisma": "35f4c24da3840f7930f9e5f272ed9ef055ba1c4ebbfe25e5dec00c21e618f7b1",
+      "packages/database/prisma/schema/product.prisma": "8e6a71bd759dc3aba9f3faa7ada4d3952d35a4f20aac450c174845850f22b234",
+      "packages/database/prisma/schema/purchase.prisma": "366a73473885b7c8c235139b8f4e29e6d19eecc89c58a8e1bfc81d09d4019ff6",
+      "packages/database/prisma/schema/supplier.prisma": "36e93023350ac43d3758254a3cc22f571dbf84ffd765acc1e2fcb9962e2e2e55",
+      "packages/database/prisma/schema/system.prisma": "17405e893e8a94942072cdca9e84b3b80bc7ae60a779fd326a04f2c961a83478",
+      "packages/database/prisma/schema/user.prisma": "8e55e458d3943d2082557edb7dd52013ec0436235ab1554b04995bb1321811d2"
+    }
+  },
+  "U1_DECISION": {
+    "status": "UNRESOLVED",
+    "physical_owner": null,
+    "decision": "Do not choose an invalid owner to satisfy a requested freeze. No responsibility-preserving existing-table representation has been demonstrated. This is not a mathematical impossibility claim.",
+    "necessary_record": {
+      "scope": "TEXT NOT NULL; server-derived authorization namespace, never trust caller scope alone",
+      "commandKind": "TEXT NOT NULL; versioned endpoint dictionary",
+      "callerKey": "TEXT NOT NULL; immutable caller identity",
+      "actorId": "TEXT NOT NULL FK User(id) ON DELETE RESTRICT",
+      "canonicalVersion": "INTEGER NOT NULL CHECK > 0",
+      "requestHash": "CHAR(64) NOT NULL; lowercase SHA-256 of canonical actor, kind, scope, payload and expected versions",
+      "expectedVersions": "Canonical resource-ID to decimal BIGINT string map; typed subject links also required, not JSON-only relationships",
+      "outcome": "TEXT NOT NULL CHECK IN ('SUCCEEDED','REJECTED'); terminal only",
+      "httpStatus": "INTEGER NOT NULL CHECK BETWEEN 100 AND 599; terminal endpoint dictionary further limits valid combinations",
+      "resultVersion": "INTEGER NOT NULL CHECK > 0",
+      "frozenResponse": "Exact original status/body and generated identifiers; retain original serialized body bytes or immutable canonical bytes with versioned serializer, not current-state reconstruction",
+      "committedAt": "TIMESTAMPTZ(3) NOT NULL; response sent only after commit acknowledgement or authoritative recovery",
+      "subject_links": "Typed nullable FK columns with explicit shape checks; rejection of missing target has no target FK, but actor/root receipt identity must still exist; arbitrary multi-resource root mapping remains missing"
+    },
+    "identity": "UNIQUE(scope, commandKind, callerKey), independent of requestHash. Current operationIdentity hashes tuple into r6 key; retain full tuple too, never replace authoritative tuple uniqueness with only a digest.",
+    "canonicalization": "Preserve array order, sort object keys, reject undefined/NaN/unsafe numbers, encode exact decimals and versions as strings; use current inventory-core canonical helper as reference. Freeze Unicode/decimal normalization and endpoint-specific semantic fields before adapter implementation.",
+    "retention": "Append terminal records without fixed slot count or TTL for business-history lifetime, including no-ops and required business rejections. RESTRICT deletes/updates of identity, hash, response and links. Retire principals by deactivation or retention-safe pseudonymization preserving IDs. Never store tokens, passwords or raw secrets in responses. Response size and memory-erasure/receipt-PII policy still require field-level resolution; do not silently truncate receipts.",
+    "rejections": "Authenticate/current-authorize first. Retain deterministic authorized domain failures: invalid domain input, not found, stale versions, insufficient eligible stock, invalid lifecycle and expired/revoked/stale approval. Auth failures outside command boundary, malformed uncanonicalizable envelopes, same-key/hash conflict, deadlock/serialization/connection failures are not new terminal receipts. Conflict must not overwrite original receipt.",
+    "candidate_rejections": [
+      {
+        "owner": "Ingredient or another mutable entity, fixed receipt columns",
+        "failure": "K2 replaces K1; N slots fail N+1; rejected creation lacks target"
+      },
+      {
+        "owner": "Ingredient/Order/PurchaseRequest growing JSON history",
+        "failure": "Already rejected by binding responsibility contract as embedded generic journal; no root for missing target or cross-owner command. Triggers alone do not legitimize ownership"
+      },
+      {
+        "owner": "InventoryTransaction",
+        "failure": "Rename/no-op/rejection has no genuine positive-magnitude inventory event; zero or synthetic event forbidden"
+      },
+      {
+        "owner": "Recipe/Payment/GoodsReceipt natural rows",
+        "failure": "Legitimate creation results fit only actual version/attempt/document; arbitrary manual failures are none of those"
+      },
+      {
+        "owner": "AgentExecution/AgentToolCall/AgentEvaluation",
+        "failure": "Manual command is not genuine Agent run, dispatch or evaluation; isolation forbids generic journal"
+      },
+      {
+        "owner": "SystemSetting/PaymentCallback/transitional tables/backup store",
+        "failure": "Not configuration/provider event; transitional models not spare target capacity; hidden journal forbidden"
+      }
+    ],
+    "witness": "Ingredient I=Z/v1; K1 sets A returning A/v2; K2 sets B returning B/v3; restart then K1 must return A/v2 without mutation. Rejected stale K3 must remain replayable after later changes. Failed create with no entity and one multi-resource root must also retain exact outcomes. Current schema supplies no legitimate immutable row for all witnesses.",
+    "proof_status": "Logical savepoint and recovery obligations specified below; durable end-to-end proof unavailable without physical owner, enforceable uniqueness/FKs and isolated PostgreSQL tests. U1 is not resolved."
+  },
+  "U2_U5_FROZEN_CONTRACTS": {
+    "status": "BUSINESS_INVARIANTS_RETAINED_PHYSICAL_CONTRACTS_NOT_FROZEN",
+    "numeric_dictionary": "Quantity NUMERIC(14,3); money NUMERIC(14,2); unit cost NUMERIC(18,4); exact rational numerator/positive denominator NUMERIC(38,0); resource version BIGINT >= 0 serialized decimal string; timestamps TIMESTAMPTZ(3). Reject overflow before writes; never JS Number money. These are target directions, not current-schema facts.",
+    "U2_recipe_publication_component": {
+      "owners": "Product identity; Recipe version/composition with RecipeIngredient; Topping with ToppingIngredient; OrderItem sale snapshot with OrderItemTopping selections",
+      "preserved_rules": [
+        "One effective published menu recipe per product/time; immutable sealed recipe/topping children; historical order never reads mutable current recipe",
+        "Candidate private Recipe purpose MENU/ITEM_VARIANT, sourceRecipeId/productId/version/contentHash/sealedAt, source lines and exact rational omission/delta retained. Exactly one OrderItem owns sealed variant; no independent private recipe lifecycle",
+        "Ingredient source identity must distinguish recipe line from each selected topping component even if same ingredient. Optional omission retained as explicit zero requirement; mandatory omission rejected",
+        "LINE_TOTAL ADD applies once to full line, not per serving; source yield scaling and exact rational quantity precede final 0.001 base-unit rounding; pieces integral; no mass-volume conversion without explicit business conversion"
+      ],
+      "required_constraints": "Recipe MENU unique(productId,version) and nonoverlapping effective interval; composite (Recipe.id,productId) referenced by OrderItem; sourceRecipe/sourceLine composite FKs prove same product/ingredient; OrderItem.recipeId unique for private variant; deferred exactly-one-owner seal; immutable published children; ToppingIngredient and selection typed FKs with source/version checks.",
+      "not_frozen": "Private Recipe responsibility extension not accepted by current contract; complete normalized topping-component/delta dictionary and persistent component-by-lot owner missing. Do not infer approval from this candidate field list."
+    },
+    "U3_agent_approval_memory": {
+      "owners": "Only genuine AgentExecution, AgentToolCall and AgentEvaluation; Purchasing owns resulting PurchaseRequest",
+      "preserved_rules": "Approve exact proposal hash/revision/source versions, current ADMIN authority version, 15-minute expiry; consume/revoke serialized; one resulting PENDING PR, no auto send/pay. One real call returning eight lines is one actual tool row. Preserve revisions and rejection history without fake dispatches.",
+      "required_constraints": "Unique(executionId,stepNo); approver/actor User FKs; resulting PR one-to-one execution link; immutable approved content/versions; source ingredient/supplier/quote relationships typed; terminal consumedAt/result link immutable; no Cascade deletion of retained call/evaluation evidence.",
+      "budget": "Persist reservation before real dispatch; cap six dispatches, two provider calls, 8000 tokens, 60 seconds active work and one write; 20-second provider timeout/two read attempts; approval waiting excluded from active duration. Unknown usage remains reserved until authoritative usage resolution, never resets to zero on restart.",
+      "memory": "Owner-scoped remember/retrieve/learn/consolidate/forget remains required. Active deletion must not accidentally erase required command identity/result. Current AgentState.memories and AgentState.operations are process-local maps; no target physical owner or erasure-versus-exact-response policy supplied. Plan currently does not retrieve learned memory automatically.",
+      "not_frozen": "Typed eight-line revisions, approval attempts, budget reservations/unknown usage, arbitrary memory lifecycle and Agent command receipts lack complete responsibility-preserving physical mappings. AgentEvaluation is evaluation evidence, not replacement approval/memory table."
+    },
+    "U4_purchase_receipt_payable_credit": {
+      "owners": "Supplier counterparty; SupplierIngredient quote/conversion; PurchaseRequest authorization/payable aggregate; PurchaseRequestItem ordered line; GoodsReceipt receiving document; IngredientBatch physical origins; InventoryTransaction genuine stock effects",
+      "preserved_rules": "Freeze supplier/ingredient/quote version/base unit/purchase unit/conversion/whole packs/unit price per ordered line. Multi-item receipt permits arbitrary fractional-pack lot splits; per-item lot totals equal whole-pack quantity times conversion. Drafts create no available stock. Confirmation immutable; remainder freshly locked across all receipts. Invoice number alone is not delivery dedup.",
+      "required_constraints": "Composite SupplierIngredient(id,supplierId,ingredientId), PurchaseRequestItem(id,requestId,ingredientId), GoodsReceipt(id,purchaseRequestId); origin batch links prove same request/item/ingredient/supplier; receiver User FK; positive quantities/conversion and integral whole packs; deferred receipt line/lot/import and cumulative received sums. Historical request/item deletes RESTRICT.",
+      "correction_policy": "Original confirmation unchanged. Return only physically available unreserved stock with real reversal. Reserved return must first release/reallocate atomically; insufficient alternative rejects retained command. Consumed quantity cannot be restored: retain cost/payable correction and affected order/allocation attribution. Reopening derived from fresh net received packs, never overwrites later receipts. Exact correction line/financial history owner remains missing.",
+      "supplier_finance": "Payable derives confirmed net receipts and explicit corrections; settlement history retains PAYMENT/SUPPLIER_REFUND/CREDIT_OUT/CREDIT_IN identities. Same-supplier credit transfer locks both PRs in sorted order and conserves paired cents; cross-supplier transfer rejected. PR aggregate totals alone cannot retain unlimited entries. Payment currently means customer order attempt; do not silently broaden it to supplier ledger.",
+      "not_frozen": "GoodsReceipt lacks typed item/pack/draft-revision lines; Batch cannot be fabricated as draft/whole-pack line anchor. PR lacks legitimate append settlement/credit history. No complete mapping for arbitrary correction and consumed-stock attribution."
+    },
+    "U5_inventory_valuation_payment_refund_reconciliation": {
+      "owners": "Ingredient aggregate; IngredientBatch lot basis; InventoryTransaction real events and allocation terminals; OrderItem sale cost; Payment actual full-value customer payment attempt; PaymentCallback actual provider event; PaymentReconciliation merchant account/date evidence",
+      "inventory_rules": "One protected stock writer; deterministic FEFO expiry/receivedAt/id, expiration checked at preparation in configured cafe timezone; null/invalid expiry quarantined. Reserve does not consume; each reservation has one RELEASE or CONSUME terminal. Preparation reallocation atomic; completion never deducts again. Refund never restores stock.",
+      "valuation": "Retain component x lot x phase x ordinal quantities and exact cost extensions. Round item total once to cents; deterministic largest-remainder allocation with stable component/lot identity assigns cents and explicit delta, conserving total. Unknown cost propagates NULL, known zero remains zero. No default zero for unknown historic basis.",
+      "required_inventory_constraints": "Batch unique(id,ingredientId), 0 <= reserved <= quantityRemaining and immutable origin/cost basis. Events composite batch/ingredient/item/source FKs, positive magnitude and explicit sign/type. Terminal self-FK must match reservation item/component/batch/quantity; partial unique reservation terminal; deferred event/batch/ingredient aggregate checks. InventoryTransaction.orderItemId currently scalar, insufficient FK.",
+      "required_payment_constraints": "Unique(orderId,attemptNo); unique(accountKey,merchantRef); partial unique(accountKey,providerTxnId) when not null; one unresolved charge per order and one applied settlement per order, both keyed by immutable disposition/appliedAt rather than refunded status. Callback unique(accountKey,eventId), Payment(accountKey,id) composite FK. Reconciliation unique(accountKey,businessDate) and resolvedBy User FK. Replace current global provider ID and method/date uniqueness only after mapping review.",
+      "payment_rules": "Freeze full amount/currency/account/reference before dispatch. Signature/account/reference/amount/currency verified before settlement. Paid monotonic; duplicate real charge retained as exception; pending/unknown blocks new charge. appliedAt survives refund. Refund full amount once, with separate command and provider dispatch identity; failed/unknown attempts retained, no provider call inside SQL transaction.",
+      "zero_and_currency": "Never silently round fractional VND for provider. Require exact provider denomination conversion; unsupported fractional amount becomes retained validation rejection. Legitimate zero-total sale completes without fabricated payment/provider dispatch; reconciliation excludes absent cashflow. Provider-specific ability and full zero-order constraints remain acceptance gates.",
+      "provider_recovery": "Stable merchant account plus immutable dispatch key across retry; verify provider idempotency retention and authoritative lookup. Network timeout stays UNKNOWN; lookup original charge/refund before any resubmit. No assumption that local receipt lookup proves external nonexecution.",
+      "not_frozen": "Component/source/lot attribution owner, full refund attempt/dispatch history, supplier financial history and account-specific provider protocol missing. Finite Payment refund slots or synthetic callbacks do not solve arbitrary attempts. Additional status text must not create new ENUM types or silently change existing enum labels."
+    }
+  },
+  "U6_PLAN": {
+    "status": "STATIC_TARGET_PLAN_ONLY",
+    "target_tables": [
+      "User",
+      "Category",
+      "Product",
+      "Ingredient",
+      "IngredientBatch",
+      "InventoryTransaction",
+      "StockCount",
+      "StockCountItem",
+      "Recipe",
+      "RecipeIngredient",
+      "Topping",
+      "ToppingIngredient",
+      "Order",
+      "OrderItem",
+      "OrderItemTopping",
+      "Supplier",
+      "SupplierIngredient",
+      "PurchaseRequest",
+      "PurchaseRequestItem",
+      "GoodsReceipt",
+      "Payment",
+      "PaymentCallback",
+      "PaymentReconciliation",
+      "AgentExecution",
+      "AgentToolCall",
+      "AgentEvaluation",
+      "SystemSetting"
+    ],
+    "target_enums": [
+      "UserRole",
+      "CategoryKind",
+      "InventoryTransactionType",
+      "WasteReason",
+      "StockCountStatus",
+      "OrderStatus",
+      "ConsumptionStatus",
+      "PaymentStatus",
+      "PaymentMethod",
+      "TransactionStatus",
+      "CallbackStatus",
+      "ToppingType",
+      "PurchaseRequestStatus",
+      "GoodsReceiptStatus",
+      "ExecutionStatus",
+      "ToolCallStatus"
+    ],
+    "enum_labels": {
+      "UserRole": [
+        "ADMIN",
+        "STAFF",
+        "CUSTOMER"
+      ],
+      "CategoryKind": [
+        "PRODUCT",
+        "INGREDIENT"
+      ],
+      "InventoryTransactionType": [
+        "IMPORT",
+        "ORDER",
+        "CANCEL",
+        "DAMAGE",
+        "ADJUSTMENT",
+        "SIMULATE_SALE",
+        "CONSUME",
+        "WASTE",
+        "RETURN",
+        "RESERVE",
+        "RELEASE"
+      ],
+      "WasteReason": [
+        "CUSTOMER_CANCELLED",
+        "STAFF_ERROR",
+        "EXPIRED",
+        "DAMAGED"
+      ],
+      "StockCountStatus": [
+        "DRAFT",
+        "PENDING",
+        "COMPLETED",
+        "CANCELLED"
+      ],
+      "OrderStatus": [
+        "PENDING",
+        "PROCESSING",
+        "COMPLETED",
+        "CANCELLED"
+      ],
+      "ConsumptionStatus": [
+        "PENDING",
+        "COMMITTED",
+        "VOIDED"
+      ],
+      "PaymentStatus": [
+        "PENDING",
+        "PAID",
+        "FAILED",
+        "REFUNDED"
+      ],
+      "PaymentMethod": [
+        "CASH",
+        "BANK_TRANSFER",
+        "VIET_QR",
+        "MOMO",
+        "VNPAY"
+      ],
+      "TransactionStatus": [
+        "INITIATED",
+        "PENDING",
+        "AUTHORIZED",
+        "PAID",
+        "FAILED",
+        "CANCELLED",
+        "EXPIRED",
+        "REFUNDED"
+      ],
+      "CallbackStatus": [
+        "RECEIVED",
+        "VERIFIED",
+        "APPLIED",
+        "DUPLICATED",
+        "REJECTED_INVALID_SIGNATURE",
+        "FAILED"
+      ],
+      "ToppingType": [
+        "ADD",
+        "REMOVE",
+        "SUBSTITUTE"
+      ],
+      "PurchaseRequestStatus": [
+        "PENDING",
+        "APPROVED",
+        "SENT",
+        "RECEIVED",
+        "COMPLETED",
+        "REJECTED"
+      ],
+      "GoodsReceiptStatus": [
+        "DRAFT",
+        "CONFIRMED",
+        "CANCELLED"
+      ],
+      "ExecutionStatus": [
+        "RUNNING",
+        "WAITING_APPROVAL",
+        "SUCCEEDED",
+        "FAILED",
+        "TIMEOUT",
+        "CANCELLED"
+      ],
+      "ToolCallStatus": [
+        "PENDING",
+        "RUNNING",
+        "SUCCEEDED",
+        "FAILED",
+        "BLOCKED_BY_PERMISSION",
+        "SKIPPED"
+      ]
+    },
+    "transitional_models": [
+      "Inventory",
+      "InventoryBatch",
+      "SupplierProduct",
+      "AgentLog"
+    ],
+    "count_rule": "Final business-table catalog exactly target set, not just count; ENUM names and label order exactly source manifest. _prisma_migrations infrastructure excluded from business count. No backup/journal runtime tables, partitions or views hiding new persistence. Intermediate legacy transition is not target acceptance.",
+    "grants_plan": [
+      {
+        "role": "migration_owner",
+        "rights": "Dedicated deployment role only; owns tables/guards; no runtime login or inheritance path. Explicit execution authorization required."
+      },
+      {
+        "role": "domain_function_owner",
+        "rights": "NOLOGIN, minimal underlying DML; hardened SECURITY DEFINER functions schema-qualified, fixed trusted search_path, no dynamic caller SQL; cannot disable triggers or create roles/objects."
+      },
+      {
+        "role": "api_runtime",
+        "rights": "No direct protected INSERT/UPDATE/DELETE/TRUNCATE, no ownership/DDL/CREATE/BYPASSRLS; EXECUTE exact auth/catalog/menu/sales/purchasing/count/payment command signatures and authorized read views only; all command paths enforce current principal."
+      },
+      {
+        "role": "agent_runtime",
+        "rights": "EXECUTE Agent-only functions and allowed business read/propose port; no direct PR/payment/stock/user/settings writes. Approval consumes through same API unit of work, never Agent-owned business receipt."
+      },
+      {
+        "role": "payment_worker",
+        "rights": "EXECUTE only claim/resolve permitted provider dispatch and callback verification/reconciliation entrypoints; no arbitrary settlement or stock DML."
+      },
+      {
+        "role": "report_reader",
+        "rights": "SELECT curated authorized views; no writes or command execution."
+      },
+      {
+        "role": "PUBLIC",
+        "rights": "Revoke function EXECUTE and schema CREATE by default; explicit USAGE/EXECUTE grants. Default privileges for new objects follow same rule; sequences restricted. No seeds under runtime credentials."
+      }
+    ],
+    "grants_limit": "Function signatures/object grants cannot be finalized before complete physical dictionary; role plan is not a deployed ACL manifest. Separate users must enforce owner isolation via functions/views or reviewed RLS, never unfiltered table SELECT.",
+    "static_inventory": {
+      "source_models": 31,
+      "source_enums": 16,
+      "historical_migrations": {
+        "20260718025427_init_schema_and_unique_keys": {
+          "create_tables": 15,
+          "create_enums": 6
+        },
+        "20260724120000_add_product_detail_fields": {
+          "create_tables": 0,
+          "create_enums": 0
+        }
+      },
+      "database_import_callers": 38,
+      "direct_writer_or_raw_files": 18,
+      "direct_mutation_sites": 96,
+      "raw_sql_candidates": 7,
+      "scope": "Explicit database-import TypeScript files in API/Agent/database source and seeds, including optional delegate calls. Regex/static references; no runtime/dynamic writer proof."
+    },
+    "parity_gate": "Compare source/client/migration SQL/catalog including every field/type/null/default/FK/delete action/unique/predicate/check/exclusion/deferred trigger/function/search_path/grant and enum label order; current count parity does not prove enforcement."
+  },
+  "TABLE_OWNERSHIP_MATRIX": [
+    {
+      "table": "User",
+      "writer_owner": "Security",
+      "legitimate_rows": "Principal/current authority",
+      "field_fk_unique_constraint_plan": "authorityVersion BIGINT and active/role; version permission changes; actor-history deletion RESTRICT",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/user.prisma",
+        "fields": [
+          "id                  String    @id @default(cuid())",
+          "email               String    @unique",
+          "password            String?",
+          "name                String",
+          "phone               String?",
+          "avatar              String?",
+          "googleId            String?   @unique",
+          "provider            String?",
+          "resetToken          String?   @unique",
+          "resetTokenExpiresAt DateTime?",
+          "role                UserRole  @default(CUSTOMER)",
+          "isActive            Boolean   @default(true)",
+          "orders                    Order[]",
+          "inventoryTransactions     InventoryTransaction[] @relation(\"InventoryTransactionPerformedBy\")",
+          "requestedPurchaseRequests PurchaseRequest[]      @relation(\"PurchaseRequestRequestedBy\")",
+          "approvedPurchaseRequests  PurchaseRequest[]      @relation(\"PurchaseRequestApprovedBy\")",
+          "createdStockCounts        StockCount[]           @relation(\"StockCountCreatedBy\")",
+          "approvedStockCounts       StockCount[]           @relation(\"StockCountApprovedBy\")",
+          "agentExecutions           AgentExecution[]       @relation(\"AgentExecutionTriggeredBy\")",
+          "legacyAgentLogs AgentLog[] @relation(\"AgentLogCreatedBy\")",
+          "lastLoginAt DateTime?",
+          "createdAt   DateTime  @default(now())",
+          "updatedAt   DateTime  @updatedAt"
+        ],
+        "constraints": []
+      }
+    },
+    {
+      "table": "Category",
+      "writer_owner": "Catalog",
+      "legitimate_rows": "Classification",
+      "field_fk_unique_constraint_plan": "unique(name,kind); matching Product/Ingredient category kind; historical references RESTRICT",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/category.prisma",
+        "fields": [
+          "id          String       @id @default(cuid())",
+          "name        String",
+          "kind        CategoryKind @default(PRODUCT)",
+          "description String?",
+          "sortOrder   Int          @default(0)",
+          "products    Product[]",
+          "ingredients Ingredient[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": [
+          "@@unique([name, kind])"
+        ]
+      }
+    },
+    {
+      "table": "Product",
+      "writer_owner": "Menu",
+      "legitimate_rows": "Menu identity",
+      "field_fk_unique_constraint_plan": "rowVersion and draft/publication boundary; no automatic Inventory creation; immutable SKU",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/product.prisma",
+        "fields": [
+          "id                 String    @id @default(cuid())",
+          "name               String",
+          "sku                String    @unique",
+          "description        String?",
+          "price              Decimal   @default(0) @db.Decimal(12, 2)",
+          "costPrice          Decimal   @default(0) @db.Decimal(18, 4)",
+          "servingUnit        String    @default(\"ly\")",
+          "imageUrl           String?",
+          "isActive           Boolean   @default(true)",
+          "deletedAt          DateTime?",
+          "pendingDeleteUntil DateTime?",
+          "nutritionFacts      String?",
+          "usageInstructions   String?",
+          "storageInstructions String?",
+          "origin              String?",
+          "certifications      String?",
+          "expiryInfo          String?",
+          "categoryId String",
+          "category   Category @relation(fields: [categoryId], references: [id])",
+          "recipes    Recipe[]",
+          "orderItems OrderItem[]",
+          "toppings   Topping[]",
+          "inventory            Inventory?",
+          "supplierProducts     SupplierProduct[]",
+          "purchaseRequestItems PurchaseRequestItem[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": []
+      }
+    },
+    {
+      "table": "Ingredient",
+      "writer_owner": "Inventory",
+      "legitimate_rows": "Ingredient identity/aggregate",
+      "field_fk_unique_constraint_plan": "baseUnit g/ml/piece immutable after use; BIGINT version; exact quantity/reserved and deferred batch conservation; no journal slot",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/inventory.prisma",
+        "fields": [
+          "id                  String    @id @default(cuid())",
+          "sku                 String    @unique",
+          "name                String",
+          "categoryId          String?",
+          "category            Category? @relation(fields: [categoryId], references: [id])",
+          "baseUnit            String    @default(\"g\")",
+          "costPerBaseUnit     Decimal   @default(0) @db.Decimal(18, 4)",
+          "quantity            Decimal   @default(0) @db.Decimal(14, 3)",
+          "reserved            Decimal   @default(0) @db.Decimal(14, 3)",
+          "minThreshold        Decimal   @default(0) @db.Decimal(14, 3)",
+          "origin              String?",
+          "storageInstructions String?",
+          "expiryInfo          String?",
+          "shelfLifeDays       Int?",
+          "imageUrl            String?",
+          "isActive            Boolean   @default(true)",
+          "deletedAt           DateTime?",
+          "rowVersion          Int       @default(0)",
+          "batches         IngredientBatch[]",
+          "recipeItems     RecipeIngredient[]",
+          "toppingItems    ToppingIngredient[]",
+          "transactions    InventoryTransaction[]",
+          "supplierLinks   SupplierIngredient[]",
+          "purchaseItems   PurchaseRequestItem[]",
+          "stockCountItems StockCountItem[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": [
+          "@@index([categoryId])"
+        ]
+      }
+    },
+    {
+      "table": "IngredientBatch",
+      "writer_owner": "Inventory",
+      "legitimate_rows": "Actual physical lot",
+      "field_fk_unique_constraint_plan": "reserved/version; nullable known cost; unique(id,ingredientId); composite receipt/item/ingredient/supplier origin FKs; immutable basis; no draft-line anchor",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/inventory.prisma",
+        "fields": [
+          "id                    String               @id @default(cuid())",
+          "ingredientId          String",
+          "ingredient            Ingredient           @relation(fields: [ingredientId], references: [id])",
+          "batchCode             String",
+          "quantityInitial       Decimal              @db.Decimal(14, 3)",
+          "quantityRemaining     Decimal              @default(0) @db.Decimal(14, 3)",
+          "unitCost              Decimal              @default(0) @db.Decimal(18, 4)",
+          "expirationDate        DateTime?",
+          "receivedAt            DateTime             @default(now())",
+          "supplierId            String?",
+          "goodsReceiptId        String?",
+          "goodsReceipt          GoodsReceipt?        @relation(fields: [goodsReceiptId], references: [id])",
+          "purchaseRequestItemId String?",
+          "purchaseRequestItem   PurchaseRequestItem? @relation(fields: [purchaseRequestItemId], references: [id])",
+          "receivedQty           Decimal?             @db.Decimal(14, 3)",
+          "receivedUnit          String?",
+          "note                  String?",
+          "transactions InventoryTransaction[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": [
+          "@@index([ingredientId])",
+          "@@index([expirationDate])"
+        ]
+      }
+    },
+    {
+      "table": "InventoryTransaction",
+      "writer_owner": "Inventory",
+      "legitimate_rows": "Genuine stock/reservation event",
+      "field_fk_unique_constraint_plan": "typed item/component/receipt/correction/reservation links; positive magnitude and sign/type checks; one terminal/reservation; composite ownership; component owner blocked U2/U5",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/inventory.prisma",
+        "fields": [
+          "id              String                   @id @default(cuid())",
+          "ingredientId    String?",
+          "ingredient      Ingredient?              @relation(fields: [ingredientId], references: [id])",
+          "batchId         String?",
+          "batch           IngredientBatch?         @relation(fields: [batchId], references: [id])",
+          "type            InventoryTransactionType",
+          "quantity        Decimal                  @db.Decimal(14, 3)",
+          "unitCost        Decimal                  @default(0) @db.Decimal(18, 4)",
+          "totalCost       Decimal                  @default(0) @db.Decimal(14, 2)",
+          "referenceType   String?",
+          "referenceId     String?",
+          "orderItemId     String?",
+          "performedBy     String?",
+          "performedByUser User?                    @relation(\"InventoryTransactionPerformedBy\", fields: [performedBy], references: [id])",
+          "reason          String?",
+          "idempotencyKey  String?                  @unique",
+          "wasteReason     WasteReason?",
+          "productId     String?",
+          "legacyBatchId String?",
+          "legacyBatch   InventoryBatch? @relation(fields: [legacyBatchId], references: [id])",
+          "createdAt DateTime @default(now())"
+        ],
+        "constraints": [
+          "@@index([ingredientId, createdAt])",
+          "@@index([referenceType, referenceId])",
+          "@@index([orderItemId])",
+          "@@index([type, createdAt])"
+        ]
+      }
+    },
+    {
+      "table": "StockCount",
+      "writer_owner": "Inventory",
+      "legitimate_rows": "Count lifecycle",
+      "field_fk_unique_constraint_plan": "actor/submit/approve User FKs; version/approvedAt/reason; immutable submitted baseline/approval; command replay blocked U1",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/inventory.prisma",
+        "fields": [
+          "id           String           @id @default(cuid())",
+          "code         String           @unique",
+          "status       StockCountStatus @default(DRAFT)",
+          "createdById  String",
+          "createdBy    User             @relation(\"StockCountCreatedBy\", fields: [createdById], references: [id])",
+          "approvedById String?",
+          "approvedBy   User?            @relation(\"StockCountApprovedBy\", fields: [approvedById], references: [id])",
+          "approvedAt   DateTime?",
+          "note         String?",
+          "items StockCountItem[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": [
+          "@@index([status])"
+        ]
+      }
+    },
+    {
+      "table": "StockCountItem",
+      "writer_owner": "Inventory",
+      "legitimate_rows": "Counted batch evidence",
+      "field_fk_unique_constraint_plan": "batchId/ingredient composite FK; unique(stockCountId,batchId) replaces ingredient-only key; frozen physical/reserved/version/actual/variance; unique adjustment link",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/inventory.prisma",
+        "fields": [
+          "id           String     @id @default(cuid())",
+          "stockCountId String",
+          "stockCount   StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)",
+          "ingredientId String",
+          "ingredient   Ingredient @relation(fields: [ingredientId], references: [id])",
+          "systemQty    Decimal    @db.Decimal(14, 3)",
+          "actualQty    Decimal    @db.Decimal(14, 3)",
+          "varianceQty  Decimal    @db.Decimal(14, 3)",
+          "reason       String?",
+          "createdAt DateTime @default(now())"
+        ],
+        "constraints": [
+          "@@unique([stockCountId, ingredientId])",
+          "@@index([ingredientId])"
+        ]
+      }
+    },
+    {
+      "table": "Recipe",
+      "writer_owner": "Menu",
+      "legitimate_rows": "Recipe version/composition",
+      "field_fk_unique_constraint_plan": "candidate purpose/sourceRecipeId/contentHash/sealedAt; MENU product/version unique and interval exclusion; private exactly-one-item seal blocked U2 responsibility",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/product.prisma",
+        "fields": [
+          "id            String    @id @default(cuid())",
+          "productId     String",
+          "product       Product   @relation(fields: [productId], references: [id])",
+          "version       Int       @default(1)",
+          "isActive      Boolean   @default(true)",
+          "effectiveFrom DateTime  @default(now())",
+          "effectiveTo   DateTime?",
+          "yieldQuantity Decimal   @default(1.0) @db.Decimal(10, 2)",
+          "laborCost     Decimal   @default(0) @db.Decimal(12, 2)",
+          "overheadCost  Decimal   @default(0) @db.Decimal(12, 2)",
+          "note          String?",
+          "ingredients RecipeIngredient[]",
+          "orderItems  OrderItem[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": [
+          "@@unique([productId, version])",
+          "@@index([productId, isActive])"
+        ]
+      }
+    },
+    {
+      "table": "RecipeIngredient",
+      "writer_owner": "Menu",
+      "legitimate_rows": "Recipe ingredient component",
+      "field_fk_unique_constraint_plan": "sourceLine/recipe/product/ingredient composite FKs; omission and exact rational delta/base quantity; immutable published children; topping dictionary incomplete",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/product.prisma",
+        "fields": [
+          "id              String     @id @default(cuid())",
+          "recipeId        String",
+          "recipe          Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)",
+          "ingredientId    String",
+          "ingredient      Ingredient @relation(fields: [ingredientId], references: [id])",
+          "quantity        Decimal    @db.Decimal(14, 3)",
+          "unit            String",
+          "quantityBase    Decimal    @db.Decimal(14, 3)",
+          "isOptional      Boolean    @default(false)",
+          "allowSubstitute Boolean    @default(false)",
+          "note            String?",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": [
+          "@@unique([recipeId, ingredientId])"
+        ]
+      }
+    },
+    {
+      "table": "Topping",
+      "writer_owner": "Menu",
+      "legitimate_rows": "Menu option/version",
+      "field_fk_unique_constraint_plan": "immutable published version/price/type/product applicability; edits create genuine version; no embedded journal",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/product.prisma",
+        "fields": [
+          "id          String      @id @default(cuid())",
+          "name        String",
+          "toppingType ToppingType @default(ADD)",
+          "price       Decimal     @default(0) @db.Decimal(12, 2)",
+          "productId   String?",
+          "product     Product?    @relation(fields: [productId], references: [id])",
+          "isActive    Boolean     @default(true)",
+          "sortOrder   Int         @default(0)",
+          "ingredients ToppingIngredient[]",
+          "orderItems  OrderItemTopping[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": []
+      }
+    },
+    {
+      "table": "ToppingIngredient",
+      "writer_owner": "Menu",
+      "legitimate_rows": "Menu option composition",
+      "field_fk_unique_constraint_plan": "unique(toppingId,ingredientId); exact quantity; immutable published components; retained FK deletion RESTRICT",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/product.prisma",
+        "fields": [
+          "id           String     @id @default(cuid())",
+          "toppingId    String",
+          "topping      Topping    @relation(fields: [toppingId], references: [id], onDelete: Cascade)",
+          "ingredientId String",
+          "ingredient   Ingredient @relation(fields: [ingredientId], references: [id])",
+          "quantityBase Decimal    @db.Decimal(14, 3)",
+          "note         String?",
+          "createdAt DateTime @default(now())"
+        ],
+        "constraints": [
+          "@@unique([toppingId, ingredientId])"
+        ]
+      }
+    },
+    {
+      "table": "Order",
+      "writer_owner": "Sales",
+      "legitimate_rows": "Sale root",
+      "field_fk_unique_constraint_plan": "version/currency/exact amount/monotonic lifecycle; payment application separate; lock parent before stock/payment",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/order.prisma",
+        "fields": [
+          "id              String         @id @default(cuid())",
+          "userId          String",
+          "user            User           @relation(fields: [userId], references: [id])",
+          "status          OrderStatus    @default(PENDING)",
+          "totalAmount     Decimal        @default(0) @db.Decimal(12, 2)",
+          "shippingFee     Decimal        @default(0) @db.Decimal(12, 2)",
+          "shippingZone    String?",
+          "shippingName    String?",
+          "shippingPhone   String?",
+          "shippingAddress String?",
+          "note            String?",
+          "stockDeductedAt DateTime?",
+          "paymentMethod   PaymentMethod?",
+          "paymentStatus   PaymentStatus  @default(PENDING)",
+          "paidAt          DateTime?",
+          "items    OrderItem[]",
+          "payments Payment[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": []
+      }
+    },
+    {
+      "table": "OrderItem",
+      "writer_owner": "Sales",
+      "legitimate_rows": "Immutable sale/preparation line",
+      "field_fk_unique_constraint_plan": "product/source recipe/yield/servings/omissions; preparation version; nullable complete cost; composite recipe-product FK; private variant and component costs blocked U2/U5",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/order.prisma",
+        "fields": [
+          "id                String            @id @default(cuid())",
+          "orderId           String",
+          "order             Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)",
+          "productId         String",
+          "product           Product           @relation(fields: [productId], references: [id])",
+          "recipeId          String?",
+          "recipe            Recipe?           @relation(fields: [recipeId], references: [id])",
+          "recipeVersion     Int?",
+          "quantity          Int",
+          "price             Decimal           @db.Decimal(12, 2)",
+          "consumptionStatus ConsumptionStatus @default(PENDING)",
+          "startedAt         DateTime?",
+          "committedAt       DateTime?",
+          "voidedAt          DateTime?",
+          "ingredientCost    Decimal           @default(0) @db.Decimal(12, 2)",
+          "toppingCost       Decimal           @default(0) @db.Decimal(12, 2)",
+          "totalCost         Decimal           @default(0) @db.Decimal(12, 2)",
+          "grossProfit       Decimal           @default(0) @db.Decimal(12, 2)",
+          "toppings OrderItemTopping[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": []
+      }
+    },
+    {
+      "table": "OrderItemTopping",
+      "writer_owner": "Sales",
+      "legitimate_rows": "Selected topping snapshot",
+      "field_fk_unique_constraint_plan": "typed item/topping FK; unique(item,topping); frozen price/count/source version; distinguish every source component",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/order.prisma",
+        "fields": [
+          "id           String    @id @default(cuid())",
+          "orderItemId  String",
+          "orderItem    OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)",
+          "toppingId    String",
+          "topping      Topping   @relation(fields: [toppingId], references: [id])",
+          "quantity     Int       @default(1)",
+          "price        Decimal   @default(0) @db.Decimal(12, 2)",
+          "costSnapshot Decimal   @default(0) @db.Decimal(12, 2)",
+          "createdAt DateTime @default(now())"
+        ],
+        "constraints": [
+          "@@index([orderItemId])"
+        ]
+      }
+    },
+    {
+      "table": "Supplier",
+      "writer_owner": "Purchasing",
+      "legitimate_rows": "Counterparty",
+      "field_fk_unique_constraint_plan": "version/active and history RESTRICT; do not repurpose customer Payment as supplier ledger",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/supplier.prisma",
+        "fields": [
+          "id        String    @id @default(cuid())",
+          "name      String",
+          "email     String?",
+          "contact   String?",
+          "address   String?",
+          "status    String    @default(\"ACTIVE\")",
+          "deletedAt DateTime?",
+          "ingredients      SupplierIngredient[]",
+          "purchaseRequests PurchaseRequest[]",
+          "products SupplierProduct[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": []
+      }
+    },
+    {
+      "table": "SupplierIngredient",
+      "writer_owner": "Purchasing",
+      "legitimate_rows": "Ingredient quote/conversion",
+      "field_fk_unique_constraint_plan": "supplier/ingredient FKs; version/positive basePerPack/unit/price; unique(id,supplierId,ingredientId), unique(supplierId,ingredientId); ordered line freezes quote",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/supplier.prisma",
+        "fields": [
+          "id                   String     @id @default(cuid())",
+          "supplierId           String",
+          "supplier             Supplier   @relation(fields: [supplierId], references: [id], onDelete: Cascade)",
+          "ingredientId         String",
+          "ingredient           Ingredient @relation(fields: [ingredientId], references: [id])",
+          "pricePerBaseUnit     Decimal    @db.Decimal(18, 4)",
+          "supplierSku          String?",
+          "purchaseUnit         String",
+          "conversionQuantity   Decimal    @db.Decimal(14, 3)",
+          "conversionTargetUnit String     @default(\"g\")",
+          "minOrderQuantity     Int        @default(1)",
+          "leadTimeDays         Int        @default(3)",
+          "isPreferred          Boolean    @default(false)",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": [
+          "@@unique([supplierId, ingredientId])"
+        ]
+      }
+    },
+    {
+      "table": "PurchaseRequest",
+      "writer_owner": "Purchasing",
+      "legitimate_rows": "Procurement authorization/payable aggregate",
+      "field_fk_unique_constraint_plan": "version/supplier/approver; unique originatingExecutionId FK; aggregate payable/paid/credit only; settlement history owner missing",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/purchase.prisma",
+        "fields": [
+          "id             String                @id @default(cuid())",
+          "requestNumber  String                @unique",
+          "status         PurchaseRequestStatus @default(PENDING)",
+          "supplierId     String",
+          "supplier       Supplier              @relation(fields: [supplierId], references: [id])",
+          "notes          String?",
+          "aiGenerated    Boolean               @default(false)",
+          "totalAmount    Decimal               @default(0) @db.Decimal(12, 2)",
+          "requestedBy    String",
+          "requester      User                  @relation(\"PurchaseRequestRequestedBy\", fields: [requestedBy], references: [id])",
+          "approvedBy     String?",
+          "approver       User?                 @relation(\"PurchaseRequestApprovedBy\", fields: [approvedBy], references: [id])",
+          "approvedAt     DateTime?",
+          "emailSentAt    DateTime?",
+          "emailContent   String?",
+          "retryCount     Int                   @default(0)",
+          "lastEmailError String?",
+          "receivedAt     DateTime?",
+          "paymentStatus  String                @default(\"UNPAID\")",
+          "paidAt         DateTime?",
+          "paymentNote    String?",
+          "receivedAmount Decimal               @default(0) @db.Decimal(12, 2)",
+          "amountPaid     Decimal               @default(0) @db.Decimal(12, 2)",
+          "items    PurchaseRequestItem[]",
+          "receipts GoodsReceipt[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": []
+      }
+    },
+    {
+      "table": "PurchaseRequestItem",
+      "writer_owner": "Purchasing",
+      "legitimate_rows": "Ordered line",
+      "field_fk_unique_constraint_plan": "supplierIngredient/request/ingredient composite FKs; frozen whole packs/conversion/units/quoteVersion/price; received sums under PR lock; no fake draft/revision rows",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/purchase.prisma",
+        "fields": [
+          "id               String          @id @default(cuid())",
+          "requestId        String",
+          "request          PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)",
+          "ingredientId     String?",
+          "ingredient       Ingredient?     @relation(fields: [ingredientId], references: [id])",
+          "quantity         Int",
+          "quantityReceived Int             @default(0)",
+          "unitPrice        Decimal?        @db.Decimal(12, 2)",
+          "notes            String?",
+          "receivedBatches IngredientBatch[]",
+          "inventoryId String?",
+          "inventory   Inventory? @relation(fields: [inventoryId], references: [id])",
+          "productId   String?",
+          "product     Product?   @relation(fields: [productId], references: [id])",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": []
+      }
+    },
+    {
+      "table": "GoodsReceipt",
+      "writer_owner": "Purchasing",
+      "legitimate_rows": "Receiving document",
+      "field_fk_unique_constraint_plan": "version/receiver User FK/confirmedAt; unique(id,purchaseRequestId); immutable confirmation; multi-item whole-pack/draft/correction line owner blocked U4",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/purchase.prisma",
+        "fields": [
+          "id                String             @id @default(cuid())",
+          "receiptNumber     String             @unique",
+          "status            GoodsReceiptStatus @default(DRAFT)",
+          "purchaseRequestId String",
+          "purchaseRequest   PurchaseRequest    @relation(fields: [purchaseRequestId], references: [id])",
+          "receivedAt        DateTime           @default(now())",
+          "receivedBy        String?",
+          "supplierInvoiceNo String?",
+          "note              String?",
+          "idempotencyKey    String?            @unique",
+          "batches IngredientBatch[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": [
+          "@@index([purchaseRequestId, receivedAt])",
+          "@@index([status])"
+        ]
+      }
+    },
+    {
+      "table": "Payment",
+      "writer_owner": "Payments",
+      "legitimate_rows": "Actual full-value customer charge attempt",
+      "field_fk_unique_constraint_plan": "account/order/attemptNo/merchantRef/providerTxnId/appliedAt/disposition; account-scoped and partial unresolved/applied uniques; frozen amount; refund history blocked U5",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/order.prisma",
+        "fields": [
+          "id              String            @id @default(cuid())",
+          "orderId         String",
+          "order           Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)",
+          "method          PaymentMethod",
+          "providerTxnId   String?           @unique",
+          "merchantRef     String?",
+          "amount          Decimal           @db.Decimal(12, 2)",
+          "currency        String            @default(\"VND\")",
+          "status          TransactionStatus @default(INITIATED)",
+          "attemptNo       Int               @default(1)",
+          "requestPayload  Json?",
+          "responsePayload Json?",
+          "failureCode     String?",
+          "failureMessage  String?",
+          "paidAt          DateTime?",
+          "expiresAt       DateTime?",
+          "callbacks PaymentCallback[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": [
+          "@@index([orderId])"
+        ]
+      }
+    },
+    {
+      "table": "PaymentCallback",
+      "writer_owner": "Payments",
+      "legitimate_rows": "Actual provider event",
+      "field_fk_unique_constraint_plan": "account/eventId/payloadHash/verified fields; unique(account,eventId); payment-account composite FK; no fabricated local dispatch records",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/order.prisma",
+        "fields": [
+          "id              String         @id @default(cuid())",
+          "method          PaymentMethod",
+          "providerEventId String?        @unique",
+          "eventType       String?",
+          "paymentId       String?",
+          "payment         Payment?       @relation(fields: [paymentId], references: [id])",
+          "signatureValid  Boolean        @default(false)",
+          "rawPayload      Json",
+          "headers         Json?",
+          "receivedAt      DateTime       @default(now())",
+          "processedAt     DateTime?",
+          "status          CallbackStatus @default(RECEIVED)",
+          "errorMessage    String?",
+          "retryCount      Int            @default(0)"
+        ],
+        "constraints": []
+      }
+    },
+    {
+      "table": "PaymentReconciliation",
+      "writer_owner": "Finance",
+      "legitimate_rows": "Account/date reconciliation",
+      "field_fk_unique_constraint_plan": "accountKey/businessDate DATE and statement identity/amounts/refunds/exceptions; unique(accountKey,businessDate); resolver User FK; no dispatch journal",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/order.prisma",
+        "fields": [
+          "id             String        @id @default(cuid())",
+          "method         PaymentMethod",
+          "businessDate   DateTime",
+          "expectedCount  Int           @default(0)",
+          "expectedAmount Decimal       @default(0) @db.Decimal(14, 2)",
+          "actualCount    Int           @default(0)",
+          "actualAmount   Decimal       @default(0) @db.Decimal(14, 2)",
+          "matchedCount   Int           @default(0)",
+          "missingCount   Int           @default(0)",
+          "orphanCount    Int           @default(0)",
+          "resolvedAt     DateTime?",
+          "resolvedBy     String?",
+          "note           String?",
+          "createdAt DateTime @default(now())"
+        ],
+        "constraints": [
+          "@@unique([method, businessDate])"
+        ]
+      }
+    },
+    {
+      "table": "AgentExecution",
+      "writer_owner": "Agent",
+      "legitimate_rows": "Genuine Agent run",
+      "field_fk_unique_constraint_plan": "actor/hash/source guards/approver/expiry/PR/usage; no manual command journal; revision/approval/memory owner blocked U3",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/system.prisma",
+        "fields": [
+          "id              String          @id @default(cuid())",
+          "goal            String",
+          "intent          String?",
+          "status          ExecutionStatus @default(RUNNING)",
+          "tokenIn         Int             @default(0)",
+          "tokenOut        Int             @default(0)",
+          "costUsd         Decimal         @default(0) @db.Decimal(10, 6)",
+          "fallbackUsed    Boolean         @default(false)",
+          "triggeredBy     String?",
+          "triggeredByUser User?           @relation(\"AgentExecutionTriggeredBy\", fields: [triggeredBy], references: [id])",
+          "startedAt       DateTime        @default(now())",
+          "endedAt         DateTime?",
+          "errorMessage    String?",
+          "idempotencyKey  String?         @unique",
+          "toolCalls   AgentToolCall[]",
+          "evaluations AgentEvaluation[]",
+          "createdAt DateTime @default(now())",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": [
+          "@@index([status])"
+        ]
+      }
+    },
+    {
+      "table": "AgentToolCall",
+      "writer_owner": "Agent",
+      "legitimate_rows": "Actual tool dispatch",
+      "field_fk_unique_constraint_plan": "unique(executionId,stepNo); truthful dispatch/usage/result; retained execution FK RESTRICT; eight lines from one call remain one row",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/system.prisma",
+        "fields": [
+          "id           String         @id @default(cuid())",
+          "executionId  String",
+          "execution    AgentExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)",
+          "stepNo       Int",
+          "toolName     String",
+          "arguments    Json",
+          "result       Json?",
+          "status       ToolCallStatus @default(PENDING)",
+          "errorMessage String?",
+          "latencyMs    Int?",
+          "startedAt    DateTime       @default(now())",
+          "completedAt  DateTime?"
+        ],
+        "constraints": [
+          "@@unique([executionId, stepNo])"
+        ]
+      }
+    },
+    {
+      "table": "AgentEvaluation",
+      "writer_owner": "Agent",
+      "legitimate_rows": "Actual evaluation evidence",
+      "field_fk_unique_constraint_plan": "genuine execution/tool-call attribution/evaluator evidence; retained history; no fake approval/memory rows",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/system.prisma",
+        "fields": [
+          "id            String          @id @default(cuid())",
+          "executionId   String?",
+          "execution     AgentExecution? @relation(fields: [executionId], references: [id])",
+          "testCode      String",
+          "category      String",
+          "prompt        String",
+          "expectedTools String[]",
+          "actualTools   String[]",
+          "toolMatched   Boolean",
+          "hallucinated  Boolean         @default(false)",
+          "latencyMs     Int?",
+          "passed        Boolean",
+          "failureNote   String?",
+          "batchLabel    String",
+          "evaluatedAt   DateTime        @default(now())"
+        ],
+        "constraints": [
+          "@@index([batchLabel])"
+        ]
+      }
+    },
+    {
+      "table": "SystemSetting",
+      "writer_owner": "Configuration",
+      "legitimate_rows": "Configuration only",
+      "field_fk_unique_constraint_plan": "key PK/value/version and current auth; no arbitrary command journal",
+      "physical_freeze": "PARTIAL_OR_BLOCKED_NOT_IMPLEMENTED",
+      "current_source": {
+        "source": "packages/database/prisma/schema/system.prisma",
+        "fields": [
+          "key       String   @id",
+          "value     String",
+          "updatedAt DateTime @updatedAt"
+        ],
+        "constraints": []
+      }
+    }
+  ],
+  "WRITER_MATRIX": {
+    "status": "STATIC_CALLER_MIGRATION_PLAN_NOT_RUNTIME_SOLE_WRITER_PROOF",
+    "routes": [
+      {
+        "callers": "auth/auth.repository.ts; user/user.service.ts; auth middleware; Agent internal-auth and API Agent client",
+        "target": "Current-authority functions/User",
+        "conflict": "Direct User mutations/deletes must version authority and preserve actor FKs; replay cannot rely only on JWT role/cache"
+      },
+      {
+        "callers": "category/category.repository.ts; product/product.repository.ts",
+        "target": "Catalog/Menu command entrypoints",
+        "conflict": "Product creates Inventory and deletes InventoryBatch/Inventory/SupplierProduct; remove cascading legacy stock creation/deletion; publication immutable"
+      },
+      {
+        "callers": "inventory/inventory.repository.ts; simulate-sale/simulate-sale.repository.ts",
+        "target": "Inventory sole protected boundary",
+        "conflict": "Multiple legacy quantity/batch/ledger writers and restores; map real ingredient units/origins, never dual update legacy and target balances"
+      },
+      {
+        "callers": "order/order.repository.ts and service/controllers",
+        "target": "Sales plus Inventory in one transaction",
+        "conflict": "Legacy Product/Inventory reservations/completion deduction, singular payment relation and Number totals conflict with ingredient allocations and payment attempts; migrate post-commit Agent scan"
+      },
+      {
+        "callers": "purchase/purchase.repository.ts and service/controllers",
+        "target": "Purchasing plus Inventory/Finance",
+        "conflict": "Legacy Inventory receive, stale item totals, direct status/delete and AgentLog logging bypass immutable receipt/rejection contract"
+      },
+      {
+        "callers": "supplier/supplier.repository.ts; inventory/inventory.service.ts quote/read callers",
+        "target": "Supplier/SupplierIngredient quote command/read functions",
+        "conflict": "SupplierProduct-to-ingredient mapping needs explicit evidence, not productId rename; current Agent-log/purchase blockers need new ownership"
+      },
+      {
+        "callers": "payment/payment.repository.ts and service/validator",
+        "target": "Payments attempt/settlement/refund functions",
+        "conflict": "findUnique(orderId), PaymentStatus writes incompatible with many attempts/TransactionStatus; no real callback/refund adapter proven"
+      },
+      {
+        "callers": "system-setting/system-setting.repository.ts",
+        "target": "Configuration commands/SystemSetting",
+        "conflict": "Upsert configuration only; not command journal. D09 still applies when setting mutation enters retained-command scope"
+      },
+      {
+        "callers": "apps/agent/src/repositories/agent.repository.ts; services/agent.service.ts; recommendation.service.ts; public-api.ts; worker.ts",
+        "target": "Agent functions plus BusinessPort",
+        "conflict": "Direct PR create and AgentLog mutations removed; genuine run/call/evaluation mapping and approved typed proposal required. Worker explicitly connects: never run during this task"
+      },
+      {
+        "callers": "email/email.service.ts; purchase/purchase.service.ts; agent/agent-failure-log.service.ts",
+        "target": "Purchasing delivery state or genuine Agent execution evidence",
+        "conflict": "Email PR updates and generic AgentLog records need honest ownership. No email-as-Agent fiction; unknown delivery cannot be reset/retried blindly; immutable dispatch history ownership remains unresolved"
+      },
+      {
+        "callers": "dashboard/dashboard.service.ts; inventory analytics; Agent inventory/sales readers",
+        "target": "Authorized target views",
+        "conflict": "Legacy stock/sales/payment joins and timezone/decimal DTOs must migrate; read-only caller parity separate from writer ownership"
+      },
+      {
+        "callers": "packages/database/prisma/seed_cafe.ts; seed_workflows.ts; seed-suppliers.ts",
+        "target": "Isolated reviewed seed/import path only",
+        "conflict": "Direct legacy DML and destructive supplier replacement; never run as migration/runtime path or fabricate historical stock/actor/cost provenance"
+      },
+      {
+        "callers": "apps/api/src/workflows/business-service.ts; contracts.ts; mock-repository.ts",
+        "target": "Async transaction-scoped SQL repository",
+        "conflict": "Whole-object saves, synchronous access and operation map have no physical adapter; replace callbacks with one SQL transaction, not full-state overwrite"
+      },
+      {
+        "callers": "apps/agent/src/workflows/agent-workflow.ts",
+        "target": "Async Agent-owned row operations enlisted in same backend transaction",
+        "conflict": "AgentState operations/memory/revision maps and FIFO are process-local; publish callbacks do not provide PostgreSQL atomicity"
+      },
+      {
+        "callers": "apps/web/src/api/mock-client.ts; apps/web/src/mock; existing admin wrappers; shared types",
+        "target": "Versioned authorized HTTP DTOs and stable command keys",
+        "conflict": "sessionStorage pending key is not durable server receipt; preserve body/hash/versions on UNKNOWN; migrate callers only after adapter readiness"
+      }
+    ],
+    "direct_prisma_write_sites": [
+      {
+        "file": "apps/agent/src/repositories/agent.repository.ts",
+        "sites": [
+          {
+            "line": 245,
+            "delegate": "purchaseRequest",
+            "operation": "create"
+          },
+          {
+            "line": 328,
+            "delegate": "purchaseRequest",
+            "operation": "create"
+          },
+          {
+            "line": 349,
+            "delegate": "agentLog",
+            "operation": "update"
+          },
+          {
+            "line": 372,
+            "delegate": "agentLog",
+            "operation": "create"
+          },
+          {
+            "line": 389,
+            "delegate": "agentLog",
+            "operation": "update"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/agent/agent-failure-log.service.ts",
+        "sites": [
+          {
+            "line": 99,
+            "delegate": "agentLog",
+            "operation": "create"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/auth/auth.repository.ts",
+        "sites": [
+          {
+            "line": 20,
+            "delegate": "user",
+            "operation": "create"
+          },
+          {
+            "line": 26,
+            "delegate": "user",
+            "operation": "update"
+          },
+          {
+            "line": 37,
+            "delegate": "user",
+            "operation": "update"
+          },
+          {
+            "line": 46,
+            "delegate": "user",
+            "operation": "update"
+          },
+          {
+            "line": 56,
+            "delegate": "user",
+            "operation": "update"
+          },
+          {
+            "line": 68,
+            "delegate": "user",
+            "operation": "update"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/category/category.repository.ts",
+        "sites": [
+          {
+            "line": 32,
+            "delegate": "category",
+            "operation": "create"
+          },
+          {
+            "line": 36,
+            "delegate": "category",
+            "operation": "update"
+          },
+          {
+            "line": 40,
+            "delegate": "category",
+            "operation": "delete"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/email/email.service.ts",
+        "sites": [
+          {
+            "line": 225,
+            "delegate": "purchaseRequest",
+            "operation": "update"
+          },
+          {
+            "line": 247,
+            "delegate": "purchaseRequest",
+            "operation": "update"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/inventory/inventory.repository.ts",
+        "sites": [
+          {
+            "line": 72,
+            "delegate": "inventory",
+            "operation": "createMany"
+          },
+          {
+            "line": 126,
+            "operation": "$queryRaw",
+            "classification": "raw SQL candidate; inspect semantics, not necessarily mutation"
+          },
+          {
+            "line": 133,
+            "delegate": "inventory",
+            "operation": "update"
+          },
+          {
+            "line": 140,
+            "delegate": "inventoryBatch",
+            "operation": "create"
+          },
+          {
+            "line": 149,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          },
+          {
+            "line": 179,
+            "operation": "$queryRaw",
+            "classification": "raw SQL candidate; inspect semantics, not necessarily mutation"
+          },
+          {
+            "line": 192,
+            "operation": "$executeRaw",
+            "classification": "raw SQL candidate; inspect semantics, not necessarily mutation"
+          },
+          {
+            "line": 199,
+            "delegate": "inventoryBatch",
+            "operation": "updateMany"
+          },
+          {
+            "line": 205,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          },
+          {
+            "line": 230,
+            "delegate": "inventory",
+            "operation": "update"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/order/order.repository.ts",
+        "sites": [
+          {
+            "line": 68,
+            "delegate": "order",
+            "operation": "create"
+          },
+          {
+            "line": 96,
+            "operation": "$executeRaw",
+            "classification": "raw SQL candidate; inspect semantics, not necessarily mutation"
+          },
+          {
+            "line": 107,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          },
+          {
+            "line": 132,
+            "delegate": "order",
+            "operation": "updateMany"
+          },
+          {
+            "line": 149,
+            "delegate": "inventory",
+            "operation": "updateMany"
+          },
+          {
+            "line": 190,
+            "delegate": "inventoryBatch",
+            "operation": "updateMany"
+          },
+          {
+            "line": 196,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          },
+          {
+            "line": 233,
+            "delegate": "inventory",
+            "operation": "updateMany"
+          },
+          {
+            "line": 242,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/payment/payment.repository.ts",
+        "sites": [
+          {
+            "line": 20,
+            "delegate": "payment",
+            "operation": "update"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/product/product.repository.ts",
+        "sites": [
+          {
+            "line": 57,
+            "delegate": "product",
+            "operation": "create"
+          },
+          {
+            "line": 59,
+            "delegate": "inventory",
+            "operation": "create"
+          },
+          {
+            "line": 82,
+            "delegate": "product",
+            "operation": "update"
+          },
+          {
+            "line": 104,
+            "delegate": "inventoryBatch",
+            "operation": "deleteMany"
+          },
+          {
+            "line": 105,
+            "delegate": "inventory",
+            "operation": "delete"
+          },
+          {
+            "line": 108,
+            "delegate": "supplierProduct",
+            "operation": "deleteMany"
+          },
+          {
+            "line": 110,
+            "delegate": "product",
+            "operation": "delete"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/purchase/purchase.repository.ts",
+        "sites": [
+          {
+            "line": 58,
+            "delegate": "purchaseRequest",
+            "operation": "create"
+          },
+          {
+            "line": 78,
+            "delegate": "purchaseRequest",
+            "operation": "update"
+          },
+          {
+            "line": 119,
+            "delegate": "purchaseRequestItem",
+            "operation": "update"
+          },
+          {
+            "line": 124,
+            "delegate": "inventory",
+            "operation": "update"
+          },
+          {
+            "line": 162,
+            "delegate": "inventoryBatch",
+            "operation": "update"
+          },
+          {
+            "line": 168,
+            "delegate": "inventoryBatch",
+            "operation": "create"
+          },
+          {
+            "line": 178,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          },
+          {
+            "line": 190,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          },
+          {
+            "line": 214,
+            "delegate": "purchaseRequest",
+            "operation": "update"
+          },
+          {
+            "line": 238,
+            "delegate": "purchaseRequest",
+            "operation": "delete"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/purchase/purchase.service.ts",
+        "sites": [
+          {
+            "line": 292,
+            "delegate": "agentLog",
+            "operation": "create"
+          },
+          {
+            "line": 311,
+            "delegate": "agentLog",
+            "operation": "create"
+          },
+          {
+            "line": 344,
+            "delegate": "agentLog",
+            "operation": "create"
+          },
+          {
+            "line": 378,
+            "delegate": "agentLog",
+            "operation": "create"
+          },
+          {
+            "line": 421,
+            "delegate": "agentLog",
+            "operation": "create"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/simulate-sale/simulate-sale.repository.ts",
+        "sites": [
+          {
+            "line": 22,
+            "operation": "$queryRaw",
+            "classification": "raw SQL candidate; inspect semantics, not necessarily mutation"
+          },
+          {
+            "line": 33,
+            "delegate": "inventory",
+            "operation": "update"
+          },
+          {
+            "line": 51,
+            "delegate": "inventoryBatch",
+            "operation": "update"
+          },
+          {
+            "line": 56,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          },
+          {
+            "line": 87,
+            "operation": "$queryRaw",
+            "classification": "raw SQL candidate; inspect semantics, not necessarily mutation"
+          },
+          {
+            "line": 94,
+            "delegate": "inventory",
+            "operation": "update"
+          },
+          {
+            "line": 112,
+            "delegate": "inventoryBatch",
+            "operation": "update"
+          },
+          {
+            "line": 117,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          },
+          {
+            "line": 161,
+            "operation": "$queryRaw",
+            "classification": "raw SQL candidate; inspect semantics, not necessarily mutation"
+          },
+          {
+            "line": 192,
+            "delegate": "inventory",
+            "operation": "update"
+          },
+          {
+            "line": 197,
+            "delegate": "inventoryBatch",
+            "operation": "update"
+          },
+          {
+            "line": 198,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/supplier/supplier.repository.ts",
+        "sites": [
+          {
+            "line": 21,
+            "delegate": "supplier",
+            "operation": "create"
+          },
+          {
+            "line": 22,
+            "delegate": "supplier",
+            "operation": "update"
+          },
+          {
+            "line": 24,
+            "delegate": "supplier",
+            "operation": "delete"
+          },
+          {
+            "line": 48,
+            "delegate": "supplierProduct",
+            "operation": "create"
+          },
+          {
+            "line": 49,
+            "delegate": "supplierProduct",
+            "operation": "update"
+          },
+          {
+            "line": 50,
+            "delegate": "supplierProduct",
+            "operation": "delete"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/system-setting/system-setting.repository.ts",
+        "sites": [
+          {
+            "line": 18,
+            "delegate": "systemSetting",
+            "operation": "upsert"
+          }
+        ]
+      },
+      {
+        "file": "apps/api/src/modules/user/user.service.ts",
+        "sites": [
+          {
+            "line": 50,
+            "delegate": "user",
+            "operation": "create"
+          },
+          {
+            "line": 76,
+            "delegate": "user",
+            "operation": "update"
+          },
+          {
+            "line": 95,
+            "delegate": "user",
+            "operation": "delete"
+          }
+        ]
+      },
+      {
+        "file": "packages/database/prisma/seed-suppliers.ts",
+        "sites": [
+          {
+            "line": 38,
+            "delegate": "supplierProduct",
+            "operation": "deleteMany"
+          },
+          {
+            "line": 39,
+            "delegate": "supplier",
+            "operation": "delete"
+          },
+          {
+            "line": 61,
+            "delegate": "supplier",
+            "operation": "create"
+          },
+          {
+            "line": 115,
+            "delegate": "supplierProduct",
+            "operation": "create"
+          }
+        ]
+      },
+      {
+        "file": "packages/database/prisma/seed_cafe.ts",
+        "sites": [
+          {
+            "line": 132,
+            "delegate": "user",
+            "operation": "create"
+          },
+          {
+            "line": 151,
+            "delegate": "category",
+            "operation": "create"
+          },
+          {
+            "line": 178,
+            "delegate": "product",
+            "operation": "create"
+          },
+          {
+            "line": 209,
+            "delegate": "inventory",
+            "operation": "create"
+          }
+        ]
+      },
+      {
+        "file": "packages/database/prisma/seed_workflows.ts",
+        "sites": [
+          {
+            "line": 43,
+            "delegate": "inventoryBatch",
+            "operation": "create"
+          },
+          {
+            "line": 52,
+            "delegate": "inventory",
+            "operation": "update"
+          },
+          {
+            "line": 79,
+            "delegate": "order",
+            "operation": "create"
+          },
+          {
+            "line": 110,
+            "delegate": "inventory",
+            "operation": "update"
+          },
+          {
+            "line": 114,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          },
+          {
+            "line": 119,
+            "delegate": "inventory",
+            "operation": "update"
+          },
+          {
+            "line": 128,
+            "delegate": "inventoryBatch",
+            "operation": "update"
+          },
+          {
+            "line": 132,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          },
+          {
+            "line": 139,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          },
+          {
+            "line": 159,
+            "delegate": "supplier",
+            "operation": "create"
+          },
+          {
+            "line": 188,
+            "delegate": "purchaseRequest",
+            "operation": "create"
+          },
+          {
+            "line": 224,
+            "delegate": "inventory",
+            "operation": "update"
+          },
+          {
+            "line": 228,
+            "delegate": "inventoryBatch",
+            "operation": "create"
+          },
+          {
+            "line": 236,
+            "delegate": "inventoryTransaction",
+            "operation": "create"
+          }
+        ]
+      }
+    ],
+    "database_callers": [
+      {
+        "file": "apps/agent/src/internal-auth.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/agent/src/repositories/agent.repository.ts",
+        "write_or_raw_sites": 5
+      },
+      {
+        "file": "apps/agent/src/services/agent.service.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/agent/src/worker.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/common/error-handler.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/agent/agent-failure-log.service.ts",
+        "write_or_raw_sites": 1
+      },
+      {
+        "file": "apps/api/src/modules/agent/agent.client.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/auth/auth.middleware.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/auth/auth.repository.ts",
+        "write_or_raw_sites": 6
+      },
+      {
+        "file": "apps/api/src/modules/auth/auth.service.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/auth/auth.validation.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/category/category.repository.ts",
+        "write_or_raw_sites": 3
+      },
+      {
+        "file": "apps/api/src/modules/category/category.service.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/dashboard/dashboard.service.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/email/email.service.ts",
+        "write_or_raw_sites": 2
+      },
+      {
+        "file": "apps/api/src/modules/inventory/inventory.repository.ts",
+        "write_or_raw_sites": 10
+      },
+      {
+        "file": "apps/api/src/modules/inventory/inventory.service.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/order/order.repository.ts",
+        "write_or_raw_sites": 9
+      },
+      {
+        "file": "apps/api/src/modules/order/order.service.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/order/order.validator.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/payment/payment.repository.ts",
+        "write_or_raw_sites": 1
+      },
+      {
+        "file": "apps/api/src/modules/payment/payment.service.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/payment/payment.validator.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/product/product.repository.ts",
+        "write_or_raw_sites": 7
+      },
+      {
+        "file": "apps/api/src/modules/product/product.service.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/purchase/purchase.repository.ts",
+        "write_or_raw_sites": 10
+      },
+      {
+        "file": "apps/api/src/modules/purchase/purchase.service.ts",
+        "write_or_raw_sites": 5
+      },
+      {
+        "file": "apps/api/src/modules/purchase/purchase.validator.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/simulate-sale/simulate-sale.repository.ts",
+        "write_or_raw_sites": 12
+      },
+      {
+        "file": "apps/api/src/modules/supplier/supplier.repository.ts",
+        "write_or_raw_sites": 6
+      },
+      {
+        "file": "apps/api/src/modules/supplier/supplier.service.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "apps/api/src/modules/system-setting/system-setting.repository.ts",
+        "write_or_raw_sites": 1
+      },
+      {
+        "file": "apps/api/src/modules/user/user.service.ts",
+        "write_or_raw_sites": 3
+      },
+      {
+        "file": "apps/api/src/modules/user/user.validator.ts",
+        "write_or_raw_sites": 0
+      },
+      {
+        "file": "packages/database/prisma/seed-suppliers.ts",
+        "write_or_raw_sites": 4
+      },
+      {
+        "file": "packages/database/prisma/seed_cafe.ts",
+        "write_or_raw_sites": 4
+      },
+      {
+        "file": "packages/database/prisma/seed_workflows.ts",
+        "write_or_raw_sites": 14
+      },
+      {
+        "file": "packages/database/src/index.ts",
+        "write_or_raw_sites": 0
+      }
+    ],
+    "ownership_rule": "All stock effects enter Inventory boundary, all customer money enters Payments, purchasing through Purchasing, genuine Agent rows through Agent. No direct repository/worker/seed side door. Exact source hits below include raw SQL candidates; static regex cannot certify dynamically constructed writes or runtime ACL enforcement."
+  },
+  "TRANSACTION_MODEL": {
+    "status": "CONDITIONAL_PROTOCOL_NOT_DURABLE_PROOF",
+    "adapter": "Select awaited row-level repository methods in one PostgreSQL transaction; no synchronous getters backed by lazy Prisma, whole-state flush, mock FIFO or callback publication. Backend+Agent consume uses one connection and transaction-scoped unit of work. Real LLM/payment/email dispatch outside SQL transaction with durable intent/result ownership first, currently incomplete.",
+    "isolation": "READ COMMITTED with mandatory protected parent/range locks and fresh reads after waits; all relevant insert/update paths participate. SERIALIZABLE may supplement but never replaces receipt owner/uniqueness. Client connection pinned; timeouts explicit; confirmed serialization/deadlock rollback retry max three total attempts.",
+    "lock_order": "Current User authority rows sorted -> scoped command transaction advisory lock -> genuine AgentExecution -> ranked parents Order, PurchaseRequest, StockCount, GoodsReceipt -> Product/Recipe/Topping -> Supplier/SupplierIngredient -> Ingredient -> IngredientBatch -> allocation events -> Payment -> Callback. Within rank sort IDs. Discover full set then revalidate under locks; late lower-rank discovery rolls back/replans, never acquires reverse order. Transfers lock both PRs before stock. Role updates lock same authority row. Actual all-writer trace and deadlock tests remain required.",
+    "key_lock": "Transaction-scoped advisory lock derived deterministically from full unique scope/kind/key, acquired before savepoint. Hash collisions serialize unrelated keys harmlessly; authoritative full-tuple unique constraint still required. One root command per transaction; child commands use deterministic typed identities, not independently acquired root locks.",
+    "savepoint_rejection_steps": [
+      "BEGIN; lock current authority, authorize; acquire scoped key lock; fresh authoritative receipt SELECT; compare hash or replay before effects.",
+      "If absent: SAVEPOINT business_effects. Execute domain validation/effects and all Agent/stock writes in that subtransaction.",
+      "On recognized deterministic business error: ROLLBACK TO SAVEPOINT business_effects, restoring all effects. Capture immutable error code/status/body in process before rollback. Locks acquired after savepoint may be released, so required key/authority locks must precede it.",
+      "Write terminal rejection receipt AFTER ROLLBACK TO, in surviving outer transaction; no success receipt written inside rolled-back effects. RELEASE SAVEPOINT; validate remaining constraints; COMMIT outer transaction.",
+      "On success: RELEASE SAVEPOINT; write exact success receipt in outer transaction; force deferred constraints before commit as appropriate. Any infrastructure or uncategorized/deferred integrity error rolls back whole transaction; never fabricate domain rejection for unknown database failure.",
+      "Send result only after outer commit or authoritative lookup. Crash before commit rolls back effects and receipt; crash after durable commit retains both. Recognized integrity failures requiring retained rejection must be checked/mapped inside savepoint before its release, not discovered only at COMMIT."
+    ],
+    "savepoint_proof": "ROLLBACK TO removes writes after named savepoint; terminal receipt inserted afterward belongs to surviving outer transaction and persists only if outer COMMIT succeeds. Therefore effect rollback and receipt retention are compatible. Current mock models that order, but no PostgreSQL table can receive the receipt yet. This proves SQL control-flow property only, not U1 storage legitimacy or durability.",
+    "unknown_commit_steps": [
+      "Connection/commit acknowledgement loss -> UNKNOWN, never inferred rollback. Preserve exact original key/payload/hash/versions; do not execute command effects again.",
+      "Open recovery transaction on authoritative writable primary for same durable database incarnation; current-authorize before exposing response; acquire same transaction key lock with bounded wait. Original transaction still holding it -> wait/UNKNOWN, no negative lookup claim.",
+      "After lock acquired, run a new READ COMMITTED SELECT of immutable full-tuple receipt. Matching hash -> original response; differing hash -> 409; never recompute from mutable domain state. No replica or old snapshot for negative lookup.",
+      "Absence proves original local transaction did not commit only if every writer holds key lock through commit, effects+receipt are atomic, no bypass/prepared transaction/failover data loss/retention deletion exists and authoritative recovery is established. Otherwise remain UNKNOWN. Lock acquisition alone is not proof if any condition is unproven.",
+      "For this source boundary, return UNKNOWN when receipt absent; current BusinessWorkflows already does this. Any later certified rollback retry stays within three confirmed attempts. Provider-side UNKNOWN requires separate merchant lookup and cannot be cleared by local receipt absence."
+    ],
+    "child_identity": "Root plus OrderItem/source component/Ingredient/Batch/phase/ordinal; inventory-core.childKey(batchId) alone collides when two items share batch and must not become durable unique identity.",
+    "sources": [
+      {
+        "claim": "Rollback scope and surviving outer transaction",
+        "url": "https://www.postgresql.org/docs/18/sql-rollback-to.html"
+      },
+      {
+        "claim": "Savepoint lock release and transaction advisory locks",
+        "url": "https://www.postgresql.org/docs/18/explicit-locking.html"
+      },
+      {
+        "claim": "READ COMMITTED obtains fresh statement snapshot",
+        "url": "https://www.postgresql.org/docs/18/transaction-iso.html"
+      }
+    ]
+  },
+  "MIGRATION_PLAN": {
+    "status": "GATED_SEQUENCE_ONLY_NO_DDL_OR_EXECUTION",
+    "steps": [
+      "M0: Stop at U1. Obtain responsibility-preserving physical owner proof satisfying rejected creation, unlimited history and multi-resource root; freeze missing U2-U5 owners and complete field/FK/check dictionary. No connection or migration in this task.",
+      "M1: Prepare new versioned nonexecuted additive Prisma/SQL artifacts, never rewrite applied historical migrations. Preserve exact final table/enum identities and labels. Separate SQL-only partial/exclusion/deferred/privilege rules from Prisma declarations; no unapproved extension assumed.",
+      "M2: Replace unsafe migration_27_tables scripts. 00_precheck/03_verify currently write backup tables; new inspection must be read-only. 01_expand status/FK differences require explicit mapping; 04 CASCADE and 05 destructive resets rejected. No auxiliary runtime persistence introduced.",
+      "M3: With separate authorization, inspect isolated catalog/ACLs read-only and compare source/generated client/SQL; establish exact starting version before any DDL. Validate lock/function/grant plan and all T01-T36 under runtime roles in disposable PostgreSQL.",
+      "M4: Build reviewed preservation mapping for legacy IDs, units, Product->Ingredient origins, nullable actor/cost, lots/ledger, singular->many payments and Agent evidence. Unknown mappings block affected rows/cutover, never invent provenance or default unknown cost to zero. Authoritative audit inventory stays an offline artifact, not extra target table.",
+      "M5: Add/backfill/validate under separately authorized migration. Choose controlled write quiescence for final conversion: stop API mutations/workers/seeds, drain in-flight transactions and provider dispatches, establish backup+WAL watermark. Do not dual-write incompatible legacy and target balances. Large backfill chunked with exact reconciliation and FK validation.",
+      "M6: Implement awaited adapters and migrate every listed caller; compile generated client/shared DTOs; run project-defined full tests/build plus isolated database acceptance. Application source implementation is a later task, not done by this design artifact.",
+      "M7: Only after explicit cutover authorization: atomic writer/grant switch, final parity/count/conservation check, enable target-only writers, retain recoverable old data offline. Retire exactly Inventory/InventoryBatch/SupplierProduct/AgentLog with enumerated dependency removal, no CASCADE. Final catalog must equal target 27/16.",
+      "M8: Observe with read-only reconciliation; keep UNKNOWN operations unresolved until authoritative lookup; verify restart/replay and backup+later-write recovery. No weekly/full acceptance gate cleared before actual evidence."
+    ]
+  },
+  "ROLLBACK_PLAN": {
+    "status": "PLANNED_NOT_EXECUTED",
+    "steps": [
+      "R0 current task: documentation only; no database state to undo. Preserve pre-existing dirty worktree. No staging/commit/push.",
+      "R1 before cutover/no target writes: retain additive data/DDL, keep target disabled. Revert application feature switch only if old writer/data contract remains valid; do not run blanket DELETE/reset rollback.",
+      "R2 after target writes: quiesce target mutations/dispatch; preserve immutable operation keys/results, stock history, approvals, callbacks and provider truth. Do not restart legacy writers unless lossless reverse mapping of every later write is proven. Prefer roll-forward fix; incompatible rollback stays blocked.",
+      "R3 catastrophic recovery: restore validated backup plus WAL/PITR through required durable watermark into isolated recovery target; reconcile external provider effects and dedup identities before switching traffic. Restore of backup alone discarding later writes is unacceptable.",
+      "R4 after legacy retirement: use tested backup/WAL and reviewed mapping; no CASCADE recreation shortcut, no reset PAID/refunded states, no synthesized Agent/stock history. Re-run parity/conservation/replay checks before unquiescing.",
+      "R5 if command receipts or provider dispatch intent cannot be recovered exactly: remain stopped/UNKNOWN; never compensate by blind re-execution or fake stock return."
+    ]
+  },
+  "ACCEPTANCE_TEST_PLAN": {
+    "status": "NOT_RUN_DATABASE_TESTS_PROHIBITED_THIS_TASK",
+    "baseline_spec": "docs/KLTN_PLAN/ARCHITECTURE_FINAL/INVARIANT_TEST_PLAN.md T01-T36, all retained",
+    "groups": [
+      {
+        "tests": "T01-T06",
+        "requirements": "D01-D03",
+        "gate": "Source-product/provenance/omission immutability, concurrent publication, dimensional/whole-piece bounds, rational rounding, component-by-lot cents and NULL-versus-zero conservation"
+      },
+      {
+        "tests": "T07-T10,T17,T34",
+        "requirements": "D04-D05,D08",
+        "gate": "Two-session FEFO/oversell/terminal races, expiry reallocation faults, prepare/cancel/remake/refund separation, all old writers denied protected DML"
+      },
+      {
+        "tests": "T11-T14",
+        "requirements": "D06",
+        "gate": "One receipt two items: 4x250 split350/650 and 2x100 split75/125; draft edits/replay, remainder races, immutable correction with reserved/consumed/later-receipt attribution"
+      },
+      {
+        "tests": "T15-T16",
+        "requirements": "D07",
+        "gate": "Count variance once; zero variance without fake movement; stale reservation/role/self-approval reason checks and retained rejection"
+      },
+      {
+        "tests": "T18-T24",
+        "requirements": "D09",
+        "gate": "K1/K2/restart replay, arbitrary append model plus N+1, same/different hash barriers, multi-resource exact root result, durable business rejections, commit UNKNOWN recovery and current-authority access denial"
+      },
+      {
+        "tests": "T25-T28",
+        "requirements": "D10",
+        "gate": "One actual eight-line call, same-run revisions/source/approval guards, revoke/consume races, one PR and durable unknown usage/budget reservation"
+      },
+      {
+        "tests": "T29-T33",
+        "requirements": "D11",
+        "gate": "Unresolved/duplicate charge retention, account-scoped event IDs/signatures, monotonic paid/refund application, unlimited failed refund commands and provider lookup, fractional/zero totals"
+      },
+      {
+        "tests": "T35-T36",
+        "requirements": "U6/all",
+        "gate": "27/16 exact source/client/catalog/ACL parity and restore retaining every post-backup effect/key/result"
+      }
+    ],
+    "supplements": [
+      "At each write position kill connection/process before savepoint rollback, after rollback before rejection insert, after receipt insert before commit, and during commit. Assert either zero effects/no terminal receipt or effects+one exact success, or zero effects+one exact rejection; never partial receipt/effect state.",
+      "Hold original commit unresolved; recovery contender cannot classify absent row as rollback. After release test committed success, committed rejection, confirmed rollback, unavailable primary, replica lag and changed database incarnation. Inspect actual persisted rows, not HTTP status alone.",
+      "Supplier settlement/credit histories: partial/full payments, overpayment prevention, unused/consumed receipt corrections, supplier refund and paired same-supplier transfer, exact cents and cross-supplier denial; restart/replay every key.",
+      "Owner-scoped memory CRUD/consolidation/forget across restart plus receipt retention/PII policy; actual planner memory use if claimed. No generic manual receipts in Agent tables or fabricated tool/evaluation rows.",
+      "Runtime roles attempt direct table DML/TRUNCATE/DDL/guard disable/unauthorized function execution and cross-owner reads; all denied. Security-definer search_path injection denied.",
+      "Every DB test captures schema hash, role, inputs, barriers/fault location, SQL outcome, persisted invariant queries and restart evidence. No skips or mock substitution. Full project-defined suite and affected builds after later implementation."
+    ],
+    "static_checks_this_task": "JSON parse, manifest name/count/enum-label parity, source writer-site inventory, requirement/test group coverage, git whitespace/stat/diff review only; no application tests required for documentation-only change."
+  },
+  "REMAINING_BLOCKERS": [
+    {
+      "id": "U1",
+      "missing": "Legitimate physical immutable arbitrary-command history owner, typed roots/FKs and unlimited exact success/rejection retention. None selected."
+    },
+    {
+      "id": "U2",
+      "missing": "Accepted private-variant responsibility and complete normalized source/topping/component dictionary."
+    },
+    {
+      "id": "U3",
+      "missing": "Typed proposal/revision/approval attempt, budget/usage recovery, Agent receipt and memory ownership/erasure policy."
+    },
+    {
+      "id": "U4",
+      "missing": "Receipt item/whole-pack draft/revision/correction owner and persistent supplier settlement/credit history."
+    },
+    {
+      "id": "U5",
+      "missing": "Component-by-lot valuation, full refund command/dispatch history and verified provider account protocols."
+    },
+    {
+      "id": "U6",
+      "missing": "Complete field/function/grant manifest, client/catalog/ACL parity, all-writer runtime proof and T01-T36 isolated evidence. Formal review and execution authorization not inferred."
+    }
+  ],
+  "NEXT_ACTION": "Keep PostgreSQL fail-closed. Review U1 counterexamples and supply a responsibility-preserving representation within the existing binding 27 identities before dependent physical freeze/DDL. Do not silently relax table responsibilities or ask again for 27/16/full-scope decision already made. If none can be supplied, report design blocked; do not mark U2-U5 frozen or U6 implemented."
+}

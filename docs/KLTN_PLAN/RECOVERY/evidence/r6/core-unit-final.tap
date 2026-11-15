@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: D02 exact dimensional conversion and canonical strings
+ok 1 - D02 exact dimensional conversion and canonical strings
+  ---
+  duration_ms: 18.8502
+  type: 'test'
+  ...
+# Subtest: D02/D03 rejects invalid, cross-dimension, fractional-piece and overflow input
+ok 2 - D02/D03 rejects invalid, cross-dimension, fractional-piece and overflow input
+  ---
+  duration_ms: 3.8578
+  type: 'test'
+  ...
+# Subtest: D04 supplier date uses next café midnight including leap day
+ok 3 - D04 supplier date uses next café midnight including leap day
+  ---
+  duration_ms: 5.1473
+  type: 'test'
+  ...
+# Subtest: D04 expiry boundary, quarantine and deterministic FEFO without input mutation
+ok 4 - D04 expiry boundary, quarantine and deterministic FEFO without input mutation
+  ---
+  duration_ms: 22.0594
+  type: 'test'
+  ...
+# Subtest: D01 recipe yield and explicit optional omission; snapshot detached from inputs
+ok 5 - D01 recipe yield and explicit optional omission; snapshot detached from inputs
+  ---
+  duration_ms: 8.2046
+  type: 'test'
+  ...
+# Subtest: D01 selection boundary, ambiguity and invalid selections fail closed
+ok 6 - D01 selection boundary, ambiguity and invalid selections fail closed
+  ---
+  duration_ms: 1.7435
+  type: 'test'
+  ...
+# Subtest: D01/D03 aggregate recipe and selected ADD line quantities before rounding once
+ok 7 - D01/D03 aggregate recipe and selected ADD line quantities before rounding once
+  ---
+  duration_ms: 1.5161
+  type: 'test'
+  ...
+# Subtest: D03 half-up boundary, piece integrality and capacity
+ok 8 - D03 half-up boundary, piece integrality and capacity
+  ---
+  duration_ms: 0.7483
+  type: 'test'
+  ...
+# Subtest: D03 exact costs, round once; unknown differs from known zero
+ok 9 - D03 exact costs, round once; unknown differs from known zero
+  ---
+  duration_ms: 1.1202
+  type: 'test'
+  ...
+# Subtest: D04/D05 FEFO plans exact remaining target and subtracts reservations without mutation
+ok 10 - D04/D05 FEFO plans exact remaining target and subtracts reservations without mutation
+  ---
+  duration_ms: 4.4705
+  type: 'test'
+  ...
+# Subtest: D05 insufficient, expired, foreign, duplicate and invalid balances reject entire plan
+ok 11 - D05 insufficient, expired, foreign, duplicate and invalid balances reject entire plan
+  ---
+  duration_ms: 0.8751
+  type: 'test'
+  ...
+# Subtest: D09 canonical keys stable across object ordering; changed payload conflicts by hash
+ok 12 - D09 canonical keys stable across object ordering; changed payload conflicts by hash
+  ---
+  duration_ms: 12.7292
+  type: 'test'
+  ...
+# Subtest: D09 refuses lossy/unsupported JSON values and preserves array order
+ok 13 - D09 refuses lossy/unsupported JSON values and preserves array order
+  ---
+  duration_ms: 4.1562
+  type: 'test'
+  ...
+# Subtest: D02/D09 explicit quantity adapter canonicalizes equivalent units and unordered rows
+ok 14 - D02/D09 explicit quantity adapter canonicalizes equivalent units and unordered rows
+  ---
+  duration_ms: 5.6268
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2520.8065

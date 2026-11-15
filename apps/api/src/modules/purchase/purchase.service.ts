@@ -161,13 +161,18 @@ const buildSupplierEmailSubject = async (request: PurchaseRequestRecord): Promis
 };
 
 export const buildPurchaseRequestAgentExplanation = (request: PurchaseRequestRecord): string => {
-    if (request.aiGenerated && request.notes?.includes('chu ky nhap hang')) {
+    if (
+        request.aiGenerated &&
+        request.notes?.trim() &&
+        (request.notes.includes('chu ky nhap hang') || request.items.some((item) => Boolean(item.ingredientId)))
+    ) {
         return request.notes;
     }
 
     const explanations = request.items.map((item) => {
         const conversion = purchaseConversionForItem(request, item);
         const productName = getItemDisplayName(item);
+        const itemLabel = item.ingredientId ? 'Nguyên liệu' : 'Sản phẩm';
         const inventoryUnit = conversion.inventoryUnit || getItemDisplayUnit(item) || '';
         const currentQty = item.inventory ? item.inventory.quantity : Number(item.ingredient?.quantity ?? 0);
         const currentThreshold = item.inventory ? item.inventory.minThreshold : Number(item.ingredient?.minThreshold ?? 0);
@@ -175,23 +180,23 @@ export const buildPurchaseRequestAgentExplanation = (request: PurchaseRequestRec
         const thresholdText = formatQuantity(currentThreshold, inventoryUnit);
 
         if (!conversion.conversionMissing && conversion.purchaseQuantity && conversion.purchaseUnit && conversion.conversionQuantity && conversion.conversionTargetUnit) {
-            const neededQuantity = item.quantity;
+            const neededQuantity = item.ingredientId ? (conversion.convertedQuantity ?? item.quantity) : item.quantity;
             const neededText = formatQuantity(neededQuantity, inventoryUnit);
             const conversionText = `1 ${conversion.purchaseUnit} = ${conversion.conversionQuantity} ${conversion.conversionTargetUnit}`;
             const purchaseText = `${conversion.purchaseQuantity} ${conversion.purchaseUnit} = ${conversion.convertedQuantity} ${inventoryUnit}`;
 
-            return `Sản phẩm ${productName} hiện còn ${stockText}, thấp hơn hoặc bằng ngưỡng tối thiểu ${thresholdText}.
+            return `${itemLabel} ${productName} hiện còn ${stockText}, thấp hơn hoặc bằng ngưỡng tối thiểu ${thresholdText}.
 
 Nhu cầu bổ sung tối thiểu là ${neededText}. Theo quy cách nhập hàng của nhà cung cấp: ${conversionText}.
 
 Vì vậy hệ thống làm tròn theo quy cách nhập hàng và đề xuất nhập ${purchaseText} để đảm bảo đủ hàng và đúng quy cách nhập.`;
         }
 
-        return `Sản phẩm ${productName} hiện còn ${stockText}, thấp hơn hoặc bằng ngưỡng tối thiểu ${thresholdText}.
+        return `${itemLabel} ${productName} hiện còn ${stockText}, thấp hơn hoặc bằng ngưỡng tối thiểu ${thresholdText}.
 
 Hệ thống đề xuất nhập thêm ${formatQuantity(item.quantity, inventoryUnit)} để đưa tồn kho về mức an toàn.
 
-Sản phẩm này chưa có quy cách nhập hàng theo nhà cung cấp, nên số lượng đề xuất đang được hiển thị theo đơn vị tồn kho.`;
+${itemLabel} này chưa có quy cách nhập hàng theo nhà cung cấp, nên số lượng đề xuất đang được hiển thị theo đơn vị tồn kho.`;
     });
 
     return explanations.join('\n\n');
@@ -501,9 +506,11 @@ export const purchaseService = {
             });
 
             const productIds = received.items.map((item) => item.productId).filter((pid): pid is string => Boolean(pid));
-            if (productIds.length > 0) {
+            const ingredientIds = received.items.map((item) => item.ingredientId).filter((iid): iid is string => Boolean(iid));
+            if (productIds.length > 0 || ingredientIds.length > 0) {
                 scanInventoryViaAgentService({
-                    productIds,
+                    ...(productIds.length > 0 ? { productIds } : {}),
+                    ...(ingredientIds.length > 0 ? { ingredientIds, scope: 'INGREDIENT' as const } : {}),
                     triggerType: 'PURCHASE_RECEIVED',
                     sourceType: 'PURCHASE_REQUEST',
                     sourceId: id,

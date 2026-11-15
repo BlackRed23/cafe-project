@@ -1,14 +1,19 @@
 import { requireAgentUser, requireInternalSecret } from '../internal-auth';
 import { prisma, InventoryTransactionType } from '@cafe-project/database';
-import { ACTIVE_PURCHASE_REQUEST_MESSAGE, agentRepository, type AgentInventoryRecord } from '../repositories/agent.repository';
+import { ACTIVE_PURCHASE_REQUEST_MESSAGE, agentRepository, type AgentInventoryRecord, type AgentIngredientRecord } from '../repositories/agent.repository';
 import { recommendationService } from './recommendation.service';
 import { AgentHttpError } from '../errors/http-error';
 import { logger } from '../utils/logger';
 import { fixAgentLogDisplayOutput, fixVietnameseMojibakeText } from '../utils/textEncoding';
 import { calculateReorderPoint, DELAY_BUFFER_DAYS, SAFETY_BUFFER_DAYS } from '../utils/inventory.utils';
+import { replenishmentPlan } from '../workflows/replenishment';
+
+export type ScanInventoryScope = 'ALL' | 'PRODUCT' | 'INGREDIENT';
 
 export type ScanInventoryInput = {
     productIds?: string[];
+    ingredientIds?: string[];
+    scope?: ScanInventoryScope;
     triggerType?: string;
     sourceType?: string;
     sourceId?: string;
@@ -17,6 +22,8 @@ export type ScanInventoryInput = {
 
 export type RecommendReorderInput = {
     productIds?: string[];
+    ingredientIds?: string[];
+    scope?: ScanInventoryScope;
     force?: boolean;
 };
 
@@ -32,6 +39,8 @@ export type AgentLogQuery = {
     action?: unknown;
     triggerType?: unknown;
     productId?: unknown;
+    ingredientId?: unknown;
+    itemType?: unknown;
 };
 
 const isSupplierActive = (supplier: { status?: string | null; deletedAt?: Date | null }): boolean =>
@@ -249,7 +258,12 @@ const toLogDto = (log: any) => {
     const reason = reasonFromLog(log.action, result, input, output);
     const status = statusFromResult(result, log.error_message);
     const purchaseRequestId = derivePurchaseRequestId(log, output);
-    const productId = asString(output?.productId) || asString(input?.productId);
+    const ingredientId = asString(output?.ingredientId) || asString(input?.ingredientId);
+    const productId = asString(output?.productId) || asString(input?.productId) || ingredientId;
+    const ingredientName = asString(output?.ingredientName) || asString(input?.ingredientName);
+    const productName = asString(output?.productName) || asString(input?.productName) || ingredientName;
+    const itemType = asString(output?.itemType) || asString(input?.itemType) || (ingredientId || String(log.action || '').includes('INGREDIENT') ? 'INGREDIENT' : 'PRODUCT');
+    const baseUnit = asString(output?.baseUnit) || asString(input?.baseUnit) || asString(output?.unit) || asString(input?.unit);
     const scanSessionId = asString(output?.scanSessionId) || asString(input?.scanSessionId);
 
     const sourceId = asString(output?.sourceId) || asString(input?.sourceId);
@@ -264,8 +278,12 @@ const toLogDto = (log: any) => {
         message: fixVietnameseMojibakeText(messageFromLog(log.action, result, reason, log.error_message, output)),
         triggerType: asString(input?.triggerType),
         scanSessionId,
+        itemType,
+        ingredientId,
+        ingredientName,
+        baseUnit,
         productId,
-        productName: asString(output?.productName) || asString(input?.productName),
+        productName,
         inventoryId: asString(input?.inventoryId) || asString(output?.inventoryId),
         purchaseRequestId,
         referenceType: log.reference_type,
@@ -284,6 +302,43 @@ const toLogDto = (log: any) => {
         reference_type: log.reference_type,
         reference_id: log.reference_id
     };
+};
+
+const ingredientReasoningText = (params: {
+    ingredient: AgentIngredientRecord;
+    currentQty: number;
+    reservedQty: number;
+    availableStock: number;
+    minThreshold: number;
+    averageDailyConsumption: number;
+    planningPeriod: ReorderPlanningPeriod;
+    planningDays: number;
+    leadTimeDays: number;
+    bufferDays: number;
+    usedByProducts: string[];
+    nearestExpiryBatch?: { batchCode: string; expirationDate: Date | null } | null;
+    supplierName: string;
+    purchaseUnit: string;
+    conversionQuantity: number;
+    neededPacks: number;
+    recommendedBaseQty: number;
+}): string => {
+    const unit = params.ingredient.baseUnit || 'g';
+    const recipeText = params.usedByProducts.length > 0
+        ? `Nguyên liệu này đang phục vụ công thức các món: ${params.usedByProducts.join(', ')}.`
+        : 'Nguyên liệu đang phục vụ pha chế tại quầy.';
+    const batchText = params.nearestExpiryBatch?.expirationDate
+        ? `Lô gần hết hạn nhất (${params.nearestExpiryBatch.batchCode}) có hạn dùng ${new Date(params.nearestExpiryBatch.expirationDate).toISOString().split('T')[0]}.`
+        : 'Hiện chưa có lô nguyên liệu còn hạn.';
+    const packText = params.conversionQuantity > 1
+        ? `${params.neededPacks} ${params.purchaseUnit} (1 ${params.purchaseUnit} = ${params.conversionQuantity} ${unit}, tương đương ${params.recommendedBaseQty} ${unit})`
+        : `${params.recommendedBaseQty} ${unit}`;
+
+    return `Nguyên liệu "${params.ingredient.name}" (${params.ingredient.sku}) hiện có tồn thực tế ${params.currentQty} ${unit}, đang giữ chỗ ${params.reservedQty} ${unit}, khả dụng còn ${params.availableStock} ${unit} (ngưỡng tối thiểu ${params.minThreshold} ${unit}).
+
+${recipeText} ${batchText}
+
+Tốc độ tiêu hao trung bình 30 ngày qua: ${params.averageDailyConsumption.toFixed(2)} ${unit}/ngày. Theo ${planningPeriodText(params.planningPeriod)} (${params.planningDays} ngày, thời gian giao hàng ${params.leadTimeDays} ngày, dự phòng ${params.bufferDays} ngày), hệ thống đề xuất đặt ${packText} từ nhà cung cấp ${params.supplierName}.`;
 };
 
 const reasoningText = (inventory: AgentInventoryRecord, minThreshold: number, recommendedQty: number, supplierName?: string): string =>
@@ -524,7 +579,8 @@ export const agentService = {
                 return { results: [toLogDto(log)], createdPurchaseRequests: [], scanSessionId, sessionStatus: 'SUCCESS', summary: { totalChecked: 0, createdPurchaseRequestCount: 0, skippedDuplicateCount: 0, noSupplierCount: 0, failedCount: 0, stockOkCount: 0 } };
             }
 
-            const inventories = await agentRepository.findInventories(input.productIds);
+            const scope: ScanInventoryScope = input.scope || 'ALL';
+            const inventories = scope === 'INGREDIENT' ? [] : await agentRepository.findInventories(input.productIds);
             const results = [];
             const createdPurchaseRequests = [];
 
@@ -546,7 +602,7 @@ export const agentService = {
                         },
                         _sum: { quantity: true }
                     });
-                    const totalSold = Math.abs(recentSales._sum.quantity || 0);
+                    const totalSold = Math.abs(Number(recentSales._sum.quantity || 0));
                     const averageDailySales = totalSold / 30;
 
                     // Dùng calculateReorderPoint chung — đồng bộ tiêu chí với recommendationService
@@ -1014,10 +1070,434 @@ export const agentService = {
                 }
             }
 
+            // --- Ingredient BOM / FEFO Scan Loop (UC-03, UC-06, UC-07, UC-08) ---
+            let resolvedIngredientIds: string[] | undefined = input.ingredientIds?.length ? [...input.ingredientIds] : undefined;
+            if (!resolvedIngredientIds && input.productIds?.length && agentRepository.resolveIngredientIdsFromProducts) {
+                const fromProducts = await agentRepository.resolveIngredientIdsFromProducts(input.productIds);
+                if (fromProducts.length > 0) {
+                    resolvedIngredientIds = fromProducts;
+                }
+            }
+
+            const shouldScanIngredients =
+                scope === 'INGREDIENT' ||
+                (scope === 'ALL' && (!input.productIds?.length || Boolean(resolvedIngredientIds?.length)));
+
+            const ingredients: AgentIngredientRecord[] =
+                shouldScanIngredients && agentRepository.findIngredientsForScan
+                    ? await agentRepository.findIngredientsForScan(resolvedIngredientIds)
+                    : [];
+
+            let ingredientLowCount = 0;
+            let ingredientExpiringCount = 0;
+            let ingredientPrCreatedCount = 0;
+
+            for (const ingredient of ingredients) {
+                try {
+                    const unit = ingredient.baseUnit || 'g';
+                    const minThreshold = Number(ingredient.minThreshold ?? settings.defaultMinThreshold ?? 10);
+                    const supplierLinks = ingredient.supplierLinks ?? [];
+                    const activeSupplierLink = supplierLinks.find((sl) => isSupplierActive(sl.supplier));
+                    const planningDays = settings.reorderPlanningDays;
+
+                    const consumption = agentRepository.getIngredientConsumption
+                        ? await agentRepository.getIngredientConsumption(ingredient.id, 30)
+                        : { totalConsumed7d: 0, totalConsumed30d: 0, dailyConsumption7d: 0, dailyConsumption30d: 0 };
+                    const averageDailyConsumption = consumption.dailyConsumption30d;
+
+                    const leadTimeDays = activeSupplierLink?.leadTimeDays && activeSupplierLink.leadTimeDays > 0 ? activeSupplierLink.leadTimeDays : 0;
+                    const { baseDailySales, effectiveLeadTimeDays, safetyStock, reorderPoint } = calculateReorderPoint(
+                        averageDailyConsumption,
+                        leadTimeDays,
+                        DELAY_BUFFER_DAYS,
+                        SAFETY_BUFFER_DAYS,
+                        Math.max(1, minThreshold)
+                    );
+                    const delayBufferDays = DELAY_BUFFER_DAYS;
+                    const bufferDays = SAFETY_BUFFER_DAYS;
+
+                    const startOfToday = new Date();
+                    startOfToday.setHours(0, 0, 0, 0);
+                    const allBatches = ingredient.batches ?? [];
+                    const positiveBatches = allBatches.filter((b) => Number(b.quantityRemaining) > 0);
+                    const unexpiredBatches = positiveBatches.filter(
+                        (b) => !b.expirationDate || new Date(b.expirationDate) >= startOfToday
+                    );
+
+                    const currentQty = Number(ingredient.quantity || 0);
+                    const reservedQty = Number(ingredient.reserved || 0);
+                    const unexpiredSum = unexpiredBatches.reduce((sum, b) => sum + Number(b.quantityRemaining), 0);
+                    const effectiveStock = positiveBatches.length > 0 ? Math.min(currentQty, unexpiredSum) : currentQty;
+                    const availableStock = Math.max(0, effectiveStock - reservedQty);
+
+                    const convQty = Math.max(1, Number(activeSupplierLink?.conversionQuantity || 1));
+                    const minOrderPacks = Math.max(1, Number(activeSupplierLink?.minOrderQuantity || 1));
+                    const targetStock = averageDailyConsumption > 0
+                        ? Math.ceil(baseDailySales * (planningDays + effectiveLeadTimeDays + bufferDays))
+                        : Math.max(minThreshold * 2, minThreshold + convQty);
+                    const rawDeficit = Math.max(targetStock - availableStock, minThreshold - availableStock, 1);
+                    const neededPacks = Math.max(minOrderPacks, Math.ceil(rawDeficit / convQty));
+                    const recommendedBaseQty = Math.ceil(neededPacks * convQty);
+
+                    const usedByProducts = Array.from(
+                        new Set(
+                            (ingredient.recipeItems ?? [])
+                                .map((ri) => ri.recipe?.product?.name)
+                                .filter((n): n is string => Boolean(n))
+                        )
+                    );
+
+                    const backupSuppliers = supplierLinks
+                        .filter((sl) => sl.supplierId !== activeSupplierLink?.supplierId && isSupplierActive(sl.supplier))
+                        .map((sl) => ({
+                            supplierId: sl.supplierId,
+                            supplierName: sl.supplier.name,
+                            isPreferred: sl.isPreferred,
+                            leadTimeDays: sl.leadTimeDays,
+                            moq: sl.minOrderQuantity,
+                            purchasePrice: Number(sl.pricePerBaseUnit)
+                        }));
+
+                    const baseOutput = {
+                        scanSessionId,
+                        triggerType,
+                        sourceType: input.sourceType,
+                        sourceId: input.sourceId,
+                        itemType: 'INGREDIENT' as const,
+                        ingredientId: ingredient.id,
+                        ingredientName: ingredient.name,
+                        productId: ingredient.id,
+                        productName: ingredient.name,
+                        sku: ingredient.sku,
+                        baseUnit: unit,
+                        unit,
+                        quantity: currentQty,
+                        reservedStock: reservedQty,
+                        availableStock,
+                        minThreshold,
+                        safetyStock,
+                        recommendedThreshold: targetStock,
+                        usedByProducts
+                    };
+
+                    const baseInput = {
+                        ...baseOutput,
+                        note: input.note,
+                        avgDailySales: Number(averageDailyConsumption.toFixed(2)),
+                        reorderPlanningPeriod: settings.reorderPlanningPeriod,
+                        reorderPlanningDays: planningDays,
+                        leadTimeDays: activeSupplierLink?.leadTimeDays ?? null,
+                        delayBufferDays,
+                        reorderPoint,
+                        recommendedQty: recommendedBaseQty,
+                        recommendedPacks: neededPacks,
+                        purchaseUnit: activeSupplierLink?.purchaseUnit ?? unit,
+                        conversionQuantity: convQty,
+                        backupSuppliers
+                    };
+
+                    // a. Check batch expiry (FEFO)
+                    for (const batch of positiveBatches) {
+                        if (!batch.expirationDate) continue;
+                        const expDate = new Date(batch.expirationDate);
+                        const daysLeft = Math.ceil((expDate.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24));
+
+                        let warningType = 'SAFE';
+                        let actionLabel = 'SCAN_INGREDIENT_SAFE';
+                        let reasoning = 'Lô nguyên liệu an toàn.';
+                        let title = 'Thông báo lô nguyên liệu';
+                        let actionMsg = 'Không cần xử lý';
+
+                        if (daysLeft < 0) {
+                            warningType = 'EXPIRED';
+                            actionLabel = 'SCAN_INGREDIENT_EXPIRED';
+                            reasoning = 'Phát hiện lô nguyên liệu đã hết hạn, cần xuất hủy (Waste).';
+                            title = 'Cảnh báo lô nguyên liệu hết hạn';
+                            actionMsg = 'Ghi nhận xuất hủy lô hết hạn';
+                        } else if (daysLeft <= 3) {
+                            warningType = 'CRITICAL_EXPIRY';
+                            actionLabel = 'SCAN_INGREDIENT_CRITICAL_EXPIRY';
+                            reasoning = 'Phát hiện lô nguyên liệu sắp hết hạn trong ≤ 3 ngày.';
+                            title = 'Cảnh báo lô nguyên liệu cực kỳ cận hạn';
+                            actionMsg = 'Ưu tiên dùng FEFO hoặc kiểm tra chất lượng';
+                        } else if (daysLeft <= 7) {
+                            warningType = 'NEAR_EXPIRY';
+                            actionLabel = 'SCAN_INGREDIENT_NEAR_EXPIRY';
+                            reasoning = 'Phát hiện lô nguyên liệu cận hạn trong ≤ 7 ngày.';
+                            title = 'Cảnh báo lô nguyên liệu cận hạn';
+                            actionMsg = 'Theo dõi ưu tiên xuất kho FEFO';
+                        }
+
+                        if (warningType !== 'SAFE') {
+                            ingredientExpiringCount++;
+                            const dedupeKey = `batch_expiry_ing_${ingredient.id}_${batch.id}_${warningType}_${startOfToday.toISOString().split('T')[0]}`;
+                            const existingLog = prisma.agentLog?.findFirst
+                                ? await prisma.agentLog.findFirst({
+                                      where: { action: actionLabel, output: { contains: dedupeKey } }
+                                  })
+                                : null;
+
+                            if (!existingLog) {
+                                const message = `AI Agent phát hiện nguyên liệu ${ingredient.name}, lô ${batch.batchCode} ${warningType === 'EXPIRED' ? 'đã hết hạn' : 'sắp hết hạn trong ' + daysLeft + ' ngày'}.`;
+                                const log = await agentRepository.createLog({
+                                    action: actionLabel,
+                                    input: JSON.stringify(baseInput),
+                                    output: JSON.stringify({
+                                        ...baseOutput,
+                                        reason: warningType,
+                                        message,
+                                        batchId: batch.id,
+                                        batchCode: batch.batchCode,
+                                        dedupeKey,
+                                        notification: {
+                                            type: warningType === 'EXPIRED' ? 'error' : 'warning',
+                                            title,
+                                            description: message,
+                                            productName: ingredient.name,
+                                            batchCode: batch.batchCode,
+                                            quantity: Number(batch.quantityRemaining),
+                                            expirationDate: batch.expirationDate,
+                                            daysLeft,
+                                            action: actionMsg,
+                                            actionLabel: 'Xem chi tiết nguyên liệu',
+                                            actionUrl: `/admin/ingredients/${ingredient.id}`
+                                        }
+                                    }),
+                                    reasoning,
+                                    result: 'WARNING',
+                                    fallback_used: false,
+                                    reference_type: 'Ingredient',
+                                    reference_id: ingredient.id,
+                                    creator: userId ? { connect: { id: userId } } : undefined
+                                });
+                                results.push(toLogDto(log));
+                            }
+                        }
+                    }
+
+                    // b. Stock threshold comparison
+                    if (availableStock > reorderPoint) {
+                        const log = await agentRepository.createLog({
+                            action: 'SCAN_INGREDIENT_STOCK_OK',
+                            input: JSON.stringify(baseInput),
+                            output: JSON.stringify({
+                                ...baseOutput,
+                                skipped: true,
+                                reason: 'STOCK_OK',
+                                message: `AI Agent đã quét nguyên liệu ${ingredient.name}, tồn kho vẫn an toàn (${availableStock} ${unit}).`
+                            }),
+                            reasoning: `Tồn kho nguyên liệu ${ingredient.name} vẫn đang ở mức an toàn (${availableStock} ${unit} > điểm đặt hàng ${reorderPoint} ${unit}).`,
+                            result: 'STOCK_OK',
+                            fallback_used: false,
+                            reference_type: 'Ingredient',
+                            reference_id: ingredient.id,
+                            creator: userId ? { connect: { id: userId } } : undefined
+                        });
+                        results.push(toLogDto(log));
+                        continue;
+                    }
+
+                    ingredientLowCount++;
+
+                    const openIngPr = agentRepository.findOpenIngredientPurchaseRequest
+                        ? await agentRepository.findOpenIngredientPurchaseRequest(ingredient.id)
+                        : null;
+                    if (openIngPr) {
+                        const reasoning = `Nguyên liệu "${ingredient.name}" đã có yêu cầu nhập hàng đang chờ xử lý, Agent không tạo thêm yêu cầu mới để tránh trùng.`;
+                        const log = await agentRepository.createLog({
+                            action: 'SCAN_INGREDIENT_SKIP_DUPLICATE',
+                            input: JSON.stringify(baseInput),
+                            output: JSON.stringify({
+                                ...baseOutput,
+                                skipped: true,
+                                reason: 'ACTIVE_PR_EXISTS',
+                                purchaseRequestId: openIngPr.id,
+                                message: `AI Agent bỏ qua nguyên liệu ${ingredient.name} vì đã có yêu cầu nhập hàng đang xử lý.`,
+                                notification: notificationForDuplicatePurchaseRequest(ingredient.name, openIngPr.id)
+                            }),
+                            reasoning,
+                            result: 'SKIPPED_DUPLICATE',
+                            fallback_used: true,
+                            reference_type: 'Ingredient',
+                            reference_id: ingredient.id,
+                            creator: userId ? { connect: { id: userId } } : undefined
+                        });
+                        results.push(toLogDto(log));
+                        continue;
+                    }
+
+                    if (supplierLinks.length === 0) {
+                        const reasoning = `Nguyên liệu "${ingredient.name}" chưa được liên kết với nhà cung cấp.`;
+                        const log = await agentRepository.createLog({
+                            action: 'SCAN_INGREDIENT_NO_SUPPLIER',
+                            input: JSON.stringify(baseInput),
+                            output: JSON.stringify({
+                                ...baseOutput,
+                                skipped: true,
+                                reason: 'NO_SUPPLIER',
+                                message: `AI Agent phát hiện nguyên liệu ${ingredient.name} dưới ngưỡng nhưng chưa có nhà cung cấp.`,
+                                notification: notificationForNoSupplier(ingredient.name)
+                            }),
+                            reasoning,
+                            result: 'NO_SUPPLIER',
+                            fallback_used: true,
+                            reference_type: 'Ingredient',
+                            reference_id: ingredient.id,
+                            creator: userId ? { connect: { id: userId } } : undefined
+                        });
+                        results.push(toLogDto(log));
+                        continue;
+                    }
+
+                    if (!activeSupplierLink) {
+                        const reasoning = `Nhà cung cấp của nguyên liệu "${ingredient.name}" đang bị vô hiệu hóa.`;
+                        const log = await agentRepository.createLog({
+                            action: 'SCAN_INGREDIENT_INACTIVE_SUPPLIER',
+                            input: JSON.stringify(baseInput),
+                            output: JSON.stringify({
+                                ...baseOutput,
+                                skipped: true,
+                                reason: 'SUPPLIERS_INACTIVE',
+                                message: `AI Agent phát hiện nhà cung cấp của nguyên liệu ${ingredient.name} đang ngừng hoạt động.`,
+                                notification: notificationForInactiveSupplier(ingredient.name)
+                            }),
+                            reasoning,
+                            result: 'SKIPPED',
+                            fallback_used: true,
+                            reference_type: 'Ingredient',
+                            reference_id: ingredient.id,
+                            creator: userId ? { connect: { id: userId } } : undefined
+                        });
+                        results.push(toLogDto(log));
+                        continue;
+                    }
+
+                    // Build replenishment plan via workflows/replenishment.ts
+                    const plan = replenishmentPlan({
+                        supplierId: activeSupplierLink.supplierId,
+                        unitCosts: {
+                            [ingredient.id]: Number(activeSupplierLink.pricePerBaseUnit || 0).toFixed(4).replace(/\.?0+$/, '') || '0'
+                        }
+                    });
+
+                    const nearestExpiryBatch = unexpiredBatches.find((b) => Boolean(b.expirationDate)) ?? null;
+                    const reasoning = withOptionalText(
+                        ingredientReasoningText({
+                            ingredient,
+                            currentQty,
+                            reservedQty,
+                            availableStock,
+                            minThreshold,
+                            averageDailyConsumption,
+                            planningPeriod: settings.reorderPlanningPeriod,
+                            planningDays,
+                            leadTimeDays,
+                            bufferDays,
+                            usedByProducts,
+                            nearestExpiryBatch,
+                            supplierName: activeSupplierLink.supplier.name,
+                            purchaseUnit: activeSupplierLink.purchaseUnit || unit,
+                            conversionQuantity: convQty,
+                            neededPacks,
+                            recommendedBaseQty
+                        }),
+                        [
+                            availableStock === 0 ? 'Tồn kho nguyên liệu khả dụng đã bằng 0, cần ưu tiên nhập hàng khẩn cấp.' : null,
+                            settings.promptPrefix,
+                            settings.slogan
+                        ]
+                    );
+
+                    const request = await agentRepository.createAiIngredientPurchaseRequest(
+                        ingredient,
+                        activeSupplierLink,
+                        recommendedBaseQty,
+                        reasoning,
+                        userId
+                    );
+                    ingredientPrCreatedCount++;
+                    createdPurchaseRequests.push({
+                        id: request.id,
+                        requestNumber: request.requestNumber,
+                        supplierName: activeSupplierLink.supplier.name,
+                        status: request.status
+                    });
+
+                    const output = {
+                        ...baseOutput,
+                        reason: 'CREATED_PURCHASE_REQUEST',
+                        purchaseRequestId: request.id,
+                        purchaseRequestCode: request.requestNumber,
+                        recommendedSupplierId: activeSupplierLink.supplierId,
+                        supplierName: activeSupplierLink.supplier.name,
+                        recommendedQty: recommendedBaseQty,
+                        recommendedPacks: neededPacks,
+                        purchaseUnit: activeSupplierLink.purchaseUnit || unit,
+                        conversionQuantity: convQty,
+                        replenishmentPlanSteps: plan.map((s) => s.id),
+                        backupSuppliers,
+                        confidence: 0.85,
+                        message: `AI Agent tự động quét nguyên liệu ${ingredient.name}. Khả dụng ${availableStock} ${unit}, ngưỡng ${minThreshold} ${unit}. Đã tạo yêu cầu nhập hàng ${request.requestNumber} (${neededPacks} ${activeSupplierLink.purchaseUnit || unit}).`,
+                        notification: notificationForCreatedPurchaseRequest(ingredient.name, request.id)
+                    };
+
+                    const log = await agentRepository.createLog({
+                        action: 'SCAN_INGREDIENT_CREATE_PURCHASE_REQUEST',
+                        input: JSON.stringify(baseInput),
+                        output: JSON.stringify(output),
+                        reasoning,
+                        result: 'CREATED_PURCHASE_REQUEST',
+                        fallback_used: true,
+                        reference_type: 'PurchaseRequest',
+                        reference_id: request.id,
+                        creator: userId ? { connect: { id: userId } } : undefined
+                    });
+                    results.push(toLogDto(log));
+                } catch (error) {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    const failureInput = {
+                        scanSessionId,
+                        triggerType,
+                        sourceType: input.sourceType,
+                        sourceId: input.sourceId,
+                        itemType: 'INGREDIENT',
+                        ingredientId: ingredient.id,
+                        ingredientName: ingredient.name,
+                        productId: ingredient.id,
+                        productName: ingredient.name
+                    };
+                    const failureOutput = {
+                        ...failureInput,
+                        reason: 'SERVER_ERROR',
+                        message: 'AI Agent không thể kiểm tra tồn kho cho nguyên liệu này.',
+                        errorMessage,
+                        notification: notificationForAgentFailed(ingredient.name)
+                    };
+                    const log = await agentRepository.createLog({
+                        action: 'SCAN_INGREDIENT_FAILED',
+                        input: JSON.stringify(failureInput),
+                        output: JSON.stringify(failureOutput),
+                        reasoning: 'AI Agent failed while scanning ingredient.',
+                        result: 'FAILED',
+                        fallback_used: false,
+                        error_message: errorMessage,
+                        reference_type: 'Ingredient',
+                        reference_id: ingredient.id,
+                        creator: userId ? { connect: { id: userId } } : undefined
+                    });
+                    results.push(toLogDto(log));
+                }
+            }
+
             const scanFinishedAt = Date.now();
             const durationMs = scanFinishedAt - (activeScanStartedAt || scanFinishedAt);
             const summary = {
                 totalProductsScanned: inventories.length,
+                productScanned: inventories.length,
+                ingredientScanned: ingredients.length,
+                ingredientLowCount,
+                ingredientExpiringCount,
+                ingredientPrCreatedCount,
                 stockOkCount: results.filter(r => r.result === 'STOCK_OK').length,
                 warningCount: results.filter(r => r.reason === 'THRESHOLD_REACHED' || r.result === 'WARNING').length,
                 atThresholdCount: results.filter(r => r.reason === 'THRESHOLD_REACHED').length,
@@ -1073,7 +1553,8 @@ export const agentService = {
         const action = asString(query.action);
         const statusFilter = asString(query.status)?.toUpperCase() as AgentLogStatus | undefined;
         const triggerType = asString(query.triggerType);
-        const productId = asString(query.productId);
+        const productId = asString(query.productId) || asString(query.ingredientId);
+        const itemTypeFilter = asString(query.itemType)?.toUpperCase();
 
         const rawLogs = await agentRepository.findLogs({
             ...(action ? { action } : {}),
@@ -1092,7 +1573,8 @@ export const agentService = {
             .map(toLogDto)
             .filter((log: ReturnType<typeof toLogDto>) => (statusFilter ? log.status === statusFilter : true))
             .filter((log: ReturnType<typeof toLogDto>) => (triggerType ? log.triggerType === triggerType : true))
-            .filter((log: ReturnType<typeof toLogDto>) => (productId ? log.productId === productId || log.referenceId === productId : true));
+            .filter((log: ReturnType<typeof toLogDto>) => (itemTypeFilter ? log.itemType === itemTypeFilter : true))
+            .filter((log: ReturnType<typeof toLogDto>) => (productId ? log.productId === productId || log.ingredientId === productId || log.referenceId === productId : true));
 
         const total = filtered.length;
         const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -1112,7 +1594,14 @@ export const agentService = {
 
     async recommendReorder(input: RecommendReorderInput = { force: false }, userId: string) {
         userId = await requireAgentUser(userId);
-        const productIds = input.productIds || await agentRepository.findActiveProductIds();
+        const scope: ScanInventoryScope = input.scope || 'ALL';
+        const productIds = scope === 'INGREDIENT'
+            ? []
+            : (input.productIds || await agentRepository.findActiveProductIds());
+        const ingredientIds = scope === 'PRODUCT'
+            ? []
+            : (input.ingredientIds || (agentRepository.findActiveIngredientIds ? await agentRepository.findActiveIngredientIds() : []));
+
         const recommendations = [];
         const skippedProducts = [];
 
@@ -1131,8 +1620,25 @@ export const agentService = {
             }
         }
 
+        if ((recommendationService as any).generateForIngredient) {
+            for (const ingId of ingredientIds) {
+                try {
+                    const res = await recommendationService.generateForIngredient(ingId, input.force, userId);
+                    if (res.skipped && res.skippedProduct) skippedProducts.push(res.skippedProduct);
+                    if (!res.skipped && res.recommendation) {
+                        recommendations.push({
+                            logId: res.logId,
+                            ...res.recommendation
+                        });
+                    }
+                } catch (err: any) {
+                    logger.error(`Recommendation failed for ingredient ${ingId}:`, err);
+                }
+            }
+        }
+
         return {
-            scannedCount: productIds.length,
+            scannedCount: productIds.length + ingredientIds.length,
             newRecommendationsCount: recommendations.length,
             skippedCount: skippedProducts.length,
             recommendations,
@@ -1141,14 +1647,19 @@ export const agentService = {
     },
 
     async getRecommendations() {
-        const logs = await agentRepository.findLogs({ action: 'RECOMMEND_REORDER' });
+        const logs = await agentRepository.findLogs({
+            action: { in: ['RECOMMEND_REORDER', 'RECOMMEND_REORDER_INGREDIENT'] } as any
+        });
         return logs.map((log: any /* Dùng any do Prisma model type không được infer đầy đủ qua findLogs */) => {
             const output = log.output ? JSON.parse(log.output) : null;
             return {
                 logId: log.id,
-                productId: output?.productId || '',
-                productName: output?.productName || '',
+                itemType: output?.itemType || (log.action === 'RECOMMEND_REORDER_INGREDIENT' ? 'INGREDIENT' : 'PRODUCT'),
+                productId: output?.productId || output?.ingredientId || '',
+                ingredientId: output?.ingredientId || null,
+                productName: output?.productName || output?.ingredientName || '',
                 sku: output?.sku || '',
+                baseUnit: output?.baseUnit || null,
                 currentQuantity: output?.currentQuantity ?? 0,
                 minThreshold: output?.minThreshold ?? 0,
                 salesVelocity7d: output?.salesVelocity7d ?? 0,
@@ -1174,7 +1685,9 @@ export const agentService = {
         userId = await requireAgentUser(userId);
         const log = await agentRepository.findRecommendationLog(logId);
         if (!log) throw new AgentHttpError(404, 'Recommendation log not found.');
-        if (log.action !== 'RECOMMEND_REORDER') throw new AgentHttpError(400, 'Invalid log action type.');
+        if (log.action !== 'RECOMMEND_REORDER' && log.action !== 'RECOMMEND_REORDER_INGREDIENT') {
+            throw new AgentHttpError(400, 'Invalid log action type.');
+        }
         if (log.result === 'CONVERTED_TO_PR') throw new AgentHttpError(400, 'Recommendation has already been converted to a purchase request.');
 
         const recommendation = log.output ? JSON.parse(log.output) : null;
@@ -1184,6 +1697,7 @@ export const agentService = {
             return await agentRepository.createPurchaseRequestFromRecommendation({
                 logId,
                 productId: recommendation.productId,
+                ingredientId: recommendation.ingredientId,
                 supplierId: recommendation.recommendedSupplierId,
                 recommendedQuantity: recommendation.recommendedQuantity,
                 reasoning: recommendation.reasoning,
@@ -1193,7 +1707,7 @@ export const agentService = {
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to create purchase request.';
             if (message === ACTIVE_PURCHASE_REQUEST_MESSAGE) throw new AgentHttpError(400, ACTIVE_PURCHASE_REQUEST_MESSAGE);
-            if (message.includes('Inventory record')) throw new AgentHttpError(404, message);
+            if (message.includes('Inventory record') || message.includes('Ingredient record')) throw new AgentHttpError(404, message);
             throw error;
         }
     },

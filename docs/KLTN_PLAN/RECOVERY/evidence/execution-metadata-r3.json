@@ -1,0 +1,26 @@
+{
+  "timezone": "Asia/Saigon",
+  "runs": [
+    {
+      "command": "node --test apps/api/tests/auth-registration.test.cjs apps/api/tests/inventory-consistency.test.cjs apps/api/tests/inventory-ui-contract.test.cjs apps/api/tests/test-db-security.test.cjs apps/api/tests/purchase-receipt-validation.test.cjs apps/api/tests/order-after-commit.test.cjs apps/agent/tests/internal-auth.test.cjs apps/agent/tests/principal-guards.test.cjs apps/agent/tests/rule-based-regression.test.cjs apps/agent/tests/gemini-output.test.cjs",
+      "start": "2026-11-05T16:22:16.591Z",
+      "end": "2026-11-05T16:22:25.675Z",
+      "exit": 0,
+      "log": "r3-regression.log"
+    },
+    {
+      "command": "node node_modules/typescript/bin/tsc -p apps/api/tsconfig.json --noEmit",
+      "start": "2026-11-05T16:22:25.675Z",
+      "end": "2026-11-05T16:22:34.674Z",
+      "exit": 0,
+      "log": "r3-api-typecheck.log"
+    },
+    {
+      "command": "node node_modules/typescript/bin/tsc -p apps/agent/tsconfig.json --noEmit",
+      "start": "2026-11-05T16:22:34.674Z",
+      "end": "2026-11-05T16:22:39.644Z",
+      "exit": 0,
+      "log": "r3-agent-typecheck.log"
+    }
+  ]
+}

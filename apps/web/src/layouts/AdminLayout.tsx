@@ -6,16 +6,16 @@ import { systemSettingsApi } from "../api/systemSettings.api";
 
 const TITLE_MAP: Record<string, string> = {
   "/admin/dashboard": "Dashboard",
-  "/admin/products": "Danh sách sản phẩm",
-  "/admin/products/create": "Thêm sản phẩm mới",
-  "/admin/ingredients": "Nguyên liệu & Giá vốn",
-  "/admin/inventory": "Quản lý tồn kho",
-  "/admin/inventory/transactions": "Lịch sử giao dịch kho",
-  "/admin/suppliers": "Nhà cung cấp",
+  "/admin/products": "Thực đơn pha chế & Công thức (BOM)",
+  "/admin/products/create": "Thêm món pha chế mới",
+  "/admin/ingredients": "Kho Nguyên liệu & Giá vốn",
+  "/admin/inventory": "Kho Nguyên liệu & Giá vốn",
+  "/admin/inventory/transactions": "Lịch sử giao dịch kho nguyên liệu",
+  "/admin/suppliers": "Nhà cung cấp nguyên liệu",
   "/admin/orders": "Quản lý đơn hàng",
-  "/admin/simulate-sale": "Mô phỏng bán hàng",
-  "/admin/purchase-requests": "Yêu cầu mua hàng",
-  "/admin/agent-logs": "Nhật ký Agent",
+  "/admin/simulate-sale": "Mô phỏng bán hàng (Trừ kho nguyên liệu BOM)",
+  "/admin/purchase-requests": "Yêu cầu nhập nguyên liệu",
+  "/admin/agent-logs": "Nhật ký AI Agent",
   "/admin/system-settings": "Cài đặt hệ thống",
 };
 

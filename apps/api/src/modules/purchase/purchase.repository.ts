@@ -19,6 +19,8 @@ import type {
     PurchaseRequestFiltersInput,
     ReceivePurchaseRequestInput
 } from './purchase.validator';
+import { duplicateReceiptItemIndex } from './purchase.receipt-validation';
+import { HttpError } from '../../common/http-error';
 
 export const purchaseInclude = {
     supplier: { include: { products: true, ingredients: true } },
@@ -205,6 +207,10 @@ export const purchaseRepository = {
     },
 
     async receive(request: PurchaseRequestRecord, input: ReceivePurchaseRequestInput, userId: string): Promise<PurchaseRequestRecord> {
+        if (duplicateReceiptItemIndex(input.items) !== -1) {
+            throw new HttpError(400, 'Each purchase request item can appear only once per receipt.');
+        }
+
         if (input.idempotencyKey) {
             const existingReceipt = await prisma.goodsReceipt.findUnique({
                 where: { idempotencyKey: input.idempotencyKey }
@@ -217,7 +223,6 @@ export const purchaseRepository = {
                 if (existingPr) return existingPr;
             }
         }
-
         let retries = 0;
         let lastError: any = null;
 

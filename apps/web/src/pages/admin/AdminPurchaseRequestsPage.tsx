@@ -1,10 +1,11 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, FileSpreadsheet, MailWarning, Plus, X } from "lucide-react";
 import { purchaseRequestsApi } from "../../api/purchaseRequests.api";
-import { productsApi } from "../../api/products.api";
+import { ingredientsApi } from "../../api/ingredients.api";
 import { suppliersApi } from "../../api/suppliers.api";
-import { inventoryApi } from "../../api/inventory.api";
 import type { PurchaseRequest } from "../../types/purchaseRequest.types";
 import { formatDate } from "../../utils/formatDate";
 import { Badge } from "../../components/common/Badge";
@@ -28,7 +29,9 @@ const FILTER_OPTIONS = [
   { label: "Đã từ chối", value: "REJECTED" },
 ];
 
-export const AdminPurchaseRequestsPage: React.FC = () => {
+export const AdminPurchaseRequestsPage: React.FC = () => mockEnabled ? <MockWorkspace area="purchases" /> : <LegacyAdminPurchaseRequestsPage />;
+
+const LegacyAdminPurchaseRequestsPage: React.FC = () => {
   const navigate = useNavigate();
   const { isStaff } = useAuth();
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
@@ -40,7 +43,6 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
   const [isFormLoading, setIsFormLoading] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [inventories, setInventories] = useState<any[]>([]);
   const [supplierProductsMapping, setSupplierProductsMapping] = useState<any[]>([]);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
@@ -73,18 +75,16 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
     setIsModalOpen(true);
     setIsFormLoading(true);
     try {
-      const [prodRes, suppRes, invRes, spmRes] = await Promise.all([
-        productsApi.getProducts(),
+      const [ingRes, suppRes, spmRes] = await Promise.all([
+        ingredientsApi.getIngredients(),
         suppliersApi.getSuppliers(),
-        inventoryApi.getInventories(),
         suppliersApi.getSupplierProducts(),
       ]);
-      setProducts(prodRes);
+      setProducts(ingRes);
       setSuppliers(suppRes);
-      setInventories(invRes);
       setSupplierProductsMapping(spmRes);
     } catch {
-      toast.error("Không thể tải danh sách sản phẩm hoặc nhà cung cấp.");
+      toast.error("Không thể tải danh sách nguyên liệu hoặc nhà cung cấp.");
     } finally {
       setIsFormLoading(false);
     }
@@ -100,7 +100,7 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProductId) return toast.error("Vui lòng chọn sản phẩm.");
+    if (!selectedProductId) return toast.error("Vui lòng chọn nguyên liệu.");
     if (!selectedSupplierId) return toast.error("Vui lòng chọn nhà cung cấp.");
     if (!quantity) return toast.error("Vui lòng nhập số lượng đề xuất.");
 
@@ -108,19 +108,16 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
     if (Number.isNaN(qty) || qty <= 0) return toast.error("Số lượng đề xuất phải lớn hơn 0.");
 
     setIsFormLoading(true);
-    toast.info("Đang tạo yêu cầu nhập hàng...");
+    toast.info("Đang tạo yêu cầu nhập nguyên liệu...");
 
     try {
-      const inv = inventories.find((item: any) => item.productId === selectedProductId || item.product_id === selectedProductId);
-      const inventoryId = inv?.id || selectedProductId;
-
       const newPr = await purchaseRequestsApi.createPurchaseRequest({
         supplierId: selectedSupplierId,
         notes: note,
-        items: [{ inventoryId, quantity: qty }],
+        items: [{ ingredientId: selectedProductId, quantity: qty }],
       });
 
-      toast.success("Tạo yêu cầu nhập hàng thành công.");
+      toast.success("Tạo yêu cầu nhập nguyên liệu thành công.");
       setStatusFilter(newPr.status || "PENDING");
       handleCloseModal();
       fetchPRs();
@@ -158,7 +155,7 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
       ),
     },
     {
-      header: "Sản phẩm đề xuất",
+      header: "Nguyên liệu đề xuất",
       render: (pr: PurchaseRequest) => {
         const isPending = pr.status === "PENDING";
         const isPendingDelete = pr.items?.some((item: any) => !!item.productPendingDelete);
@@ -167,12 +164,12 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
             <div className="flex items-center gap-2">
               {isPending && <MailWarning className="flex-shrink-0 animate-bounce text-amber-700" size={13} />}
               <span className={`font-semibold ${isPending ? "text-amber-900" : "text-slate-800"}`}>
-                {pr.product?.name || "Sản phẩm"}
+                {pr.product?.name || "Nguyên liệu"}
               </span>
             </div>
             {isPendingDelete && (
               <span className="w-fit rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">
-                Sản phẩm chờ xoá
+                Nguyên liệu đã ngừng
               </span>
             )}
           </div>
@@ -320,7 +317,7 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
         <DataTable
           columns={columns}
           data={filteredPRs}
-          searchPlaceholder="Tìm theo tên sản phẩm..."
+          searchPlaceholder="Tìm theo tên nguyên liệu..."
           searchValue={search}
           onSearchChange={setSearch}
         />
@@ -332,7 +329,7 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
           <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-100 p-4">
-              <h3 className="font-bold text-slate-800">Tạo yêu cầu nhập hàng</h3>
+              <h3 className="font-bold text-slate-800">Tạo yêu cầu nhập nguyên liệu</h3>
               <button onClick={handleCloseModal} className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600">
                 <X size={20} />
               </button>
@@ -342,7 +339,7 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
               <form id="create-pr-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-semibold text-slate-700">
-                    Sản phẩm <span className="text-rose-500">*</span>
+                    Nguyên liệu <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={selectedProductId}
@@ -351,7 +348,10 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
                       setSelectedProductId(newProductId);
                       if (newProductId) {
                         const sps = supplierProductsMapping.filter(
-                          (sp: any) => sp.productId === newProductId || sp.product_id === newProductId
+                          (sp: any) =>
+                            sp.ingredientId === newProductId ||
+                            sp.productId === newProductId ||
+                            sp.product_id === newProductId
                         );
                         if (sps.length > 0) {
                           const preferred = sps.find((sp: any) => sp.isPreferred || sp.is_preferred) || sps[0];
@@ -366,10 +366,10 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
                     disabled={isFormLoading}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                   >
-                    <option value="">-- Chọn sản phẩm --</option>
+                    <option value="">-- Chọn nguyên liệu --</option>
                     {products.map((product) => (
                       <option key={product.id} value={product.id}>
-                        {product.name}
+                        {product.name} ({product.baseUnit || product.unit || ""})
                       </option>
                     ))}
                   </select>
@@ -389,7 +389,10 @@ export const AdminPurchaseRequestsPage: React.FC = () => {
                     {(selectedProductId
                       ? suppliers.filter((supplier) => {
                         const sps = supplierProductsMapping.filter(
-                          (sp: any) => sp.productId === selectedProductId || sp.product_id === selectedProductId
+                          (sp: any) =>
+                            sp.ingredientId === selectedProductId ||
+                            sp.productId === selectedProductId ||
+                            sp.product_id === selectedProductId
                         );
 
                         if (sps.length > 0) {

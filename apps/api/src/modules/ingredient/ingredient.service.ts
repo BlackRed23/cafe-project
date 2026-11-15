@@ -9,6 +9,7 @@ import {
     toDecimal
 } from '../../common/ingredient-cost.utils';
 import { convertToBaseQuantity } from '../../common/unit-conversion';
+import { scanInventoryViaAgentService } from '../agent/agent.client';
 import { recalculateCostsForIngredient } from '../recipe/recipe.service';
 import {
     ingredientInclude,
@@ -266,7 +267,7 @@ export const ingredientService = {
     },
 
     async importStock(id: string, input: ImportIngredientInput, userId: string) {
-        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.$queryRaw`SELECT "id" FROM "Ingredient" WHERE "id" = ${id} FOR UPDATE`;
             const ingredient = await ingredientRepository.findById(id, tx);
             if (!ingredient) {
@@ -368,10 +369,26 @@ export const ingredientService = {
                 recalculatedProductCount: recalculatedProducts.length
             };
         });
+
+        scanInventoryViaAgentService(
+            {
+                ingredientIds: [id],
+                scope: 'INGREDIENT',
+                triggerType: 'INGREDIENT_IMPORTED',
+                sourceType: 'INGREDIENT',
+                sourceId: id,
+                note: 'Ingredient stock imported'
+            },
+            userId
+        ).catch(() => {
+            console.error('[AI_AGENT] Failed to scan ingredient after stock import');
+        });
+
+        return result;
     },
 
     async recordWaste(id: string, input: WasteIngredientInput, userId: string) {
-        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.$queryRaw`SELECT "id" FROM "Ingredient" WHERE "id" = ${id} FOR UPDATE`;
             const ingredient = await ingredientRepository.findById(id, tx);
             if (!ingredient) {
@@ -441,6 +458,22 @@ export const ingredientService = {
                 totalWasteCost: Number(totalCost)
             };
         });
+
+        scanInventoryViaAgentService(
+            {
+                ingredientIds: [id],
+                scope: 'INGREDIENT',
+                triggerType: 'INGREDIENT_WASTE',
+                sourceType: 'INGREDIENT',
+                sourceId: id,
+                note: `Ingredient waste recorded (${input.wasteReason})`
+            },
+            userId
+        ).catch(() => {
+            console.error('[AI_AGENT] Failed to scan ingredient after waste recorded');
+        });
+
+        return result;
     },
 
     async getTransactions(id: string) {

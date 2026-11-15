@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, Ban, CheckCircle, Mail, Sparkles, PackageCheck, Send, X } from "lucide-react";
@@ -102,7 +104,9 @@ Trân trọng,
 ${storeName}`;
 };
 
-export const AdminPurchaseRequestDetailPage: React.FC = () => {
+export const AdminPurchaseRequestDetailPage: React.FC = () => mockEnabled ? <MockWorkspace area="purchases" /> : <LegacyAdminPurchaseRequestDetailPage />;
+
+const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { isStaff } = useAuth();
   const globalToast = useToast();
@@ -157,13 +161,14 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
       setPr(data);
       await fetchEmailPreview(data);
 
-      if (!isStaff && data.supplier?.status === 'INACTIVE' && data.items?.[0]?.productId) {
+      const primaryItemId = data.items?.[0]?.ingredientId || data.items?.[0]?.productId;
+      if (!isStaff && data.supplier?.status === 'INACTIVE' && primaryItemId) {
         try {
           const [supplierProducts, activeSuppliers] = await Promise.all([
             suppliersApi.getSupplierProducts(),
             suppliersApi.getSuppliers(),
           ]);
-          const altSp = supplierProducts.filter((sp: any) => sp.productId === data.items![0].productId && sp.supplierId !== data.supplier?.id);
+          const altSp = supplierProducts.filter((sp: any) => (sp.ingredientId === primaryItemId || sp.productId === primaryItemId) && sp.supplierId !== data.supplier?.id);
           const activeAltSp = altSp.filter((sp: any) => {
             const sup = activeSuppliers.find(s => s.id === sp.supplierId);
             return sup?.status === 'ACTIVE';
@@ -567,7 +572,7 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
         <div className="flex flex-col gap-6 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
           <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-3">
           <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Sản phẩm đề xuất</span>
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Nguyên liệu đề xuất</span>
             <strong className="mt-1 block truncate text-sm text-slate-800">{getPrimaryProductName(pr)}</strong>
           </div>
 
@@ -598,13 +603,13 @@ export const AdminPurchaseRequestDetailPage: React.FC = () => {
         {pr.items && pr.items.length > 0 && (
           <div className="overflow-hidden rounded-2xl border border-slate-100">
             <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Danh sách sản phẩm</h4>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Danh sách nguyên liệu đặt nhập</h4>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 text-left">
-                    <th className="px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Sản phẩm</th>
+                    <th className="px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Nguyên liệu</th>
                     <th className="px-5 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400">SL đề xuất</th>
                     <th className="px-5 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400">Đơn giá</th>
                     <th className="px-5 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400">Thành tiền</th>

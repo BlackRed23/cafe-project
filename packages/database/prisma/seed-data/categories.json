@@ -1,22 +1,18 @@
 [
   {
-    "name": "Cà phê hạt",
-    "description": "Các loại hạt cà phê nguyên chất chưa qua xay, đóng gói túi nắp van 1 chiều bảo quản hương vị."
+    "name": "Cà phê Máy (Espresso Bar)",
+    "description": "Các loại thức uống cà phê pha máy chuẩn Ý chiết xuất từ hạt Arabica Cầu Đất và Robusta Honey."
   },
   {
-    "name": "Cà phê bột",
-    "description": "Cà phê đã xay sẵn với độ mịn phù hợp cho pha phin truyền thống hoặc pha máy."
+    "name": "Cà phê Truyền thống & Cold Brew",
+    "description": "Cà phê phin truyền thống đậm vị Việt Nam và cà phê ủ lạnh Cold Brew thanh mát."
   },
   {
-    "name": "Cà phê lon",
-    "description": "Cà phê pha sẵn đóng lon tiện lợi, uống trực tiếp hoặc ướp lạnh."
+    "name": "Trà & Matcha Pha Chế",
+    "description": "Các món Matcha Uji Nhật Bản, Trà sữa và thức uống pha chế từ bột trà cao cấp."
   },
   {
-    "name": "Cà phê hòa tan & túi lọc",
-    "description": "Cà phê sấy lạnh, hòa tan 3in1 và phin giấy túi lọc tiện dụng cho văn phòng và du lịch."
-  },
-  {
-    "name": "Thức uống pha chế",
-    "description": "Các loại thức uống cà phê pha máy (Espresso, Latte, Americano...)"
+    "name": "Sô-cô-la & Đá Xay",
+    "description": "Thức uống Cacao nguyên chất, Mocha và kem béo pha chế tại quầy."
   }
 ]

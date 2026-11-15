@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import { AdjustmentBatchSelect, eligibleAdjustmentBatches } from "../../components/admin/AdjustmentBatchSelect";
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -21,7 +23,9 @@ import { useToast } from "../../contexts/ToastContext";
 
 type InventoryTab = "ALL" | "LOW_STOCK" | "WARNING" | "EXPIRING_SOON";
 
-export const AdminInventoryPage: React.FC = () => {
+export const AdminInventoryPage: React.FC = () => mockEnabled ? <MockWorkspace area="inventory" /> : <LegacyAdminInventoryPage />;
+
+const LegacyAdminInventoryPage: React.FC = () => {
   const navigate = useNavigate();
   const { isStaff } = useAuth();
   const [inventories, setInventories] = useState<Inventory[]>([]);
@@ -753,6 +757,21 @@ export const AdminInventoryPage: React.FC = () => {
               </>
             )}
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs text-amber-900">
+          <div className="flex items-center gap-2">
+            <Info size={16} className="text-amber-700 flex-shrink-0" />
+            <span>
+              <strong>Kho Thành Phẩm Đóng Gói:</strong> Quản lý tồn kho theo lô cho cà phê hạt, cà phê bột, cà phê hòa tan và cà phê lon. Các món thuộc nhóm <strong>Thức uống pha chế</strong> tự động kiểm tra và trừ kho theo công thức (BOM) từ nguyên liệu gốc.
+            </span>
+          </div>
+          <Link
+            to="/admin/ingredients"
+            className="font-semibold text-amber-800 hover:text-amber-950 underline whitespace-nowrap"
+          >
+            Quản lý Kho Nguyên liệu &amp; Công thức (FEFO) &rarr;
+          </Link>
         </div>
 
         {error && (

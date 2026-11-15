@@ -19,6 +19,20 @@ export type InventoryRecord = Inventory & {
 
 export type InventoryTransactionRecord = InventoryTransaction & {
     product: Product | null;
+    ingredient?: {
+        id: string;
+        name: string;
+        sku: string;
+        baseUnit: string;
+    } | null;
+    batch?: {
+        id: string;
+        batchCode: string;
+    } | null;
+    legacyBatch?: {
+        id: string;
+        batchCode: string;
+    } | null;
     user: Pick<User, 'id' | 'name' | 'email'> | null;
 };
 
@@ -36,6 +50,26 @@ const inventoryInclude = {
 } satisfies Prisma.InventoryInclude;
 
 const transactionInclude = {
+    ingredient: {
+        select: {
+            id: true,
+            name: true,
+            sku: true,
+            baseUnit: true
+        }
+    },
+    batch: {
+        select: {
+            id: true,
+            batchCode: true
+        }
+    },
+    legacyBatch: {
+        select: {
+            id: true,
+            batchCode: true
+        }
+    },
     performedByUser: {
         select: {
             id: true,
@@ -47,43 +81,26 @@ const transactionInclude = {
 
 export const inventoryRepository = {
     async createMissingForActiveProducts(): Promise<void> {
-        const productsWithoutInventory = await prisma.product.findMany({
-            where: {
-                isActive: true,
-                inventory: {
-                    is: null
-                }
-            },
-            select: {
-                id: true,
-                servingUnit: true
-            }
-        });
-
-        if (productsWithoutInventory.length === 0) {
-            return;
-        }
-
-        const defaultMinThresholdSetting = await getOptionalSettingValue('inventory.defaultMinThreshold');
-        const defaultMinThreshold = parseInt(defaultMinThresholdSetting || '10', 10);
-        const minThreshold = isNaN(defaultMinThreshold) ? 10 : defaultMinThreshold;
-
-        await prisma.inventory.createMany({
-            data: productsWithoutInventory.map((product) => ({
-                productId: product.id,
-                quantity: 0,
-                minThreshold,
-                unit: product.servingUnit || 'hộp'
-            })),
-            skipDuplicates: true
-        });
+        // Hệ thống quản lý 100% sản phẩm pha chế theo Công thức (Recipe) & Nguyên liệu (Ingredient).
+        // Không tự động sinh bản ghi Inventory cho Product.
+        return;
     },
 
     async findMany(): Promise<InventoryRecord[]> {
         return prisma.inventory.findMany({
             where: {
                 product: {
-                    isActive: true
+                    isActive: true,
+                    recipes: {
+                        none: {
+                            isActive: true
+                        }
+                    },
+                    category: {
+                        name: {
+                            not: 'Thức uống pha chế'
+                        }
+                    }
                 }
             },
             include: inventoryInclude,

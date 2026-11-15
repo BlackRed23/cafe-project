@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { ingredientsApi } from "../../api/ingredients.api";
+import { agentLogsApi } from "../../api/agentLogs.api";
+import type { AgentLog } from "../../types/agentLog.types";
 import type {
   Ingredient,
   WasteReason,
@@ -24,6 +26,7 @@ import {
   AlertTriangle,
   Boxes,
   DollarSign,
+  Bot,
 } from "lucide-react";
 
 const WASTE_REASON_LABELS: Record<WasteReason, string> = {
@@ -70,6 +73,117 @@ export const AdminIngredientsPage: React.FC = () => {
   const [wasteBatchId, setWasteBatchId] = useState("");
   const [wasteNote, setWasteNote] = useState("");
   const [submittingWaste, setSubmittingWaste] = useState(false);
+
+  // AI Agent Scan state
+  const [isScanningAgent, setIsScanningAgent] = useState(false);
+  const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [scanResults, setScanResults] = useState<AgentLog[]>([]);
+  const [scanSummary, setScanSummary] = useState<{
+    createdCount: number;
+    duplicateCount: number;
+    noSupplierCount: number;
+    expiryWarningCount: number;
+    failedCount: number;
+  }>({
+    createdCount: 0,
+    duplicateCount: 0,
+    noSupplierCount: 0,
+    expiryWarningCount: 0,
+    failedCount: 0,
+  });
+
+  const handleScanIngredients = async () => {
+    setIsScanningAgent(true);
+    setScanModalOpen(false);
+    toast.info("AI Agent đang quét kho nguyên liệu pha chế...");
+    try {
+      const res = await agentLogsApi.scanInventory({
+        triggerType: "MANUAL_ADMIN_SCAN",
+        scope: "INGREDIENT",
+      });
+
+      if (res.cooldownRemainingSeconds) {
+        toast.warning(`Vui lòng chờ ${res.cooldownRemainingSeconds}s trước khi quét lại.`);
+        return;
+      }
+
+      if (res.activeScanSessionId) {
+        toast.warning("AI Agent đang thực hiện phiên quét khác, vui lòng chờ hoàn tất.");
+        return;
+      }
+
+      const results = (res.results || []).filter(
+        (r) =>
+          r.itemType === "INGREDIENT" ||
+          String(r.action || "").startsWith("SCAN_INGREDIENT") ||
+          Boolean(r.ingredientId)
+      );
+      setScanResults(results);
+
+      const createdCount = results.filter((r) => r.result === "CREATED_PURCHASE_REQUEST").length;
+      const duplicateCount = results.filter(
+        (r) => r.result === "SKIPPED_DUPLICATE" || r.reason === "ACTIVE_PR_EXISTS"
+      ).length;
+      const noSupplierCount = results.filter(
+        (r) =>
+          r.result === "NO_SUPPLIER" ||
+          r.reason === "NO_SUPPLIER" ||
+          r.reason === "SUPPLIERS_INACTIVE"
+      ).length;
+      const expiryWarningCount = results.filter(
+        (r) =>
+          r.reason === "EXPIRED" ||
+          r.reason === "CRITICAL_EXPIRY" ||
+          r.reason === "NEAR_EXPIRY"
+      ).length;
+      const failedCount = results.filter(
+        (r) => r.status === "FAILED" || r.result === "ERROR"
+      ).length;
+
+      setScanSummary({
+        createdCount,
+        duplicateCount,
+        noSupplierCount,
+        expiryWarningCount,
+        failedCount,
+      });
+
+      const hasActionable =
+        createdCount > 0 ||
+        duplicateCount > 0 ||
+        noSupplierCount > 0 ||
+        expiryWarningCount > 0 ||
+        failedCount > 0;
+
+      if (res.agentWarning) {
+        toast.warning("Không kết nối được AI Agent service.");
+      } else if (createdCount > 0) {
+        toast.success(`AI Agent đã tạo ${createdCount} phiếu yêu cầu nhập nguyên liệu.`);
+        setScanModalOpen(true);
+      } else if (expiryWarningCount > 0) {
+        toast.warning(`AI Agent phát hiện ${expiryWarningCount} lô nguyên liệu cận/hết hạn.`);
+        setScanModalOpen(true);
+      } else if (noSupplierCount > 0) {
+        toast.warning("Có nguyên liệu sắp hết nhưng chưa gán nhà cung cấp hợp lệ.");
+        setScanModalOpen(true);
+      } else if (duplicateCount > 0) {
+        toast.info("Nguyên liệu cần nhập đã có phiếu yêu cầu đang chờ duyệt.");
+        setScanModalOpen(true);
+      } else if (!hasActionable) {
+        toast.success("AI Agent đã kiểm tra xong, tồn kho nguyên liệu đều ở mức an toàn.");
+      } else {
+        setScanModalOpen(true);
+      }
+
+      await loadData();
+    } catch (err) {
+      toast.error(getErrorMessage(err) || "AI Agent quét nguyên liệu thất bại.");
+    } finally {
+      setIsScanningAgent(false);
+      window.dispatchEvent(new CustomEvent("refresh-notifications"));
+      window.dispatchEvent(new CustomEvent("agent-logs-updated"));
+    }
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -248,12 +362,22 @@ export const AdminIngredientsPage: React.FC = () => {
           </p>
         </div>
         {!isStaff && (
-          <Button
-            onClick={openCreateModal}
-            className="bg-amber-800 hover:bg-amber-900 text-white flex items-center gap-1.5"
-          >
-            <Plus size={16} /> Thêm nguyên liệu
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleScanIngredients}
+              isLoading={isScanningAgent}
+              className="border-amber-300 bg-amber-50/70 text-amber-900 hover:bg-amber-100 flex items-center gap-1.5"
+            >
+              <Bot size={16} /> Quét nguyên liệu bằng AI Agent
+            </Button>
+            <Button
+              onClick={openCreateModal}
+              className="bg-amber-800 hover:bg-amber-900 text-white flex items-center gap-1.5"
+            >
+              <Plus size={16} /> Thêm nguyên liệu
+            </Button>
+          </div>
         )}
       </div>
 
@@ -704,6 +828,93 @@ export const AdminIngredientsPage: React.FC = () => {
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* AI Agent Scan Result Modal */}
+      <Modal
+        isOpen={scanModalOpen}
+        onClose={() => setScanModalOpen(false)}
+        title="Kết quả AI Agent quét kho nguyên liệu"
+        size="lg"
+      >
+        <div className="space-y-4 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 rounded-xl border border-emerald-200 bg-emerald-50">
+              <span className="text-xs font-bold uppercase text-emerald-700">Tạo phiếu nhập</span>
+              <p className="text-xl font-black text-emerald-800 mt-1">{scanSummary.createdCount}</p>
+            </div>
+            <div className="p-3 rounded-xl border border-amber-200 bg-amber-50">
+              <span className="text-xs font-bold uppercase text-amber-700">Lô cận/hết hạn</span>
+              <p className="text-xl font-black text-amber-800 mt-1">{scanSummary.expiryWarningCount}</p>
+            </div>
+            <div className="p-3 rounded-xl border border-indigo-200 bg-indigo-50">
+              <span className="text-xs font-bold uppercase text-indigo-700">Đã có PR chờ</span>
+              <p className="text-xl font-black text-indigo-800 mt-1">{scanSummary.duplicateCount}</p>
+            </div>
+            <div className="p-3 rounded-xl border border-rose-200 bg-rose-50">
+              <span className="text-xs font-bold uppercase text-rose-700">Thiếu NCC / Lỗi</span>
+              <p className="text-xl font-black text-rose-800 mt-1">
+                {scanSummary.noSupplierCount + scanSummary.failedCount}
+              </p>
+            </div>
+          </div>
+
+          <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl">
+            {scanResults
+              .filter((r) => r.reason !== "STOCK_OK" && r.result !== "STOCK_OK")
+              .map((log) => (
+                <div key={log.id} className="p-3 space-y-1 hover:bg-slate-50">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-slate-800">
+                      {log.ingredientName || log.productName || "Nguyên liệu"}
+                    </span>
+                    <span
+                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                        log.result === "CREATED_PURCHASE_REQUEST"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : log.result === "WARNING"
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-slate-100 text-slate-700"
+                      }`}
+                    >
+                      {log.result === "CREATED_PURCHASE_REQUEST"
+                        ? "Đã tạo PR"
+                        : log.result === "WARNING"
+                        ? "Cảnh báo HSD"
+                        : log.reason === "ACTIVE_PR_EXISTS"
+                        ? "Đã có PR"
+                        : log.reason === "NO_SUPPLIER" || log.reason === "SUPPLIERS_INACTIVE"
+                        ? "Thiếu NCC"
+                        : log.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600">{log.message || log.reasoning}</p>
+                  {log.purchaseRequestId && (
+                    <Link
+                      to={`/admin/purchase-requests/${log.purchaseRequestId}`}
+                      className="inline-block text-xs font-bold text-amber-800 hover:underline"
+                    >
+                      Xem phiếu yêu cầu nhập #{log.purchaseRequestId.slice(-8).toUpperCase()} →
+                    </Link>
+                  )}
+                </div>
+              ))}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <Link to="/admin/agent-logs">
+              <Button variant="outline">Xem Nhật ký AI Agent</Button>
+            </Link>
+            <Link to="/admin/purchase-requests">
+              <Button className="bg-amber-800 hover:bg-amber-900 text-white">
+                Quản lý Yêu cầu nhập hàng
+              </Button>
+            </Link>
+            <Button variant="outline" onClick={() => setScanModalOpen(false)}>
+              Đóng
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

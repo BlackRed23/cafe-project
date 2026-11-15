@@ -6,6 +6,7 @@ import { type User, type UserRole } from '@cafe-project/database';
 import { env } from '../../common/env';
 import { HttpError } from '../../common/http-error';
 import { authRepository, type UserRecord } from './auth.repository';
+import { verifySignedToken } from './auth.tokens';
 import type { ForgotPasswordInput, GoogleAuthInput, LoginInput, RegisterInput, ResetPasswordInput } from './auth.validation';
 
 export type AuthUser = {
@@ -26,11 +27,6 @@ export type JwtUserPayload = {
     id: string;
     email: string;
     role: UserRole;
-};
-
-type JwtDecodedPayload = JwtUserPayload & {
-    iat?: number;
-    exp?: number;
 };
 
 const PASSWORD_SALT_ROUNDS = 10;
@@ -305,23 +301,5 @@ export const getCurrentUser = async (userId: string): Promise<AuthUser> => {
 };
 
 export const verifyAuthToken = (token: string): JwtUserPayload => {
-    try {
-        const decoded = jwt.verify(token, env.jwtSecret) as JwtDecodedPayload;
-
-        if (!decoded.id || !decoded.email || !decoded.role) {
-            throw new HttpError(401, 'Dữ liệu token không hợp lệ.');
-        }
-
-        return {
-            id: decoded.id,
-            email: decoded.email,
-            role: decoded.role
-        };
-    } catch (error) {
-        if (error instanceof HttpError) {
-            throw error;
-        }
-
-        throw new HttpError(401, 'Token không hợp lệ hoặc đã hết hạn.');
-    }
+    return verifySignedToken(token, env.jwtSecret);
 };

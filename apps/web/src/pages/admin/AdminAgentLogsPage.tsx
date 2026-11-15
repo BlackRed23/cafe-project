@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle, Clock, Eye, Info, PauseCircle } from "lucide-react";
@@ -43,16 +45,38 @@ const getAgentActionLabel = (log: AgentLog) => {
   const action = log.action;
   const result = log.result;
   const reason = log.reason;
+  const isIngredient =
+    log.itemType === "INGREDIENT" ||
+    Boolean(log.ingredientId) ||
+    String(action || "").includes("INGREDIENT");
 
-  if (action === "SCAN_INVENTORY_CREATE_PURCHASE_REQUEST" || result === "CREATED_PURCHASE_REQUEST") {
-    return "Tạo yêu cầu nhập hàng";
+  if (
+    action === "SCAN_INVENTORY_CREATE_PURCHASE_REQUEST" ||
+    action === "SCAN_INGREDIENT_CREATE_PURCHASE_REQUEST" ||
+    result === "CREATED_PURCHASE_REQUEST"
+  ) {
+    return isIngredient ? "Tạo yêu cầu nhập nguyên liệu" : "Tạo yêu cầu nhập hàng";
   }
 
-  if (action === "SCAN_INVENTORY_SKIP_DUPLICATE" || reason === "ACTIVE_PR_EXISTS" || result === "SKIPPED_DUPLICATE" || reason === "EXISTING_PR_SUPPLIER_INACTIVE" || reason === "ACTIVE_PR_SUPPLIER_INACTIVE") {
-    return "Kiểm tra yêu cầu nhập hàng";
+  if (
+    action === "SCAN_INVENTORY_SKIP_DUPLICATE" ||
+    action === "SCAN_INGREDIENT_SKIP_DUPLICATE" ||
+    reason === "ACTIVE_PR_EXISTS" ||
+    result === "SKIPPED_DUPLICATE" ||
+    reason === "EXISTING_PR_SUPPLIER_INACTIVE" ||
+    reason === "ACTIVE_PR_SUPPLIER_INACTIVE"
+  ) {
+    return isIngredient ? "Kiểm tra yêu cầu nhập nguyên liệu" : "Kiểm tra yêu cầu nhập hàng";
   }
 
-  if (action === "SCAN_INVENTORY_NO_SUPPLIER" || action === "SCAN_INVENTORY_INACTIVE_SUPPLIER" || reason === "NO_SUPPLIER" || reason === "SUPPLIERS_INACTIVE") {
+  if (
+    action === "SCAN_INVENTORY_NO_SUPPLIER" ||
+    action === "SCAN_INGREDIENT_NO_SUPPLIER" ||
+    action === "SCAN_INVENTORY_INACTIVE_SUPPLIER" ||
+    action === "SCAN_INGREDIENT_INACTIVE_SUPPLIER" ||
+    reason === "NO_SUPPLIER" ||
+    reason === "SUPPLIERS_INACTIVE"
+  ) {
     return "Kiểm tra nhà cung cấp";
   }
 
@@ -60,16 +84,29 @@ const getAgentActionLabel = (log: AgentLog) => {
     return "Kiểm tra cấu hình AI Agent";
   }
 
-  if (action === "SCAN_INVENTORY_STOCK_OK" || reason === "STOCK_OK" || reason === "ABOVE_THRESHOLD") {
-    return "Kiểm tra tồn kho";
+  if (
+    action === "SCAN_INVENTORY_STOCK_OK" ||
+    action === "SCAN_INGREDIENT_STOCK_OK" ||
+    reason === "STOCK_OK" ||
+    reason === "ABOVE_THRESHOLD"
+  ) {
+    return isIngredient ? "Kiểm tra tồn kho nguyên liệu" : "Kiểm tra tồn kho";
   }
 
-  if (action === "SCAN_INVENTORY_FAILED" || log.status === "FAILED") {
-    return "Kiểm tra tồn kho thất bại";
+  if (
+    action === "SCAN_INVENTORY_FAILED" ||
+    action === "SCAN_INGREDIENT_FAILED" ||
+    log.status === "FAILED"
+  ) {
+    return isIngredient ? "Kiểm tra nguyên liệu thất bại" : "Kiểm tra tồn kho thất bại";
   }
 
-  if (action === "RECOMMEND_REORDER" || result === "RECOMMENDED") {
-    return "Đề xuất nhập hàng";
+  if (
+    action === "RECOMMEND_REORDER" ||
+    action === "RECOMMEND_REORDER_INGREDIENT" ||
+    result === "RECOMMENDED"
+  ) {
+    return isIngredient ? "Đề xuất nhập nguyên liệu" : "Đề xuất nhập hàng";
   }
 
   if (action === "RECOMMEND_REORDER_SKIP" || action === "RECOMMEND_REORDER_SKIP_THRESHOLD") {
@@ -84,11 +121,21 @@ const getAgentActionLabel = (log: AgentLog) => {
     return "Chuyển đề xuất thành yêu cầu nhập hàng";
   }
 
-  if (action === "SCAN_INVENTORY_EXPIRED" || action === "SCAN_INVENTORY_CRITICAL_EXPIRY" || action === "SCAN_INVENTORY_NEAR_EXPIRY" || reason === "EXPIRED" || reason === "CRITICAL_EXPIRY" || reason === "NEAR_EXPIRY") {
-    return "Cảnh báo hạn sử dụng";
+  if (
+    action === "SCAN_INVENTORY_EXPIRED" ||
+    action === "SCAN_INGREDIENT_EXPIRED" ||
+    action === "SCAN_INVENTORY_CRITICAL_EXPIRY" ||
+    action === "SCAN_INGREDIENT_CRITICAL_EXPIRY" ||
+    action === "SCAN_INVENTORY_NEAR_EXPIRY" ||
+    action === "SCAN_INGREDIENT_NEAR_EXPIRY" ||
+    reason === "EXPIRED" ||
+    reason === "CRITICAL_EXPIRY" ||
+    reason === "NEAR_EXPIRY"
+  ) {
+    return isIngredient ? "Cảnh báo HSD nguyên liệu" : "Cảnh báo hạn sử dụng";
   }
 
-  return "Xử lý tồn kho";
+  return isIngredient ? "Xử lý nguyên liệu" : "Xử lý tồn kho";
 };
 
 const getAgentStatusLabel = (log: AgentLog) => {
@@ -261,19 +308,30 @@ const isInventoryScanLog = (log: AgentLog) => {
   const result = String(log.result || "").toUpperCase();
   const message = String(log.message || "").toLowerCase();
 
-  const inventoryTriggers = ["MANUAL_ADMIN_SCAN", "ORDER_COMPLETED", "SIMULATE_SALE", "INVENTORY_IMPORTED", "INVENTORY_ADJUSTED", "PURCHASE_RECEIVED"];
+  const inventoryTriggers = [
+    "MANUAL_ADMIN_SCAN",
+    "ORDER_COMPLETED",
+    "SIMULATE_SALE",
+    "INVENTORY_IMPORTED",
+    "INVENTORY_ADJUSTED",
+    "PURCHASE_RECEIVED",
+    "INGREDIENT_WASTE",
+    "INGREDIENT_IMPORTED",
+  ];
   if (inventoryTriggers.includes(triggerType)) return true;
 
-  if (action.startsWith("SCAN_INVENTORY")) return true;
+  if (action.startsWith("SCAN_INVENTORY") || action.startsWith("SCAN_INGREDIENT")) return true;
 
   if (["CREATED_PURCHASE_REQUEST", "ACTIVE_PR_EXISTS", "SKIPPED_DUPLICATE", "NO_SUPPLIER", "NO_SUPPLIERS_MAPPED", "SUPPLIERS_INACTIVE", "STOCK_OK", "ABOVE_THRESHOLD", "EXPIRED", "CRITICAL_EXPIRY", "NEAR_EXPIRY"].includes(result) || ["CREATED_PURCHASE_REQUEST", "ACTIVE_PR_EXISTS", "SKIPPED_DUPLICATE", "NO_SUPPLIER", "NO_SUPPLIERS_MAPPED", "SUPPLIERS_INACTIVE", "STOCK_OK", "ABOVE_THRESHOLD", "EXPIRED", "CRITICAL_EXPIRY", "NEAR_EXPIRY"].includes(reason)) return true;
 
-  if (message.includes("tồn kho") || message.includes("inventory") || message.includes("nhập hàng") || message.includes("hết hạn") || message.includes("cận hạn")) return true;
+  if (message.includes("tồn kho") || message.includes("nguyên liệu") || message.includes("inventory") || message.includes("nhập hàng") || message.includes("hết hạn") || message.includes("cận hạn")) return true;
 
   return false;
 };
 
-export const AdminAgentLogsPage: React.FC = () => {
+export const AdminAgentLogsPage: React.FC = () => mockEnabled ? <MockWorkspace area="agent" /> : <LegacyAdminAgentLogsPage />;
+
+const LegacyAdminAgentLogsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [logs, setLogs] = useState<AgentLog[]>([]);
   const [pagination, setPagination] = useState<AgentLogsPagination | undefined>();
@@ -289,6 +347,7 @@ export const AdminAgentLogsPage: React.FC = () => {
   const [dateFilter, setDateFilter] = useState<string>(
     searchParams.get("date") || ""
   );
+  const [itemTypeFilter] = useState<"ALL" | "PRODUCT" | "INGREDIENT">("ALL");
   const [showSessionLogs, setShowSessionLogs] = useState(false);
   const [page, setPage] = useState(1);
   const [selectedLog, setSelectedLog] = useState<AgentLog | null>(null);
@@ -427,6 +486,14 @@ export const AdminAgentLogsPage: React.FC = () => {
 
     const matchedLogs = logs.filter((log) => {
       if (statusFilter === "SIMULATION" && !isSimulationAgentLog(log)) return false;
+      if (itemTypeFilter !== "ALL") {
+        const isIngredientLog =
+          log.itemType === "INGREDIENT" ||
+          Boolean(log.ingredientId) ||
+          String(log.action || "").includes("INGREDIENT");
+        if (itemTypeFilter === "INGREDIENT" && !isIngredientLog) return false;
+        if (itemTypeFilter === "PRODUCT" && isIngredientLog) return false;
+      }
       if (!shouldShowLowPriorityStockLog(log, query, statusFilter)) return false;
       if (!query) return true;
 
@@ -441,7 +508,9 @@ export const AdminAgentLogsPage: React.FC = () => {
         log.sourceType,
         log.sourceId,
         log.productName,
+        log.ingredientName,
         log.productId,
+        log.ingredientId,
         log.purchaseRequestId,
       ]
         .filter(Boolean)
@@ -506,7 +575,7 @@ export const AdminAgentLogsPage: React.FC = () => {
       seen.add(key);
       return true;
     });
-  }, [logs, search, statusFilter, showSessionLogs, scanSessionIdParam, productIdParam, sourceIdParam, productNameParam]);
+  }, [logs, search, statusFilter, itemTypeFilter, showSessionLogs, scanSessionIdParam, productIdParam, sourceIdParam, productNameParam, dateFilter]);
 
   const filterNote = useMemo(() => {
     if (!productIdParam || filteredLogs.length === 0) return null;
@@ -721,6 +790,8 @@ export const AdminAgentLogsPage: React.FC = () => {
               <option value="MANUAL_ADMIN_SCAN">Quét Thủ Công</option>
               <option value="ORDER_COMPLETED">Đơn Hàng Mới</option>
               <option value="PURCHASE_RECEIVED">Nhập Hàng</option>
+              <option value="INGREDIENT_WASTE">Hao Hụt Nguyên Liệu</option>
+              <option value="INGREDIENT_IMPORTED">Nhập Kho Nguyên Liệu</option>
             </select>
           </div>
         </div>
@@ -770,7 +841,7 @@ export const AdminAgentLogsPage: React.FC = () => {
                   <th className="px-4 py-3 font-bold">Hành động</th>
                   <th className="px-4 py-3 font-bold">Trạng thái</th>
                   <th className="px-4 py-3 font-bold">Nội dung xử lý</th>
-                  <th className="px-4 py-3 font-bold">Sản phẩm</th>
+                  <th className="px-4 py-3 font-bold">Nguyên liệu</th>
                   <th className="px-4 py-3 font-bold">Yêu cầu nhập hàng</th>
                   <th className="px-4 py-3 font-bold text-right">Chi tiết</th>
                 </tr>
@@ -798,7 +869,18 @@ export const AdminAgentLogsPage: React.FC = () => {
                         <span className="line-clamp-2">{getAgentLogDisplayDescription(log)}</span>
                       </td>
                       <td className="px-4 py-3 text-slate-700">
-                        {log.productName || log.productId || "-"}
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-medium">
+                            {log.ingredientName || log.productName || log.ingredientId || log.productId || "-"}
+                          </span>
+                          {(log.itemType === "INGREDIENT" ||
+                            Boolean(log.ingredientId) ||
+                            String(log.action || "").includes("INGREDIENT")) && (
+                            <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 w-fit">
+                              Nguyên liệu pha chế
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         {log.purchaseRequestId ? (

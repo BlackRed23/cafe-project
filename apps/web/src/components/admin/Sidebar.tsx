@@ -8,16 +8,15 @@ import {
   History,
   Truck,
   Receipt,
-  Play,
   FileSpreadsheet,
   Terminal,
   X,
   ChevronRight,
-  Boxes,
   Users,
   LayoutGrid,
   Settings,
   FlaskConical,
+  Play,
 } from "lucide-react";
 import logoInventory from "../../assets/logo-inventory1.png";
 
@@ -44,10 +43,9 @@ const MENU_GROUPS = [
     label: "Kho & Sản phẩm",
     items: [
       { label: "Danh mục", path: "/admin/categories", icon: LayoutGrid },
-      { label: "Sản phẩm", path: "/admin/products", icon: Coffee },
+      { label: "Thực đơn pha chế", path: "/admin/products", icon: Coffee },
       { label: "Nguyên liệu & Giá vốn", path: "/admin/ingredients", icon: FlaskConical },
-      { label: "Tồn kho", path: "/admin/inventory", icon: Boxes },
-      { label: "Lịch sử kho", path: "/admin/inventory/transactions", icon: History },
+      { label: "Lịch sử kho nguyên liệu", path: "/admin/inventory/transactions", icon: History },
       { label: "Nhà cung cấp", path: "/admin/suppliers", icon: Truck },
     ],
   },
@@ -55,7 +53,7 @@ const MENU_GROUPS = [
     label: "Bán hàng",
     items: [
       { label: "Đơn hàng", path: "/admin/orders", icon: Receipt },
-      { label: "Mô phỏng bán", path: "/admin/simulate-sale", icon: Play },
+      { label: "Mô phỏng bán hàng", path: "/admin/simulate-sale", icon: Play },
     ],
   },
   {

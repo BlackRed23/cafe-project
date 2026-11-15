@@ -1,3 +1,5 @@
+import { mockEnabled } from '../../mock/config';
+import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useState, useEffect } from "react";
 import { inventoryApi } from "../../api/inventory.api";
 import type { InventoryTransaction } from "../../types/inventory.types";
@@ -9,11 +11,14 @@ import { Modal } from "../../components/common/Modal";
 import { Button } from "../../components/common/Button";
 import { Eye, User as UserIcon } from "lucide-react";
 
-export const AdminInventoryTransactionsPage: React.FC = () => {
+export const AdminInventoryTransactionsPage: React.FC = () => mockEnabled ? <MockWorkspace area="inventory" /> : <LegacyAdminInventoryTransactionsPage />;
+
+const LegacyAdminInventoryTransactionsPage: React.FC = () => {
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [txTypeFilter, setTxTypeFilter] = useState<string>("ALL");
   const [selectedTx, setSelectedTx] = useState<InventoryTransaction | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -41,10 +46,18 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
   const getTypeBadgeColor = (type: string) => {
     const map: Record<string, string> = {
       IMPORT: "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-450",
+      DEDUCT: "bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-950/20 dark:text-indigo-400",
+      CONSUME: "bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-950/20 dark:text-indigo-400",
       ORDER: "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/20 dark:text-blue-450",
+      RESERVE: "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/20 dark:text-amber-450",
+      RELEASE: "bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-950/20 dark:text-teal-450",
+      WASTE: "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/20 dark:text-rose-450",
+      EXPIRE: "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/20 dark:text-rose-450",
+      VOID: "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/20 dark:text-rose-450",
       SIMULATE_SALE: "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/20 dark:text-amber-450",
-      ADJUST: "bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950/20 dark:text-amber-450",
-      CANCEL: "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/20 dark:text-rose-450",
+      RESTORE_SIMULATION: "bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-950/20 dark:text-teal-450",
+      ADJUST: "bg-purple-50 text-purple-900 border-purple-200 dark:bg-purple-950/20 dark:text-purple-400",
+      CANCEL: "bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-950/20 dark:text-teal-450",
       RETURN: "bg-slate-50 text-slate-800 border-slate-200 dark:bg-slate-900/20 dark:text-slate-450",
     };
     return map[type] || "bg-slate-50 text-slate-800 border-slate-200";
@@ -54,10 +67,25 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
     switch (type) {
       case "IMPORT":
         return "Nhập kho";
+      case "DEDUCT":
+      case "CONSUME":
+        return "Xuất kho pha chế";
+      case "RESERVE":
+        return "Giữ chỗ đơn hàng";
+      case "RELEASE":
+      case "CANCEL_ORDER":
+      case "CANCEL":
+        return "Hoàn trả giữ chỗ";
+      case "WASTE":
+        return "Hủy / Hao hụt";
+      case "EXPIRE":
+        return "Hủy hàng hết hạn";
+      case "VOID":
+        return "Hủy giao dịch";
       case "ADJUST":
-        return "Điều chỉnh kho";
+        return "Điều chỉnh kiểm kê";
       case "ORDER":
-        return "Bán hàng";
+        return "Xuất bán hàng";
       case "SIMULATE_SALE":
         return "Mô phỏng bán";
       case "RESTORE_SIMULATION":
@@ -68,9 +96,6 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
         return "Nhận hàng nhập";
       case "RETURN":
         return "Hoàn hàng";
-      case "CANCEL_ORDER":
-      case "CANCEL":
-        return "Huỷ đơn";
       default:
         return "Hoạt động kho";
     }
@@ -80,9 +105,18 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
     return <Loading message="Đang tải lịch sử giao dịch..." />;
   }
 
-  const filteredTransactions = transactions.filter((tx) =>
-    (tx.product?.name || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredTransactions = transactions.filter((tx) => {
+    const q = search.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      (tx.product?.name || tx.productName || "").toLowerCase().includes(q) ||
+      (tx.productSku || "").toLowerCase().includes(q) ||
+      (tx.batchCode || "").toLowerCase().includes(q) ||
+      (tx.note || "").toLowerCase().includes(q);
+    const matchesTxType =
+      txTypeFilter === "ALL" || tx.type === txTypeFilter;
+    return matchesSearch && matchesTxType;
+  });
 
   const columns = [
     {
@@ -93,8 +127,29 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
       },
     },
     {
-      header: "Sản phẩm",
-      render: (tx: InventoryTransaction) => <span className="font-semibold text-slate-800">{tx.product?.name || "Sản phẩm không tên"}</span>,
+      header: "Nguyên liệu pha chế",
+      render: (tx: InventoryTransaction) => {
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-semibold text-slate-800">
+              {tx.product?.name || tx.productName || "Không xác định"}
+            </span>
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="px-1.5 py-0.5 rounded font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                Nguyên liệu pha chế
+              </span>
+              {tx.productSku && (
+                <span className="text-slate-400 font-mono">{tx.productSku}</span>
+              )}
+              {tx.batchCode && (
+                <span className="text-slate-500 font-mono bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
+                  Lô: {tx.batchCode}
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      },
     },
     {
       header: "Loại hoạt động",
@@ -110,15 +165,17 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
         const qtyChange = tx.quantityChange ?? tx.quantity_change ?? 0;
         const isPositive = qtyChange > 0;
         const formattedQty = isPositive ? `+${qtyChange}` : `${qtyChange}`;
+        const unitLabel = tx.unit ? ` ${tx.unit}` : "";
         return (
           <span className={`font-bold ${isPositive ? "text-emerald-600" : "text-rose-600"}`}>
             {formattedQty}
+            {unitLabel && <span className="text-xs font-medium text-slate-500 ml-0.5">{unitLabel}</span>}
           </span>
         );
       },
     },
     {
-      header: "Ghi chú",
+      header: "Ghi chú / Tham chiếu",
       render: (tx: InventoryTransaction) => <span className="text-slate-500 font-light truncate block max-w-xs">{tx.note || "—"}</span>,
     },
     {
@@ -157,13 +214,38 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
         </div>
       )}
 
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-800 text-white">
+            Nguyên liệu pha chế ({transactions.length})
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-slate-500">Loại giao dịch:</span>
+          <select
+            value={txTypeFilter}
+            onChange={(e) => setTxTypeFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+          >
+            <option value="ALL">Tất cả hoạt động</option>
+            <option value="IMPORT">Nhập kho nguyên liệu</option>
+            <option value="DEDUCT">Xuất kho pha chế (FEFO)</option>
+            <option value="RESERVE">Giữ chỗ đơn hàng</option>
+            <option value="RELEASE">Hoàn trả giữ chỗ</option>
+            <option value="ADJUST">Điều chỉnh kiểm kê</option>
+            <option value="WASTE">Hủy / Hao hụt</option>
+          </select>
+        </div>
+      </div>
+
       {transactions.length === 0 ? (
-        <EmptyState title="Lịch sử trống" description="Chưa ghi nhận giao dịch nhập xuất kho nào." />
+        <EmptyState title="Lịch sử trống" description="Chưa ghi nhận giao dịch nhập xuất kho nguyên liệu nào." />
       ) : (
         <DataTable
           columns={columns}
           data={filteredTransactions}
-          searchPlaceholder="Tìm theo tên sản phẩm..."
+          searchPlaceholder="Tìm theo tên nguyên liệu, mã SKU, mã lô, ghi chú..."
           searchValue={search}
           onSearchChange={setSearch}
         />
@@ -173,13 +255,34 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
         <Modal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          title="Chi tiết giao dịch tồn kho"
+          title="Chi tiết giao dịch kho nguyên liệu"
         >
           <div className="space-y-4 text-sm">
             <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
-              <div className="col-span-1 text-slate-500">Sản phẩm</div>
-              <div className="col-span-2 font-semibold text-slate-800">{selectedTx.product?.name || "Sản phẩm không tên"}</div>
+              <div className="col-span-1 text-slate-500">Nguyên liệu</div>
+              <div className="col-span-2 font-semibold text-slate-800">
+                {selectedTx.product?.name || selectedTx.productName || "Không xác định"}
+              </div>
             </div>
+            <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
+              <div className="col-span-1 text-slate-500">Phân loại & SKU</div>
+              <div className="col-span-2 flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                  Nguyên liệu pha chế
+                </span>
+                {selectedTx.productSku && (
+                  <span className="font-mono text-xs text-slate-500">{selectedTx.productSku}</span>
+                )}
+              </div>
+            </div>
+            {selectedTx.batchCode && (
+              <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
+                <div className="col-span-1 text-slate-500">Mã lô (FEFO)</div>
+                <div className="col-span-2 font-mono text-xs font-semibold text-slate-700">
+                  {selectedTx.batchCode}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
               <div className="col-span-1 text-slate-500">Loại hoạt động</div>
               <div className="col-span-2">
@@ -197,6 +300,7 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
                   return (
                     <span className={isPositive ? "text-emerald-600" : "text-rose-600"}>
                       {isPositive ? `+${qtyChange}` : `${qtyChange}`}
+                      {selectedTx.unit ? ` ${selectedTx.unit}` : ""}
                     </span>
                   );
                 })()}
@@ -217,7 +321,7 @@ export const AdminInventoryTransactionsPage: React.FC = () => {
                     <span className="text-xs text-slate-500">{selectedTx.user.email}</span>
                   </div>
                 ) : (
-                  <span className="font-medium text-slate-500 italic">Hệ thống / Không xác định</span>
+                  <span className="font-medium text-slate-500 italic">Hệ thống / Tự động theo đơn</span>
                 )}
               </div>
             </div>

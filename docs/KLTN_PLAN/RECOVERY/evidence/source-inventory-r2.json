@@ -1,0 +1,341 @@
+{
+  "revision": "r2",
+  "captured_at": "2026-11-05T16:03:10.010Z",
+  "display_timezone": "Asia/Saigon",
+  "head": "33366f714b288310580d69247e47c58aa4ea062f",
+  "node": "v24.21.0",
+  "schema_files": {
+    "packages/database/prisma/schema/category.prisma": {
+      "model": [
+        "Category"
+      ],
+      "enum": [
+        "CategoryKind"
+      ]
+    },
+    "packages/database/prisma/schema/inventory.prisma": {
+      "model": [
+        "Ingredient",
+        "IngredientBatch",
+        "InventoryTransaction",
+        "StockCount",
+        "StockCountItem",
+        "Inventory",
+        "InventoryBatch"
+      ],
+      "enum": [
+        "InventoryTransactionType",
+        "WasteReason",
+        "StockCountStatus"
+      ]
+    },
+    "packages/database/prisma/schema/main.prisma": {
+      "model": [],
+      "enum": []
+    },
+    "packages/database/prisma/schema/order.prisma": {
+      "model": [
+        "Order",
+        "OrderItem",
+        "OrderItemTopping",
+        "Payment",
+        "PaymentCallback",
+        "PaymentReconciliation"
+      ],
+      "enum": [
+        "OrderStatus",
+        "ConsumptionStatus",
+        "PaymentStatus",
+        "PaymentMethod",
+        "TransactionStatus",
+        "CallbackStatus"
+      ]
+    },
+    "packages/database/prisma/schema/product.prisma": {
+      "model": [
+        "Product",
+        "Recipe",
+        "RecipeIngredient",
+        "Topping",
+        "ToppingIngredient"
+      ],
+      "enum": [
+        "ToppingType"
+      ]
+    },
+    "packages/database/prisma/schema/purchase.prisma": {
+      "model": [
+        "PurchaseRequest",
+        "PurchaseRequestItem",
+        "GoodsReceipt"
+      ],
+      "enum": [
+        "PurchaseRequestStatus",
+        "GoodsReceiptStatus"
+      ]
+    },
+    "packages/database/prisma/schema/supplier.prisma": {
+      "model": [
+        "Supplier",
+        "SupplierIngredient",
+        "SupplierProduct"
+      ],
+      "enum": []
+    },
+    "packages/database/prisma/schema/system.prisma": {
+      "model": [
+        "AgentExecution",
+        "AgentToolCall",
+        "AgentEvaluation",
+        "SystemSetting",
+        "AgentLog"
+      ],
+      "enum": [
+        "ExecutionStatus",
+        "ToolCallStatus"
+      ]
+    },
+    "packages/database/prisma/schema/user.prisma": {
+      "model": [
+        "User"
+      ],
+      "enum": [
+        "UserRole"
+      ]
+    }
+  },
+  "source_model_count": 31,
+  "source_enum_count": 16,
+  "generated_client": {
+    "model": [
+      "Category",
+      "Inventory",
+      "InventoryBatch",
+      "InventoryTransaction",
+      "Order",
+      "OrderItem",
+      "Payment",
+      "Product",
+      "PurchaseRequest",
+      "PurchaseRequestItem",
+      "Supplier",
+      "SupplierProduct",
+      "AgentLog",
+      "SystemSetting",
+      "User"
+    ],
+    "enum": [
+      "InventoryTransactionType",
+      "OrderStatus",
+      "PaymentStatus",
+      "PaymentMethod",
+      "PurchaseRequestStatus",
+      "UserRole"
+    ]
+  },
+  "generated_client_schema_sha256": "b6b96425df3a19109b5a2bb28fd9ad27bbb4481c4132dfea781e0e92ce18cee5",
+  "sql_inventory": {
+    "packages/database/prisma/schema/migrations/20260718025427_init_schema_and_unique_keys/migration.sql": {
+      "sha256": "d347622fe1db9defcda6ac84750088099749853f3dce3cc5dfaba06fafbe39b6",
+      "create_table_statements": 15,
+      "create_type_statements": 6,
+      "executed": false
+    },
+    "packages/database/prisma/schema/migrations/20260724120000_add_product_detail_fields/migration.sql": {
+      "sha256": "714b5b4a72fe39f2ad229322d5292f17759a2b5610b708a86ea98b6a0639f022",
+      "create_table_statements": 0,
+      "create_type_statements": 0,
+      "executed": false
+    },
+    "packages/database/prisma/migration_27_tables/00_precheck.sql": {
+      "sha256": "beb8d696973478658d17668adfb2c8e0b11c768255b1217a382811db1dd87ebe",
+      "create_table_statements": 4,
+      "create_type_statements": 0,
+      "executed": false
+    },
+    "packages/database/prisma/migration_27_tables/01_expand.sql": {
+      "sha256": "044698f37ae05d5c7bd8e8f281dade05b4e0cc1cb206bffd89a2b9d09742178a",
+      "create_table_statements": 16,
+      "create_type_statements": 10,
+      "executed": false
+    },
+    "packages/database/prisma/migration_27_tables/02_migrate_data.sql": {
+      "sha256": "02f44cfd06a49a47336d66a8ef0bdd372bfbf83d486bc851520534d5254cdaca",
+      "create_table_statements": 1,
+      "create_type_statements": 0,
+      "executed": false
+    },
+    "packages/database/prisma/migration_27_tables/03_verify.sql": {
+      "sha256": "bb45927711011abefc547ed7e2247083dc3e271abb2a84eaa9903d3a8911c81d",
+      "create_table_statements": 1,
+      "create_type_statements": 0,
+      "executed": false
+    },
+    "packages/database/prisma/migration_27_tables/04_contract_DO_NOT_RUN_YET.sql": {
+      "sha256": "a7f8c2736ee260537b050e91dd385e0d80ee4616ae746fa587ec83f4b2dda613",
+      "create_table_statements": 0,
+      "create_type_statements": 0,
+      "executed": false
+    },
+    "packages/database/prisma/migration_27_tables/05_rollback_plan.sql": {
+      "sha256": "9546fc2e43954a2c97f7a4281ba53db0800b2cba80ee314e3df68bb5554586c8",
+      "create_table_statements": 0,
+      "create_type_statements": 0,
+      "executed": false
+    }
+  },
+  "source_sha256": {
+    "apps/agent/package.json": "f5a92a032c3a4167be5a49d18508a44eba9a582d9265831fc86844cf2755b7ed",
+    "apps/agent/src/config/env.ts": "0a5db58cbde0170dd2adc1b2ba5b056a8f40c0fb8fc0b76f10e2d38c104d3b10",
+    "apps/agent/src/config/system-prompt.ts": "f7844c32abce2aa956721fc733f20e3c6124c156a981bfb2d9563aeaa9f2c0ee",
+    "apps/agent/src/errors/http-error.ts": "80a1407c8dafe49d9634d0b35b6eed6a81d9914af335f8e8aefd0f70aa5ac868",
+    "apps/agent/src/index.ts": "2ec5227e6883792f417a773078ecad391a8784891ec936855dc99b5a93276441",
+    "apps/agent/src/internal-auth.ts": "8690375e489d0165fdbc251e509530bf756573c548f43c1b018ec7fef4675608",
+    "apps/agent/src/jobs/inventory-scan.job.ts": "7c81d3a62080d65df3aaac38c7594a5532bf92438d0177864a48408c8db28c12",
+    "apps/agent/src/public-api.ts": "f5f32506bb51026d0b751b2bd08518c16eecb7f1f89335dc28d64335e5c8058f",
+    "apps/agent/src/repositories/agent.repository.ts": "c6d3c6e01d75d38a52a28327c94191c58077caf43049a69efdc37eab17edfe2c",
+    "apps/agent/src/server.ts": "12a6a9722d876ba3ecd4acf1bcc4a2e5abd89bb61fa7fb6fe525c793a6f3ca9d",
+    "apps/agent/src/services/agent.service.ts": "5b1af533bafd43c35bfd8b707569f14147163351a59b4a79c4c435841250d69e",
+    "apps/agent/src/services/gemini.service.ts": "de9d17e535ac980d21d9635900d00c2b0866cb98a435c77009fce8fb5297e4ef",
+    "apps/agent/src/services/recommendation.service.ts": "d3cc7d5de0dee8dacaec95e170c8131a6fe3a6f074c2e5813a7d47f0a5a312e0",
+    "apps/agent/src/utils/inventory.utils.ts": "99b959e9a093f02ee1bc8f3c5d7d9c28ba96184864bc0e1b07eeec9e9ac73db8",
+    "apps/agent/src/utils/logger.ts": "1f5ea2fb3adc20cb6c730a22ffde1ccf39c837cec12b368fe42ba90699370346",
+    "apps/agent/src/utils/textEncoding.ts": "c4e4b0fa491448f4e0c0fab11e2cf1df6594d874b9177135d2e1a10f19817500",
+    "apps/agent/src/worker.ts": "7f337d75abd6da97de1003c7cd440b2faf0c81dd107f7946035d958dddbaf069",
+    "apps/agent/tests/gemini-output.test.cjs": "a8d178a6b690f1f47e2dbcd7a519e210c53066cb5ea97214279a7988b84b246c",
+    "apps/agent/tests/internal-auth.test.cjs": "873e8223937373252af6f0b5863f8d45909083c216b4cd2545432e9c020cd5e3",
+    "apps/agent/tests/principal-guards.test.cjs": "d9ab3b10d2e056299bb42dd9d98aa1ee311b5a1266ff6a6e46cd52b293d36963",
+    "apps/agent/tests/rule-based-regression.test.cjs": "78b9f877fc536be7bb265d68031a5932cc1f9bea50c655c91cb6906b3967c1f0",
+    "apps/api/package.json": "143b4a422f312e5c6632bdedc744470206f717fd6433bc549bc2919d275f4c29",
+    "apps/api/src/common/async-handler.ts": "c38b35058b695827948876f5af0723aa197e7896246635bb1de0464ebbb6d3a5",
+    "apps/api/src/common/cloudinary.ts": "4e90e5144520fbcf7b8864366f5e3f8ada2f91fa97fbf7bb8156f30d12fbe7ee",
+    "apps/api/src/common/env.ts": "5078d416820bfdd0e5c181ae8414a354c84ecfa8a52d93e7888b4db73154a2e6",
+    "apps/api/src/common/error-handler.ts": "c38bdbe14fcdecdd47c5cff85a94b4f626fed4db6d2c25c097dc17001ce6bac9",
+    "apps/api/src/common/http-error.ts": "e44fe43fce871b2165df2fbe215af8392bcaa20dc087f2e5553dd415e9ae675a",
+    "apps/api/src/common/response.ts": "c4e17f3479c573049ff09755cb9fb86c0cc0f4d605b778b7b8297abf7a836f23",
+    "apps/api/src/common/units.ts": "bb3783d04aefe358e5e921763dd50c11733072482a65032e8ded30617959a30c",
+    "apps/api/src/common/upload.ts": "6d0567b54e277dfd7edd14132ceefbf7163e98d10c7a7bdb41ce4ad44537d406",
+    "apps/api/src/common/validate.ts": "d0012ccccd81e44b761991dae19be3f25f9e18cc359777d17269dec99168289e",
+    "apps/api/src/index.ts": "7a842072d6cacffd5b9180b7ed512ec78741dd507b27733eb0b18d915a84cb85",
+    "apps/api/src/modules/agent/agent-failure-log.service.ts": "c7137617fe58e38b6b0a383b3becb50456f32982a4efe02dc0e7925cd64cf5bc",
+    "apps/api/src/modules/agent/agent.client.ts": "4d745fc173ecd777804b524381f193b47030eb129e9c6e669d6b3e591da7164e",
+    "apps/api/src/modules/agent/agent.controller.ts": "041b25b60baae58dbe685f8357ff583e5941823be8b1ca13cee182eb89208472",
+    "apps/api/src/modules/agent/agent.route.ts": "685c089237d41d68b006cdb1da7c82ef87fd52c9035befab4b5a70a33998a2fe",
+    "apps/api/src/modules/agent/agent.validator.ts": "4cfac3fc17e30b0d5a72465792160b0246b537b43649ae0a802469b8d0fa9ec2",
+    "apps/api/src/modules/auth/auth.controller.ts": "11c9ae830691ff3795feadef9ffb0d762fa472bb7513373df41750947b7f006d",
+    "apps/api/src/modules/auth/auth.middleware.ts": "2f48ced00d8c82795ce9c86d549676ab5830b814dff2a36358dae0fb9fed496f",
+    "apps/api/src/modules/auth/auth.repository.ts": "c94309208a2b827654d5d302b13316184b4323d3bb17fac65eb63bf75929cb0e",
+    "apps/api/src/modules/auth/auth.routes.ts": "6ba4c25499351022e94931c084fc50939ff59251f7502c9b1a3786ae18342a0e",
+    "apps/api/src/modules/auth/auth.service.ts": "21b168d83c6bcf8df6ec3d9e3d565e0b135a315b703c83193722a6f735403d15",
+    "apps/api/src/modules/auth/auth.validation.ts": "f793109d31061a59a4b81cbe9b20ff585007fb26fd35bb888a52aee36177aafb",
+    "apps/api/src/modules/auth/auth.validator.ts": "1f6ef3126ecae25b29d6c249059c4259892459bc1440fb1b37bdf65f722a1d44",
+    "apps/api/src/modules/category/category.controller.ts": "9a2f79079fc5801d2b91c9db75aa698cda8fe36f288d354d61438a88d133656e",
+    "apps/api/src/modules/category/category.repository.ts": "581293e525329382a5c382f5b80a18a4ea0c4730eb6f1a0a099cee8ecad9bf97",
+    "apps/api/src/modules/category/category.route.ts": "13c8cbfec139cb4cfba0069672c085918136c087bb1bc0f63dceb3a547d8a7f5",
+    "apps/api/src/modules/category/category.service.ts": "4c6132ca3497f2de5802839cdf82b7ba5d76e74a07a1de654b4acd4538baa481",
+    "apps/api/src/modules/category/category.validator.ts": "7e734fecdf994e545296da5f292e17ff9db419242c2cc844c0e52e404cfc2818",
+    "apps/api/src/modules/cron/cron.service.ts": "0b912e159e40380cdd422f2e5d343757d6d9befe3ed98870f69c22771db354c6",
+    "apps/api/src/modules/dashboard/dashboard.controller.ts": "9beec32e6866190996ffd47a0d1ed496762a96a0b32e703703841e11a8e56d74",
+    "apps/api/src/modules/dashboard/dashboard.route.ts": "8fea899fe3087f3ac5598af30ca964b2e264df04f85d781e4134a1286dbc8e2b",
+    "apps/api/src/modules/dashboard/dashboard.service.ts": "6a9e2e8655428eb634cb197fbf1a39fcec6d754942bccdccb2fa54714be4f452",
+    "apps/api/src/modules/email/email.controller.ts": "78e5e6d490fd4d93a2f2738b595778039e5490c09771c2a841523f18ec2ace2c",
+    "apps/api/src/modules/email/email.route.ts": "bc185a8f556c2cd3584b972645353ad763f1e7da007c88cd9ae8a34cf9b082ee",
+    "apps/api/src/modules/email/email.service.ts": "4d81bfc4db57cf07685042b4efdf9fd45b71fbe3efd4edbfb12e07905eb6c03d",
+    "apps/api/src/modules/email/email.validator.ts": "c4e3bc5e964e286dd04737939ab909e9d7d1e20e0317bb47d669cf17364fdebf",
+    "apps/api/src/modules/inventory/inventory.controller.ts": "f0dcc093c8ac703e6211aa889cb808ca66c1cfd29c082196112cb3c90eb2237f",
+    "apps/api/src/modules/inventory/inventory.repository.ts": "1e727a82caaacf7938af03c98224f3fd9275021aa969dfadcd002e612b0acb97",
+    "apps/api/src/modules/inventory/inventory.route.ts": "6ebf47219c4a45edd42c0fc12fe3bb7d1d2c3c6cc9a2c4166ba7c3704a010bcf",
+    "apps/api/src/modules/inventory/inventory.service.ts": "3407a87dc9b9a3aeec09618a0ade3ad628ae8fd66b17cf25f0587092bbcd7992",
+    "apps/api/src/modules/inventory/inventory.validator.ts": "d82a39b9a73b7b267e9754879608568ee929d497adee56631cf3ce73f59f8bb0",
+    "apps/api/src/modules/order/order.controller.ts": "9f315ca3cfc8edb93cae09b7e8a63bbef76b853e00a98ab4d2941a7c309f4318",
+    "apps/api/src/modules/order/order.repository.ts": "badb921ea884c435228450544c7a933e51545b4fd76fd13daae2ffc51bd43c55",
+    "apps/api/src/modules/order/order.route.ts": "4477760e7589481f6dbdd09b5e6ab8aca6122793fe451149b95127de18fdc540",
+    "apps/api/src/modules/order/order.service.ts": "81141990e95b64de7352f88eb64fe515b822894a6a3c2d17460b801b1650950d",
+    "apps/api/src/modules/order/order.validator.ts": "36b99e22df8a2be9872fbb3d258c9cb39d454d71b2e3072b6513be5e804701b9",
+    "apps/api/src/modules/order/shipping.service.ts": "644445821b080bb043c63d8907ae112e8522ede4cd2a128c7162e69348ea1214",
+    "apps/api/src/modules/payment/payment.controller.ts": "42800e501a37e4fc608dfe084f73689a47e89686d6c349b785c6081d37e7f937",
+    "apps/api/src/modules/payment/payment.repository.ts": "5b44bf03cdf500a8cb9f5e6bffeb4ecd8624222ab8b811e5dcdc21d3963234a6",
+    "apps/api/src/modules/payment/payment.route.ts": "4599cff1aa41132933f76711b187402c36a2cce29b6bbc9d1745cca27994db12",
+    "apps/api/src/modules/payment/payment.service.ts": "138d9fa3d48c2759334dfb33dcf5def06a541cb79a5216665dbd629269e1b207",
+    "apps/api/src/modules/payment/payment.validator.ts": "22f5cdb2c883df8e9fbb802cb23a1715bc2741965b471a0a58992be9a5833b07",
+    "apps/api/src/modules/product/product.controller.ts": "bc2e0fb733ced5d5727be46ae10dbd029c6f46ab77e40cb1496fd5d1c6658df7",
+    "apps/api/src/modules/product/product.repository.ts": "74285c6dc98c557ff3473ac3d9dd1d75090b86a728e7879ca9128192deb9a12d",
+    "apps/api/src/modules/product/product.route.ts": "6eaefbb0b29d419517fe87e0283d0921eacfa985dc84a022a7db1973ae976fb7",
+    "apps/api/src/modules/product/product.service.ts": "7c2e187d3a78949427ef01f38db743f488252ba5a9976a846423dec1ab514d8e",
+    "apps/api/src/modules/product/product.validator.ts": "62c3f68af80d08441a09f688b29a72909403f7df25acf3613b6b6dbb76e08988",
+    "apps/api/src/modules/purchase/purchase.controller.ts": "55e556b9de09b352239361231a642d2376986e358452a2a8ecc7e647f4c9a672",
+    "apps/api/src/modules/purchase/purchase.receipt-validation.ts": "7606aa4e997ecc14cefc2f7813f68f1aad00605497ff463ba258c30ec1792357",
+    "apps/api/src/modules/purchase/purchase.repository.ts": "e545155fd4bec74b6bdf0a232dc2710ddb602dad9bc5921c5daa08b9f9a84fe3",
+    "apps/api/src/modules/purchase/purchase.route.ts": "1afac7a8e097412195d671b4935acf26df408ef46d3f085edbce66eace7fc293",
+    "apps/api/src/modules/purchase/purchase.service.ts": "f0c3680fdfe5f4e6a3a0929df90ae07c31ef3e38942958cfda1e14ce824a4a27",
+    "apps/api/src/modules/purchase/purchase.validator.ts": "c13b702177733f1248cfb03f1e526d1e49242accc0ddd7fbc3cb230dd319d354",
+    "apps/api/src/modules/simulate-sale/simulate-sale.controller.ts": "584a11527b93cfd6bc50d1912760be6284f73deff80e87c08462586fcb0e0975",
+    "apps/api/src/modules/simulate-sale/simulate-sale.repository.ts": "1f16e35d212343f1c8fce68a57fb5ac4de4f5c376ac7a6bab0c3a5cec971d454",
+    "apps/api/src/modules/simulate-sale/simulate-sale.route.ts": "00379e958219bf65610393ca07254d66b61f843e1f8a370e4fa4a850694b5e87",
+    "apps/api/src/modules/simulate-sale/simulate-sale.service.ts": "18cfb811ccec7e9963ed5a3fa6141f274130c1871d9e7b483285152a3f6992ad",
+    "apps/api/src/modules/simulate-sale/simulate-sale.validator.ts": "a30e709722abfbdf1120123f611316ca319794e175d346da8d53e5c8b7b30a16",
+    "apps/api/src/modules/supplier/supplier.controller.ts": "18f47a37128ea15249c696a39b4a5af37384f91dcc1dcefe95bed09a09413989",
+    "apps/api/src/modules/supplier/supplier.repository.ts": "7c3d6ee20d228d0a2904a58d6318d6498de9aa53af062b83275081212e6af252",
+    "apps/api/src/modules/supplier/supplier.route.ts": "18646f0c10bdcf79aa94099d18f72ba2378dcc088e0ae7a192aeb2dfdf5a195d",
+    "apps/api/src/modules/supplier/supplier.service.ts": "c2100f76822f76f97c17279f945d0dac10bb42587d03d05c8511ad816dbad60a",
+    "apps/api/src/modules/supplier/supplier.validator.ts": "1f2cf2c97f2d5e4b3940c9c3076719d051be26edfaa120c925896967e93ea96b",
+    "apps/api/src/modules/system-setting/system-setting.controller.ts": "d73e94c54a0e7b5fb907c1c6a83e4f79b8ab5d87a4a5e771af94abb0227951f9",
+    "apps/api/src/modules/system-setting/system-setting.repository.ts": "0402cba56d453fd4a325d2fd5899c3e95ea60e022fb19964f093e694f03f8058",
+    "apps/api/src/modules/system-setting/system-setting.route.ts": "1b0c5e983cd98ee93c46b3b5837bc4e026516bc29535d7543f79ec184a0df914",
+    "apps/api/src/modules/system-setting/system-setting.service.ts": "6450ab11c9ac4670d5ee1bb0ab69d6db71167cc3df9b3fd69c48bd374b610020",
+    "apps/api/src/modules/system-setting/system-setting.validator.ts": "f510cdd99c990471e954d2b299ee205963169f15a43bfea0121415513d850191",
+    "apps/api/src/modules/upload/upload.controller.ts": "4939902cec4d95499c1bfa48c8251877d339037e1651e60d20222bab8c90a7e6",
+    "apps/api/src/modules/upload/upload.route.ts": "20994d00219f83871aa075be9a9d8e4369e1afa0a8efb90e63bca8fdf60ff195",
+    "apps/api/src/modules/user/user.controller.ts": "422cc281749d80ffcf65b9015c306a4abda5f4955abf04390aac8fac4a78b595",
+    "apps/api/src/modules/user/user.route.ts": "206e169ae7a58d04d2dadd1dbce833e7a2b01cae5a615e8c93922233f3e8cd62",
+    "apps/api/src/modules/user/user.service.ts": "63dbc633177b41d60085f4a5ffbe795aeef635ffdf6c20de4c9e04ac3011bf58",
+    "apps/api/src/modules/user/user.validator.ts": "a43c719d55026f0120f7f2fef0534f3f7046b4a397858fa4d59cbe91a6d42837",
+    "apps/api/tests/auth-registration.test.cjs": "929c28d58356a73ccabc2ef862729fa04236f5de4659c7a6f66e272954be8d0c",
+    "apps/api/tests/in-process-http.cjs": "69d323c61b76bd0353f8d5252261b79ae379dcf9f9b1e6b2b463983146e2b669",
+    "apps/api/tests/inventory-consistency.test.cjs": "fa4ceb8476969c6b1e5bc5473fa28fc8ad4eaef138ad3a091e32ce191fa83b0c",
+    "apps/api/tests/inventory-ui-contract.test.cjs": "29d3eb0d65093ee1efa750c5d5c1f852fb006c732830fb2eccb6a53450e9dd65",
+    "apps/api/tests/order-after-commit.test.cjs": "9d07fff60db722b94e731521ccca4d80486762d60de5902584688c132e492fef",
+    "apps/api/tests/purchase-receipt-validation.test.cjs": "6063e3a9976b4e96edff9d49176b1e9f03a7c39226fff46326dd77620f1268eb",
+    "apps/api/tests/test-db-security.test.cjs": "fa37e7742281a1d96a1351f59d2f3c3aa9ec2d72bd83ad7b3486866f705577f6",
+    "apps/web/package.json": "fc4205efaf3af99fbf5a1d56c97ffc3091960ef010cc68ce50118ce4229986c1",
+    "apps/web/src/routes/AppRoutes.tsx": "e5c72c0cec8ad589d2cfe463c22337e9f5b8eb34d00ace2af7555a344f993717",
+    "docs/KLTN_PLAN/LOCAL_DEVELOPMENT_SETUP.md": "014af20bf4aecf29854df2a51e419dc87f89cfb5b34a5b88c3e8358bacd578df",
+    "docs/KLTN_PLAN/PROJECT_BASELINE.md": "451727def8202505005e54fc50d76fee90716175f75661edf78bcb9c82484a68",
+    "docs/KLTN_PLAN/REQUIREMENTS_TRACEABILITY.md": "2c894e1511960b605c3d1fb83222b574af01b3243c018acf66b8cf9127f99034",
+    "docs/KLTN_PLAN/WEEK_01.md": "8d2fc403d17ba3452efdf5a357fece0f980ec83680688f81779058da18f5408e",
+    "docs/KLTN_PLAN/WEEK_02.md": "cdc9336b34632ec62c5dcbbea2c7a281521557daa9e278afda073891d5b2defc",
+    "docs/KLTN_PLAN/WEEK_03.md": "dc902993601815926f0429f2e3d79dd91c1a18709b4568655ccd1ebc0b5e8587",
+    "docs/KLTN_PLAN/WEEK_04.md": "01f823bd72ea6c63bfe790096cd745483cbd906985eee1d9b2255e2039f56185",
+    "docs/KLTN_PLAN/WEEK_04_AUDIT/BACKEND_SECURITY_AUDIT.md": "4b208d92ee73d4277246cf98b77badca5be07bbe24fa953ac4f4047daf35c146",
+    "docs/KLTN_PLAN/WEEK_04_AUDIT/DATABASE_AUDIT.md": "f6a9f09acd4d2fae7759be17102bc1ed1682d7d02ec995ddd139c5f098d34d37",
+    "docs/KLTN_PLAN/WEEK_04_AUDIT/DATABASE_REVERIFICATION.md": "dc6b61e0a8f6cd36b06cdde29250ce655be2e54bd69cdbb16e08872fa976d15a",
+    "docs/KLTN_PLAN/WEEK_04_AUDIT/GAP_AND_ACTION_PLAN.md": "54d1e1b47f50588785f2ba09492fd8b3c07c09a4648c449536c7faad5c634b3f",
+    "docs/KLTN_PLAN/WEEK_04_AUDIT/MIGRATION_SAFETY_AUDIT.md": "ac4c48302a88eb00f2cfd578607ed1d2757cbfd31f4888629c0ef821f749f5ab",
+    "docs/KLTN_PLAN/WEEK_04_AUDIT/POSTGRES_ENVIRONMENT_READINESS.md": "992e71ce28220e8de596aeb27fcf0d885ad341946732ad671f14d7f43b9256de",
+    "docs/KLTN_PLAN/WEEK_04_AUDIT/READINESS_REPORT.md": "f74663a60ea17b3aa214d427d90765ea42651e0002426c91fe961e926b1c430d",
+    "docs/KLTN_PLAN/WEEK_04_AUDIT/TEST_READINESS.md": "ded28e8a7f7cbaa0caab6d06b33937806a07eb7d2ece00a2df0cebb97e038107",
+    "docs/KLTN_PLAN/WEEK_05.md": "9eb36d0140a364e959c01e9f654a37c80ade1b730d5df7d2bdbf4540c8810cf9",
+    "docs/PROJECT_SOURCE_ANALYSIS.md": "5334ab941bb90573e796bf97013ce2aea540f4181f2554056c8120be738f9f88",
+    "docs/PROJECT_VERIFICATION.md": "568116c72c8db1c51361126e77b670cc875a865d044207936e35869942970a9b",
+    "package.json": "49f2385c85f1521ffa02f17ea926d5e79aed4bd91814ac84e380faf64fb815e9",
+    "packages/database/package.json": "fd9a135fc1b6248a466d5ec5761ee482fe9dfe14ab13e2d551d9b9ffbc87bf76",
+    "packages/database/prisma/migration_27_tables/00_precheck.sql": "beb8d696973478658d17668adfb2c8e0b11c768255b1217a382811db1dd87ebe",
+    "packages/database/prisma/migration_27_tables/01_expand.sql": "044698f37ae05d5c7bd8e8f281dade05b4e0cc1cb206bffd89a2b9d09742178a",
+    "packages/database/prisma/migration_27_tables/02_migrate_data.sql": "02f44cfd06a49a47336d66a8ef0bdd372bfbf83d486bc851520534d5254cdaca",
+    "packages/database/prisma/migration_27_tables/03_verify.sql": "bb45927711011abefc547ed7e2247083dc3e271abb2a84eaa9903d3a8911c81d",
+    "packages/database/prisma/migration_27_tables/04_contract_DO_NOT_RUN_YET.sql": "a7f8c2736ee260537b050e91dd385e0d80ee4616ae746fa587ec83f4b2dda613",
+    "packages/database/prisma/migration_27_tables/05_rollback_plan.sql": "9546fc2e43954a2c97f7a4281ba53db0800b2cba80ee314e3df68bb5554586c8",
+    "packages/database/prisma/schema/category.prisma": "ec3022cb917423ceeee089942c7e1fb6301bfee8fc11fdd7c4b96770cd76720c",
+    "packages/database/prisma/schema/inventory.prisma": "602a215a05efdee96bb8c16e74c5a3c7088217616991c4dd4833896b7ab3d5a3",
+    "packages/database/prisma/schema/main.prisma": "d6ba2e4d55dc9336acb9fece8e4ba1361aac8bdb4203aa06150c48035f67286a",
+    "packages/database/prisma/schema/migrations/20260718025427_init_schema_and_unique_keys/migration.sql": "d347622fe1db9defcda6ac84750088099749853f3dce3cc5dfaba06fafbe39b6",
+    "packages/database/prisma/schema/migrations/20260724120000_add_product_detail_fields/migration.sql": "714b5b4a72fe39f2ad229322d5292f17759a2b5610b708a86ea98b6a0639f022",
+    "packages/database/prisma/schema/order.prisma": "35f4c24da3840f7930f9e5f272ed9ef055ba1c4ebbfe25e5dec00c21e618f7b1",
+    "packages/database/prisma/schema/product.prisma": "8e6a71bd759dc3aba9f3faa7ada4d3952d35a4f20aac450c174845850f22b234",
+    "packages/database/prisma/schema/purchase.prisma": "366a73473885b7c8c235139b8f4e29e6d19eecc89c58a8e1bfc81d09d4019ff6",
+    "packages/database/prisma/schema/supplier.prisma": "36e93023350ac43d3758254a3cc22f571dbf84ffd765acc1e2fcb9962e2e2e55",
+    "packages/database/prisma/schema/system.prisma": "17405e893e8a94942072cdca9e84b3b80bc7ae60a779fd326a04f2c961a83478",
+    "packages/database/prisma/schema/user.prisma": "8e55e458d3943d2082557edb7dd52013ec0436235ab1554b04995bb1321811d2"
+  },
+  "database_access": "BLOCKED_BY_USER_CHOICE; no authentication, probe or query attempted"
+}

@@ -386,11 +386,136 @@ async function seedIngredients() {
   }
   console.log(`✅ Đã đồng bộ ${toppingsSpec.length} Topping mẫu.`);
 
-  // 5. Tạo Công thức (Recipe BOM) mẫu cho các sản phẩm đang có trong DB và tính lại Product.costPrice
-  const products = await prisma.product.findMany({
-    take: 6,
-    orderBy: { createdAt: "asc" },
+  // 5. Dọn dẹp toàn bộ dữ liệu Sản phẩm đóng gói & Tồn kho cũ (Inventory / InventoryBatch / SupplierProduct)
+  // Chỉ giữ lại các sản phẩm pha chế (DRK-*) và quản lý kho qua Nguyên liệu (Ingredient)
+  await prisma.inventoryTransaction.deleteMany({
+    where: { ingredientId: null },
   });
+  await prisma.purchaseRequestItem.deleteMany({
+    where: { ingredientId: null },
+  });
+  await prisma.purchaseRequest.deleteMany({
+    where: { items: { none: {} } },
+  });
+  await prisma.supplierProduct.deleteMany({});
+  await prisma.inventoryBatch.deleteMany({});
+  await prisma.inventory.deleteMany({});
+  await prisma.agentLog.deleteMany({
+    where: {
+      OR: [
+        { reference_type: "Inventory" },
+        { action: { startsWith: "SCAN_INVENTORY_" } },
+      ],
+      NOT: { action: "SCAN_INVENTORY_SESSION" },
+    },
+  });
+
+  const packagedProducts = await prisma.product.findMany({
+    where: { NOT: { sku: { startsWith: "DRK-" } } },
+    select: { id: true },
+  });
+  if (packagedProducts.length > 0) {
+    const packagedIds = packagedProducts.map((p) => p.id);
+    await prisma.orderItemTopping.deleteMany({
+      where: { orderItem: { productId: { in: packagedIds } } },
+    });
+    await prisma.orderItem.deleteMany({
+      where: { productId: { in: packagedIds } },
+    });
+    await prisma.order.deleteMany({
+      where: { items: { none: {} } },
+    });
+    await prisma.recipeIngredient.deleteMany({
+      where: { recipe: { productId: { in: packagedIds } } },
+    });
+    await prisma.recipe.deleteMany({
+      where: { productId: { in: packagedIds } },
+    });
+    await prisma.product.deleteMany({
+      where: { id: { in: packagedIds } },
+    });
+  }
+
+  await prisma.category.deleteMany({
+    where: {
+      kind: CategoryKind.PRODUCT,
+      products: { none: {} },
+    },
+  });
+
+  const products = await prisma.product.findMany({
+    where: { sku: { startsWith: "DRK-" } },
+    orderBy: { sku: "asc" },
+  });
+
+  const DRINK_RECIPES_BY_SKU: Record<string, Array<{ sku: string; quantity: number; unit: string }>> = {
+    "DRK-ESP-001": [
+      { sku: "ING-CF-ARABICA", quantity: 18, unit: "g" },
+      { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" },
+    ],
+    "DRK-AME-002": [
+      { sku: "ING-CF-ARABICA", quantity: 18, unit: "g" },
+      { sku: "ING-SUGAR-LIQUID", quantity: 10, unit: "ml" },
+      { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" },
+    ],
+    "DRK-LAT-003": [
+      { sku: "ING-CF-ARABICA", quantity: 18, unit: "g" },
+      { sku: "ING-MILK-FRESH", quantity: 180, unit: "ml" },
+      { sku: "ING-SYRUP-VANILLA", quantity: 10, unit: "ml" },
+      { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" },
+    ],
+    "DRK-CAP-004": [
+      { sku: "ING-CF-ARABICA", quantity: 18, unit: "g" },
+      { sku: "ING-MILK-FRESH", quantity: 150, unit: "ml" },
+      { sku: "ING-POWDER-COCOA", quantity: 5, unit: "g" },
+      { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" },
+    ],
+    "DRK-MOC-005": [
+      { sku: "ING-CF-ARABICA", quantity: 18, unit: "g" },
+      { sku: "ING-MILK-FRESH", quantity: 150, unit: "ml" },
+      { sku: "ING-POWDER-COCOA", quantity: 15, unit: "g" },
+      { sku: "ING-MILK-CONDENSED", quantity: 20, unit: "ml" },
+      { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" },
+    ],
+    "DRK-MAC-006": [
+      { sku: "ING-CF-ARABICA", quantity: 18, unit: "g" },
+      { sku: "ING-MILK-FRESH", quantity: 160, unit: "ml" },
+      { sku: "ING-SYRUP-CARAMEL", quantity: 20, unit: "ml" },
+      { sku: "ING-CREAM-RICH", quantity: 20, unit: "ml" },
+      { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" },
+    ],
+    "DRK-CLB-007": [
+      { sku: "ING-CF-ARABICA", quantity: 25, unit: "g" },
+      { sku: "ING-SYRUP-VANILLA", quantity: 15, unit: "ml" },
+      { sku: "ING-SUGAR-LIQUID", quantity: 10, unit: "ml" },
+      { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" },
+    ],
+    "DRK-PHIN-008": [
+      { sku: "ING-CF-ROBUSTA", quantity: 25, unit: "g" },
+      { sku: "ING-MILK-CONDENSED", quantity: 40, unit: "ml" },
+      { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" },
+    ],
+    "DRK-BACXIU-009": [
+      { sku: "ING-CF-ROBUSTA", quantity: 15, unit: "g" },
+      { sku: "ING-MILK-FRESH", quantity: 100, unit: "ml" },
+      { sku: "ING-MILK-CONDENSED", quantity: 40, unit: "ml" },
+      { sku: "ING-CREAM-RICH", quantity: 20, unit: "ml" },
+      { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" },
+    ],
+    "DRK-MAT-010": [
+      { sku: "ING-POWDER-MATCHA", quantity: 8, unit: "g" },
+      { sku: "ING-MILK-FRESH", quantity: 150, unit: "ml" },
+      { sku: "ING-MILK-CONDENSED", quantity: 25, unit: "ml" },
+      { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" },
+    ],
+    "DRK-CHOC-011": [
+      { sku: "ING-POWDER-COCOA", quantity: 20, unit: "g" },
+      { sku: "ING-MILK-FRESH", quantity: 140, unit: "ml" },
+      { sku: "ING-MILK-CONDENSED", quantity: 30, unit: "ml" },
+      { sku: "ING-CREAM-RICH", quantity: 20, unit: "ml" },
+      { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" },
+    ],
+  };
 
   let seededRecipeCount = 0;
   for (const prod of products) {
@@ -400,29 +525,32 @@ async function seedIngredients() {
     if (existingActive) continue;
 
     const nameLower = prod.name.toLowerCase();
-    const items: Array<{ sku: string; quantity: number; unit: string }> = [];
+    const items: Array<{ sku: string; quantity: number; unit: string }> =
+      DRINK_RECIPES_BY_SKU[prod.sku] ? [...DRINK_RECIPES_BY_SKU[prod.sku]!] : [];
 
-    if (nameLower.includes("matcha")) {
-      items.push(
-        { sku: "ING-POWDER-MATCHA", quantity: 8, unit: "g" },
-        { sku: "ING-MILK-FRESH", quantity: 150, unit: "ml" },
-        { sku: "ING-MILK-CONDENSED", quantity: 25, unit: "ml" },
-        { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" }
-      );
-    } else if (nameLower.includes("latte") || nameLower.includes("cappuccino") || nameLower.includes("caramel")) {
-      items.push(
-        { sku: "ING-CF-ARABICA", quantity: 18, unit: "g" },
-        { sku: "ING-MILK-FRESH", quantity: 160, unit: "ml" },
-        { sku: "ING-SYRUP-CARAMEL", quantity: 15, unit: "ml" },
-        { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" }
-      );
-    } else {
-      items.push(
-        { sku: "ING-CF-ROBUSTA", quantity: 22, unit: "g" },
-        { sku: "ING-MILK-CONDENSED", quantity: 35, unit: "ml" },
-        { sku: "ING-SUGAR-LIQUID", quantity: 10, unit: "ml" },
-        { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" }
-      );
+    if (items.length === 0) {
+      if (nameLower.includes("matcha")) {
+        items.push(
+          { sku: "ING-POWDER-MATCHA", quantity: 8, unit: "g" },
+          { sku: "ING-MILK-FRESH", quantity: 150, unit: "ml" },
+          { sku: "ING-MILK-CONDENSED", quantity: 25, unit: "ml" },
+          { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" }
+        );
+      } else if (nameLower.includes("latte") || nameLower.includes("cappuccino") || nameLower.includes("caramel")) {
+        items.push(
+          { sku: "ING-CF-ARABICA", quantity: 18, unit: "g" },
+          { sku: "ING-MILK-FRESH", quantity: 160, unit: "ml" },
+          { sku: "ING-SYRUP-CARAMEL", quantity: 15, unit: "ml" },
+          { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" }
+        );
+      } else {
+        items.push(
+          { sku: "ING-CF-ROBUSTA", quantity: 22, unit: "g" },
+          { sku: "ING-MILK-CONDENSED", quantity: 35, unit: "ml" },
+          { sku: "ING-SUGAR-LIQUID", quantity: 10, unit: "ml" },
+          { sku: "ING-PACK-CUP500", quantity: 1, unit: "pcs" }
+        );
+      }
     }
 
     let totalCost = 0;

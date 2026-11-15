@@ -43,6 +43,46 @@ const toProductDto = (product: ProductRecord): ProductDto => {
         return {} as ProductDto; // Fallback an toàn nếu undefined
     }
 
+    const activeRecipe = (product as any).recipes?.[0];
+    let computedInventory: ProductDto['inventory'] = null;
+
+    if (product.inventory) {
+        const availableQty = Math.max(
+            0,
+            Number(product.inventory.quantity) - Number((product.inventory as any).reservedStock ?? 0)
+        );
+        computedInventory = {
+            quantity: availableQty,
+            minThreshold: product.inventory.minThreshold,
+            unit: product.inventory.unit
+        };
+    } else if (activeRecipe && Array.isArray(activeRecipe.ingredients) && activeRecipe.ingredients.length > 0) {
+        const requiredItems = activeRecipe.ingredients.filter((ri: any) => !ri.isOptional && ri.ingredient);
+        let maxServings = requiredItems.length > 0 ? Infinity : 0;
+        for (const ri of requiredItems) {
+            const ingAvail = Math.max(
+                0,
+                Number(ri.ingredient.quantity || 0) - Number(ri.ingredient.reserved || 0)
+            );
+            const reqBase = Number(ri.quantityBase || ri.quantity || 0);
+            if (reqBase > 0) {
+                maxServings = Math.min(maxServings, Math.floor(ingAvail / reqBase));
+            }
+        }
+        const finalServings = Number.isFinite(maxServings) ? maxServings : 0;
+        computedInventory = {
+            quantity: finalServings,
+            minThreshold: 10,
+            unit: product.servingUnit || 'Ly'
+        };
+    } else {
+        computedInventory = {
+            quantity: 0,
+            minThreshold: 10,
+            unit: product.servingUnit || 'Ly'
+        };
+    }
+
     return {
         id: product.id,
         name: product.name,
@@ -50,7 +90,7 @@ const toProductDto = (product: ProductRecord): ProductDto => {
         description: product.description ?? null,
         price: Number(product.price || 0),
         costPrice: Number(product.costPrice || 0),
-        unit: product.servingUnit || 'hộp',
+        unit: product.servingUnit || 'Ly',
         imageUrl: product.imageUrl ?? null,
         isActive: product.isActive ?? true,
         categoryId: product.categoryId,
@@ -59,14 +99,8 @@ const toProductDto = (product: ProductRecord): ProductDto => {
             name: product.category.name,
             description: product.category.description ?? null
         } : { id: product.categoryId || '', name: 'Unknown', description: null },
-        inventory: product.inventory
-            ? {
-                  quantity: product.inventory.quantity,
-                  minThreshold: product.inventory.minThreshold,
-                  unit: product.inventory.unit
-              }
-            : null,
-        inventoryQuantity: product.inventory?.quantity ?? null,
+        inventory: computedInventory,
+        inventoryQuantity: computedInventory?.quantity ?? null,
         nutritionFacts: (product as any).nutritionFacts ?? null,
         usageInstructions: (product as any).usageInstructions ?? null,
         storageInstructions: (product as any).storageInstructions ?? null,
