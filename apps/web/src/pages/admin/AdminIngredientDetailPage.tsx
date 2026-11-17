@@ -6,7 +6,9 @@ import { formatCurrency } from "../../utils/formatCurrency";
 import { formatDate } from "../../utils/formatDate";
 import { Loading } from "../../components/common/Loading";
 import { ArrowLeft, Layers, History } from "lucide-react";
-import { getErrorMessage } from "../../api/client";
+import { ingredientError } from "./ingredientFeedback";
+import { IngredientOperations } from "./IngredientOperations";
+import "./ingredients.css";
 
 export const AdminIngredientDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -27,7 +29,7 @@ export const AdminIngredientDetailPage: React.FC = () => {
         setIngredient(ingData);
         setTransactions(txData);
       } catch (err) {
-        setError(getErrorMessage(err) || "Không thể tải chi tiết nguyên liệu.");
+        setError(ingredientError(err) || "Không thể tải chi tiết nguyên liệu.");
       } finally {
         setIsLoading(false);
       }
@@ -55,7 +57,7 @@ export const AdminIngredientDetailPage: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col gap-6 max-w-5xl mx-auto">
+    <div className="ingredient-detail flex flex-col gap-6 max-w-5xl mx-auto">
       <div>
         <Link
           to="/admin/ingredients"
@@ -65,6 +67,7 @@ export const AdminIngredientDetailPage: React.FC = () => {
         </Link>
       </div>
 
+      <Link to={`/admin/ingredient-batches?ingredientId=${encodeURIComponent(ingredient.id)}`} className="text-sm underline">Xem toàn bộ lô, chất lượng, thu hồi & hàng hoàn →</Link>
       {/* Summary card */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4">
@@ -113,6 +116,10 @@ export const AdminIngredientDetailPage: React.FC = () => {
         </div>
       </div>
 
+      <IngredientOperations key={ingredient.id} ingredient={ingredient} onRefresh={async () => {
+        const [latest, history] = await Promise.all([ingredientsApi.getIngredientById(ingredient.id), ingredientsApi.getTransactions(ingredient.id)]);
+        setIngredient(latest); setTransactions(history);
+      }} />
       {/* Batches */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
         <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
@@ -178,6 +185,7 @@ export const AdminIngredientDetailPage: React.FC = () => {
                 <tr className="border-b border-slate-100 text-slate-400 uppercase font-bold">
                   <th className="py-2.5 px-3">Thời gian</th>
                   <th className="py-2.5 px-3">Loại GD</th>
+                  <th className="py-2.5 px-3">Người thực hiện</th>
                   <th className="py-2.5 px-3">Mã lô</th>
                   <th className="py-2.5 px-3 text-right">Số lượng ({ingredient.baseUnit})</th>
                   <th className="py-2.5 px-3 text-right">Đơn giá vốn</th>
@@ -190,6 +198,7 @@ export const AdminIngredientDetailPage: React.FC = () => {
                   <tr key={tx.id} className="hover:bg-slate-50/50">
                     <td className="py-2.5 px-3 text-slate-500">{formatDate(tx.createdAt)}</td>
                     <td className="py-2.5 px-3 font-bold text-slate-700">{tx.type}</td>
+                    <td className="py-2.5 px-3">{tx.performedBy || tx.performedByEmail || '—'}</td>
                     <td className="py-2.5 px-3 font-mono text-slate-500">{tx.batchCode || "-"}</td>
                     <td
                       className={`py-2.5 px-3 text-right font-bold ${

@@ -14,6 +14,8 @@ model Product {
   servingUnit        String    @default("ly")
   imageUrl           String?
   isActive           Boolean   @default(true)
+  // NULL preserves unreviewed legacy classification; never implies recipe exemption.
+  requiresRecipe     Boolean?
   deletedAt          DateTime?
   pendingDeleteUntil DateTime?
 
@@ -30,6 +32,7 @@ model Product {
   recipes    Recipe[]
   orderItems OrderItem[]
   toppings   Topping[]
+  auditLogs  ProductAuditLog[]
 
   // Quan hệ chuyển tiếp (Transitional legacy support)
   inventory            Inventory?
@@ -38,6 +41,20 @@ model Product {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model ProductAuditLog {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  actorId       String
+  action        String
+  before        Json
+  after         Json
+  changedFields String[]
+  createdAt     DateTime @default(now())
+
+  @@index([productId, createdAt])
 }
 
 model Recipe {

@@ -16,6 +16,7 @@ export interface Product {
   categoryId?: string;
   category_id?: string;
   category?: Category;
+  requiresRecipe?: boolean | null;
   isActive?: boolean;
   is_active?: boolean;
   updatedAt?: string;
@@ -38,3 +39,6 @@ export interface Product {
   expiryInfo?: string | null;
   expiry_info?: string | null;
 }
+
+export type ProductWritePayload = Omit<Partial<Product>, "requiresRecipe" | "expectedUpdatedAt"> & { requiresRecipe?: boolean };
+export type ProductUpdatePayload = ProductWritePayload & { expectedUpdatedAt: string };

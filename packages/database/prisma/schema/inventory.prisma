@@ -41,6 +41,8 @@ model Ingredient {
   storageInstructions String?
   expiryInfo          String?
   shelfLifeDays       Int?
+  expiryClassification String?
+  expiryClassificationRequired Boolean @default(true)
   imageUrl            String?
   isActive            Boolean   @default(true)
   deletedAt           DateTime?
@@ -78,8 +80,12 @@ model IngredientBatch {
   receivedQty           Decimal?             @db.Decimal(14, 3)
   receivedUnit          String?
   note                  String?
+  qualityStatus         String               @default("AVAILABLE")
 
   transactions InventoryTransaction[]
+  lotEvents LotEvent[]
+  sourceReturns LotReturn[] @relation("LotReturnSourceBatch")
+  returnedStock LotReturn? @relation("LotReturnTargetBatch")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -106,6 +112,8 @@ model InventoryTransaction {
   reason          String?
   idempotencyKey  String?                  @unique
   wasteReason     WasteReason?
+  sourceReturns LotReturn[] @relation("LotReturnSource")
+  returnRecord LotReturn? @relation("LotReturnMovement")
 
   // Cột chuyển tiếp (Transitional legacy support)
   productId     String?
@@ -118,6 +126,42 @@ model InventoryTransaction {
   @@index([referenceType, referenceId])
   @@index([orderItemId])
   @@index([type, createdAt])
+}
+
+model LotEvent {
+  id String @id @default(cuid())
+  batchId String
+  batch IngredientBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  requestId String @unique
+  action String
+  previousStatus String
+  newStatus String
+  reason String
+  actorId String
+  createdAt DateTime @default(now())
+
+  @@index([batchId, createdAt])
+}
+
+model LotReturn {
+  id String @id @default(cuid())
+  requestId String @unique
+  sourceTransactionId String
+  sourceTransaction InventoryTransaction @relation("LotReturnSource", fields: [sourceTransactionId], references: [id], onDelete: Restrict)
+  sourceBatchId String
+  sourceBatch IngredientBatch @relation("LotReturnSourceBatch", fields: [sourceBatchId], references: [id], onDelete: Restrict)
+  targetBatchId String @unique
+  targetBatch IngredientBatch @relation("LotReturnTargetBatch", fields: [targetBatchId], references: [id], onDelete: Restrict)
+  transactionId String @unique
+  transaction InventoryTransaction @relation("LotReturnMovement", fields: [transactionId], references: [id], onDelete: Restrict)
+  quantity Decimal @db.Decimal(14, 3)
+  quality String
+  disposition String @default("QUARANTINED")
+  reason String
+  actorId String
+  createdAt DateTime @default(now())
+
+  @@index([sourceTransactionId])
 }
 
 model StockCount {

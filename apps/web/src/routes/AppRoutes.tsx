@@ -44,6 +44,9 @@ import { AdminNotificationsPage } from "../pages/admin/AdminNotificationsPage";
 import { AdminCategoriesPage } from "../pages/admin/AdminCategoriesPage";
 import { AdminSystemSettingsPage } from "../pages/admin/AdminSystemSettingsPage";
 
+import { AdminIngredientBatchesPage } from "../pages/admin/AdminIngredientBatchesPage";
+
+
 const ScrollToTop: React.FC = () => {
   const { pathname } = useLocation();
 
@@ -131,6 +134,12 @@ export const AppRoutes: React.FC = () => {
           <Route path="products/:id/edit" element={<AdminProductFormPage />} />
           <Route path="ingredients" element={<AdminIngredientsPage />} />
           <Route path="ingredients/:id" element={<AdminIngredientDetailPage />} />
+
+          <Route
+            path="ingredient-batches"
+            element={<AdminIngredientBatchesPage />}
+          />
+
           <Route path="categories" element={<AdminCategoriesPage />} />
           <Route path="inventory" element={<Navigate to="/admin/ingredients" replace />} />
           <Route path="inventory/transactions" element={<AdminInventoryTransactionsPage />} />

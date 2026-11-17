@@ -13,9 +13,10 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '.
 function fixture({ failCommit = false, failLedger = false, failAgent = false } = {}) {
     let committed = false;
     const scans = [], errors = [];
-    const updated = { id: 'order-1', status: 'COMPLETED' };
+    const updated = { id: 'order-1', status: 'PREPARING' };
     const tx = {
         order: { updateMany: async () => ({ count: 1 }), findUnique: async () => updated },
+        orderOperation: { create: async () => ({}) },
         orderItem: { update: async () => ({}), updateMany: async () => ({ count: 0 }) },
         payment: { updateMany: async () => ({ count: 0 }) },
         inventory: { findUnique: async () => ({ id: 'inventory-1' }), updateMany: async () => ({ count: 1 }) },
@@ -34,8 +35,9 @@ function fixture({ failCommit = false, failLedger = false, failAgent = false } =
     vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, {
         exports, Date, console: { error: (...args) => errors.push(args) },
         require(name) {
+            if (name === './order-submission') return {};
             if (name === '../../common/http-error') return httpErrors;
-            if (name === '@cafe-project/database') return { prisma, OrderStatus: { COMPLETED: 'COMPLETED', CANCELLED: 'CANCELLED', PROCESSING: 'PROCESSING', PENDING: 'PENDING' }, InventoryTransactionType: { ORDER: 'ORDER', CANCEL: 'CANCEL' }, PaymentStatus: { PAID: 'PAID' }, TransactionStatus: { PAID: 'PAID' }, ConsumptionStatus: { COMMITTED: 'COMMITTED', VOIDED: 'VOIDED' } };
+            if (name === '@cafe-project/database') return { prisma, OrderStatus: { COMPLETED: 'COMPLETED', PREPARING: 'PREPARING', CANCELLED: 'CANCELLED', PROCESSING: 'PROCESSING', PENDING: 'PENDING' }, InventoryTransactionType: { ORDER: 'ORDER', CANCEL: 'CANCEL' }, PaymentStatus: { PAID: 'PAID' }, TransactionStatus: { PAID: 'PAID' }, ConsumptionStatus: { PENDING: 'PENDING', COMMITTED: 'COMMITTED', VOIDED: 'VOIDED' } };
             if (name === '../../common/ingredient-cost.utils') return {
                 toDecimal: () => ({ mul: () => 0, abs: () => ({ lte: () => true }) }),
                 roundCost4: v => v,
@@ -53,13 +55,13 @@ function fixture({ failCommit = false, failLedger = false, failAgent = false } =
             throw new Error(`Unexpected import: ${name}`);
         }
     });
-    const order = { id: 'order-1', status: 'PROCESSING', stockDeductedAt: null, items: [{ productId: 'product-1', quantity: 3 }] };
+    const order = { id: 'order-1', status: 'PROCESSING', stockDeductedAt: null, version: 0, items: [{ productId: 'product-1', quantity: 3, consumptionStatus: 'PENDING' }] };
     return { repo: exports.orderRepository, order, scans, errors, updated, committed: () => committed };
 }
 
-test('completion dispatches one Agent scan after transaction commit with original actor/order', async () => {
+test('preparation dispatches one Agent scan after transaction commit with original actor/order', async () => {
     const f = fixture();
-    assert.equal(await f.repo.updateStatus(f.order, 'COMPLETED', 'admin'), f.updated);
+    assert.equal(await f.repo.updateStatus(f.order, 'PREPARING', 'admin'), f.updated);
     assert.equal(f.scans.length, 1);
     assert.equal(f.scans[0][1], 'admin');
     assert.equal(f.scans[0][0].sourceId, 'order-1');
@@ -68,14 +70,14 @@ test('completion dispatches one Agent scan after transaction commit with origina
 
 for (const failure of ['failLedger', 'failCommit']) test(`${failure} leaves no remote scan`, async () => {
     const f = fixture({ [failure]: true });
-    await assert.rejects(f.repo.updateStatus(f.order, 'COMPLETED', 'admin'), /Injected/);
+    await assert.rejects(f.repo.updateStatus(f.order, 'PREPARING', 'admin'), /Injected/);
     assert.equal(f.scans.length, 0);
     assert.equal(f.committed(), false);
 });
 
 test('postcommit Agent failure does not undo order success or log private provider detail', async () => {
     const f = fixture({ failAgent: true });
-    assert.equal(await f.repo.updateStatus(f.order, 'COMPLETED', 'admin'), f.updated);
+    assert.equal(await f.repo.updateStatus(f.order, 'PREPARING', 'admin'), f.updated);
     assert.equal(f.committed(), true);
     assert.equal(f.scans.length, 1);
     assert.equal(f.errors.length, 1);
@@ -88,6 +90,6 @@ test('cancellation or already-finalized completion does not dispatch a completio
     assert.equal(cancelled.scans.length, 0);
     const finalized = fixture();
     finalized.order.stockDeductedAt = new Date();
-    await finalized.repo.updateStatus(finalized.order, 'COMPLETED', 'admin');
+    await finalized.repo.updateStatus(finalized.order, 'PREPARING', 'admin');
     assert.equal(finalized.scans.length, 0);
 });

@@ -6,6 +6,7 @@ import type { AgentLog } from "../../types/agentLog.types";
 import type {
   Ingredient,
   WasteReason,
+  ExpiryClassification,
 } from "../../types/ingredient.types";
 import { formatCurrency } from "../../utils/formatCurrency";
 import { formatDate } from "../../utils/formatDate";
@@ -15,7 +16,10 @@ import { Input } from "../../components/common/Input";
 import { Modal } from "../../components/common/Modal";
 import { EmptyState } from "../../components/common/EmptyState";
 import { ErrorState } from "../../components/common/ErrorState";
-import { getErrorMessage } from "../../api/client";
+import { ingredientPatch, ingredientError, availableStock } from "./ingredientFeedback";
+import "./ingredients.css";
+import { lotError, lotImportExpiryError } from "./lotFeedback";
+import { useRef } from "react";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
 import {
@@ -40,7 +44,11 @@ const WASTE_REASON_LABELS: Record<WasteReason, string> = {
 
 export const AdminIngredientsPage: React.FC = () => {
   const toast = useToast();
-  const { isStaff } = useAuth();
+  const { isAdmin } = useAuth();
+  const submitLock = useRef(false);
+  const [formError, setFormError] = useState("");
+  const [includeInactive, setIncludeInactive] = useState(false);
+  const [confirmedWaste, setConfirmedWaste] = useState(false);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -51,11 +59,13 @@ export const AdminIngredientsPage: React.FC = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingIng, setEditingIng] = useState<Ingredient | null>(null);
   const [name, setName] = useState("");
+  const [active, setActive] = useState(true);
   const [sku, setSku] = useState("");
   const [baseUnit, setBaseUnit] = useState("g");
   const [costPerBaseUnit, setCostPerBaseUnit] = useState("0");
   const [minThreshold, setMinThreshold] = useState("100");
   const [shelfLifeDays, setShelfLifeDays] = useState("180");
+  const [expiryClassification, setExpiryClassification] = useState<ExpiryClassification | ''>('');
   const [submittingForm, setSubmittingForm] = useState(false);
 
   // Import Modal
@@ -94,6 +104,24 @@ export const AdminIngredientsPage: React.FC = () => {
     expiryWarningCount: 0,
     failedCount: 0,
   });
+
+  const loadData = useCallback(() => {
+    setIsLoading(true);
+    setLoadError(null);
+    return ingredientsApi.getIngredients({
+      search: search.trim() || undefined,
+      lowStock: onlyLowStock || undefined,
+      includeInactive,
+    }).then(data => { setIngredients(data); }).catch((err: unknown) => {
+      setLoadError(ingredientError(err));
+      toast.error(ingredientError(err));
+    }).finally(() => { setIsLoading(false); });
+  }, [search, onlyLowStock, includeInactive, toast]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadData(); }, 200);
+    return () => window.clearTimeout(timer);
+  }, [loadData]);
 
   const handleScanIngredients = async () => {
     setIsScanningAgent(true);
@@ -180,7 +208,7 @@ export const AdminIngredientsPage: React.FC = () => {
 
       await loadData();
     } catch (err) {
-      toast.error(getErrorMessage(err) || "AI Agent quét nguyên liệu thất bại.");
+      toast.error(ingredientError(err) || "AI Agent quét nguyên liệu thất bại.");
     } finally {
       setIsScanningAgent(false);
       window.dispatchEvent(new CustomEvent("refresh-notifications"));
@@ -188,29 +216,11 @@ export const AdminIngredientsPage: React.FC = () => {
     }
   };
 
-  const loadData = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setLoadError(null);
-      const data = await ingredientsApi.getIngredients({
-        search: search.trim() || undefined,
-        lowStock: onlyLowStock || undefined,
-      });
-      setIngredients(data);
-    } catch (err) {
-      setLoadError(getErrorMessage(err) || "Không thể tải danh sách nguyên liệu.");
-      toast.error(getErrorMessage(err) || "Không thể tải danh sách nguyên liệu.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [search, onlyLowStock, toast]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
   const openCreateModal = () => {
+    setFormError("");
+    setActive(true);
     setEditingIng(null);
+    setExpiryClassification('');
     setName("");
     setSku("");
     setBaseUnit("g");
@@ -221,7 +231,10 @@ export const AdminIngredientsPage: React.FC = () => {
   };
 
   const openEditModal = (ing: Ingredient) => {
+    setFormError("");
+    setActive(ing.isActive);
     setEditingIng(ing);
+    setExpiryClassification(ing.expiryClassification ?? '');
     setName(ing.name);
     setSku(ing.sku);
     setBaseUnit(ing.baseUnit);
@@ -233,13 +246,18 @@ export const AdminIngredientsPage: React.FC = () => {
 
   const handleSaveIngredient = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      toast.error("Vui lòng nhập tên nguyên liệu.");
+    if (submitLock.current || !isAdmin) return;
+    setFormError("");
+    if (!name.trim() || !baseUnit.trim() || !Number.isFinite(Number(costPerBaseUnit)) || Number(costPerBaseUnit) < 0 || !Number.isFinite(Number(minThreshold)) || Number(minThreshold) < 0 || (shelfLifeDays && (!Number.isInteger(Number(shelfLifeDays)) || Number(shelfLifeDays) <= 0))) {
+      setFormError("Kiểm tra tên, đơn vị, giá vốn và ngưỡng không âm; hạn bảo quản phải là số nguyên dương.");
       return;
     }
+    submitLock.current = true;
     setSubmittingForm(true);
     try {
       const payload = {
+        ...(expiryClassification ? { expiryClassification } : {}),
+        isActive: active,
         name: name.trim(),
         sku: sku.trim() || undefined,
         baseUnit: baseUnit.trim() || "g",
@@ -248,7 +266,8 @@ export const AdminIngredientsPage: React.FC = () => {
         shelfLifeDays: shelfLifeDays ? Number(shelfLifeDays) : null,
       };
       if (editingIng) {
-        await ingredientsApi.updateIngredient(editingIng.id, payload);
+        const saved = await ingredientsApi.updateIngredient(editingIng.id, ingredientPatch(editingIng, payload));
+        setEditingIng(saved);
         toast.success("Cập nhật nguyên liệu thành công.");
       } else {
         await ingredientsApi.createIngredient(payload);
@@ -257,8 +276,10 @@ export const AdminIngredientsPage: React.FC = () => {
       setFormOpen(false);
       await loadData();
     } catch (err) {
-      toast.error(getErrorMessage(err) || "Không thể lưu nguyên liệu.");
+      setFormError(ingredientError(err));
+      toast.error(ingredientError(err));
     } finally {
+      submitLock.current = false;
       setSubmittingForm(false);
     }
   };
@@ -270,26 +291,27 @@ export const AdminIngredientsPage: React.FC = () => {
     setImportCostMode("totalCost");
     setImportCostVal("");
     setImportBatchCode("");
-    const defaultExp = new Date();
-    defaultExp.setDate(defaultExp.getDate() + (ing.shelfLifeDays || 180));
-    setImportExpiry(defaultExp.toISOString().split("T")[0] || "");
+    setImportExpiry('');
     setImportNote("");
   };
 
   const handleImportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!importTarget) return;
+    if (!importTarget || submitLock.current || !isAdmin) return;
+    const expiryError = lotImportExpiryError(importTarget, importExpiry);
+    if (expiryError) { toast.error(expiryError); return; }
     const qty = Number(importQty);
     const cost = Number(importCostVal);
-    if (!qty || qty <= 0) {
+    if (!Number.isFinite(qty) || qty <= 0) {
       toast.error("Số lượng nhập phải lớn hơn 0.");
       return;
     }
-    if (Number.isNaN(cost) || cost < 0) {
+    if (!importCostVal.trim() || !Number.isFinite(cost) || cost < 0) {
       toast.error("Vui lòng nhập chi phí hợp lệ.");
       return;
     }
 
+    submitLock.current = true;
     setSubmittingImport(true);
     try {
       const res = await ingredientsApi.importStock(importTarget.id, {
@@ -306,13 +328,15 @@ export const AdminIngredientsPage: React.FC = () => {
       setImportTarget(null);
       await loadData();
     } catch (err) {
-      toast.error(getErrorMessage(err) || "Nhập kho nguyên liệu thất bại.");
+      toast.error(lotError(err));
     } finally {
+      submitLock.current = false;
       setSubmittingImport(false);
     }
   };
 
   const openWasteModal = (ing: Ingredient) => {
+    setConfirmedWaste(false);
     setWasteTarget(ing);
     setWasteQty("");
     setWasteReason("EXPIRED");
@@ -322,12 +346,17 @@ export const AdminIngredientsPage: React.FC = () => {
 
   const handleWasteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!wasteTarget) return;
+    if (!wasteTarget || submitLock.current || !confirmedWaste) return;
     const qty = Number(wasteQty);
-    if (!qty || qty <= 0) {
+    if (!Number.isFinite(qty) || qty <= 0) {
       toast.error("Số lượng hao hụt phải lớn hơn 0.");
       return;
     }
+    const selectedBatch = wasteTarget.batches?.find(batch => batch.id === wasteBatchId);
+    if (qty > availableStock(wasteTarget) || (selectedBatch && qty > selectedBatch.quantityRemaining)) {
+      toast.error("Số lượng vượt tồn khả dụng hoặc lô đã chọn. Tải lại tồn trước khi thử lại."); return;
+    }
+    submitLock.current = true;
     setSubmittingWaste(true);
     try {
       const res = await ingredientsApi.recordWaste(wasteTarget.id, {
@@ -343,8 +372,9 @@ export const AdminIngredientsPage: React.FC = () => {
       setWasteTarget(null);
       await loadData();
     } catch (err) {
-      toast.error(getErrorMessage(err) || "Ghi nhận hao hụt thất bại.");
+      toast.error(ingredientError(err) || "Ghi nhận hao hụt thất bại.");
     } finally {
+      submitLock.current = false;
       setSubmittingWaste(false);
     }
   };
@@ -356,6 +386,7 @@ export const AdminIngredientsPage: React.FC = () => {
 
   return (
     <div className="inventory-workspace ingredients-workspace flex flex-col gap-5">
+      <label className="ingredient-confirm"><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)} />Hiển thị cả nguyên liệu ngừng hoạt động</label>
       {/* Header */}
       <div className="inventory-heading ingredients-heading flex flex-col gap-4">
         <div>
@@ -367,7 +398,7 @@ export const AdminIngredientsPage: React.FC = () => {
             Quản lý tồn kho nguyên liệu pha chế, lô nhập FIFO và đơn giá vốn bình quân gia quyền
           </p>
         </div>
-        {!isStaff && (
+        {isAdmin && (
           <div className="ingredients-actions flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
@@ -504,7 +535,7 @@ export const AdminIngredientsPage: React.FC = () => {
                       {ing.reserved.toLocaleString("vi-VN")} {ing.baseUnit}
                     </td>
                     <td className="ingredients-available py-3.5 px-4 text-right font-bold text-slate-900">
-                      {ing.availableQuantity.toLocaleString("vi-VN")} {ing.baseUnit}
+                      {availableStock(ing).toLocaleString("vi-VN")} {ing.baseUnit}
                     </td>
                     <td className="py-3.5 px-4 text-right font-semibold text-amber-800">
                       {ing.costPerBaseUnit.toLocaleString("vi-VN", {
@@ -547,7 +578,7 @@ export const AdminIngredientsPage: React.FC = () => {
                         >
                           <Flame size={14} /> Hao hụt
                         </button>
-                        {!isStaff && (
+                        {isAdmin && (
                           <button
                             onClick={() => openEditModal(ing)}
                             aria-label={`Sửa nguyên liệu ${ing.name}`}
@@ -577,13 +608,17 @@ export const AdminIngredientsPage: React.FC = () => {
       <p className="ingredients-table-hint">Cuộn ngang để xem đầy đủ tồn kho và thao tác.</p>
       </section>
 
+      <Link to="/admin/ingredient-batches" className="text-sm underline">Quản lý lô, cách ly, thu hồi & truy xuất →</Link>
       {/* Create / Edit Modal */}
       <Modal
         isOpen={formOpen}
-        onClose={() => setFormOpen(false)}
+        onClose={() => { if (!submittingForm) setFormOpen(false); }}
         title={editingIng ? "Cập nhật nguyên liệu" : "Thêm nguyên liệu mới"}
       >
-        <form onSubmit={handleSaveIngredient} className="space-y-4">
+        <form onSubmit={handleSaveIngredient} className="ingredient-dialog space-y-4">
+          {formError && <p role="alert" className="ingredient-error">{formError}</p>}
+          <label className="ingredient-confirm"><input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} />Đang hoạt động</label>
+          {editingIng && <p className="text-xs">Phiên bản {editingIng.rowVersion}. Đơn vị đã sử dụng được máy chủ bảo vệ.</p>}
           <Input
             label="Tên nguyên liệu"
             placeholder="VD: Cà phê hạt Arabica Cầu Đất..."
@@ -599,10 +634,11 @@ export const AdminIngredientsPage: React.FC = () => {
             />
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Đơn vị chuẩn (baseUnit)
+                Đơn vị chuẩn
               </label>
               <select
                 value={baseUnit}
+                disabled={!!editingIng && (editingIng.quantity !== 0 || editingIng.reserved !== 0 || !!editingIng.batches?.length)}
                 onChange={(e) => setBaseUnit(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm"
               >
@@ -614,6 +650,13 @@ export const AdminIngredientsPage: React.FC = () => {
               </select>
             </div>
           </div>
+          <label className="block text-sm">Phân loại hạn dùng
+            <select className="w-full border rounded-lg p-2.5 mt-1" value={expiryClassification} onChange={e => setExpiryClassification(e.target.value as ExpiryClassification | '')}>
+              <option value="" disabled={!!editingIng?.expiryClassification}>Chưa phân loại — giữ nguyên dữ liệu cũ</option>
+              <option value="PERISHABLE">PERISHABLE · Dễ hỏng, bắt buộc hạn dùng</option>
+              <option value="NON_PERISHABLE">NON_PERISHABLE · Có thể không ghi hạn dùng</option>
+            </select>
+          </label>
           <div className="grid grid-cols-3 gap-3">
             <Input
               label={`Giá vốn / 1 ${baseUnit} (đ)`}
@@ -636,7 +679,7 @@ export const AdminIngredientsPage: React.FC = () => {
             />
           </div>
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-            <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>
+            <Button type="button" variant="outline" disabled={submittingForm} onClick={() => setFormOpen(false)}>
               Hủy
             </Button>
             <Button type="submit" isLoading={submittingForm}>
@@ -649,11 +692,12 @@ export const AdminIngredientsPage: React.FC = () => {
       {/* Import Modal */}
       <Modal
         isOpen={!!importTarget}
-        onClose={() => setImportTarget(null)}
+        onClose={() => { if (!submittingImport) setImportTarget(null); }}
         title={`Nhập kho nguyên liệu: ${importTarget?.name ?? ""}`}
       >
         {importTarget && (
-          <form onSubmit={handleImportSubmit} className="space-y-4">
+          <form onSubmit={handleImportSubmit} className="ingredient-dialog space-y-4">
+            <p className="text-sm">Phân loại: {importTarget.expiryClassification ?? 'Chưa phân loại (giữ nguyên)'}. NON_PERISHABLE có thể bỏ hạn dùng; hạn bảo quản đã lưu vẫn có thể tạo hạn dùng theo Backend. Nhập kho không có mã chống lặp: nếu mất kết nối, kiểm tra lịch sử trước khi gửi lại.</p>
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
               Tồn hiện tại: <b>{importTarget.quantity.toLocaleString("vi-VN")} {importTarget.baseUnit}</b> •
               Giá vốn BQGQ hiện tại:{" "}
@@ -727,7 +771,8 @@ export const AdminIngredientsPage: React.FC = () => {
                 onChange={(e) => setImportBatchCode(e.target.value)}
               />
               <Input
-                label="Hạn sử dụng"
+                label={importTarget.expiryClassification === 'PERISHABLE' ? 'Hạn sử dụng (bắt buộc)' : 'Hạn sử dụng (tùy chọn)'}
+                required={importTarget.expiryClassification === 'PERISHABLE'}
                 type="date"
                 value={importExpiry}
                 onChange={(e) => setImportExpiry(e.target.value)}
@@ -745,7 +790,7 @@ export const AdminIngredientsPage: React.FC = () => {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setImportTarget(null)}
+                disabled={submittingImport} onClick={() => setImportTarget(null)}
               >
                 Hủy
               </Button>
@@ -760,11 +805,12 @@ export const AdminIngredientsPage: React.FC = () => {
       {/* Waste Modal */}
       <Modal
         isOpen={!!wasteTarget}
-        onClose={() => setWasteTarget(null)}
+        onClose={() => { if (!submittingWaste) setWasteTarget(null); }}
         title={`Ghi nhận hao hụt: ${wasteTarget?.name ?? ""}`}
       >
         {wasteTarget && (
-          <form onSubmit={handleWasteSubmit} className="space-y-4">
+          <form onSubmit={handleWasteSubmit} className="ingredient-dialog space-y-4">
+            <label className="ingredient-confirm"><input type="checkbox" checked={confirmedWaste} onChange={e => setConfirmedWaste(e.target.checked)} />Tôi xác nhận hao hụt thực tế; sẽ trừ tồn và ghi sổ.</label>
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">
               Khả dụng hiện tại:{" "}
               <b>
@@ -831,13 +877,14 @@ export const AdminIngredientsPage: React.FC = () => {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setWasteTarget(null)}
+                disabled={submittingWaste} onClick={() => setWasteTarget(null)}
               >
                 Hủy
               </Button>
               <Button
                 type="submit"
                 isLoading={submittingWaste}
+                disabled={!confirmedWaste || submittingWaste}
                 className="bg-rose-600 hover:bg-rose-700 text-white"
               >
                 Xác nhận trừ hao hụt

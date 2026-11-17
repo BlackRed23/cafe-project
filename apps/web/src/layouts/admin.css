@@ -1,0 +1,132 @@
+/* Admin-only operational theme. Explicit app preference wins over system. */
+.admin-root {
+  color-scheme: light;
+  --admin-paper: light-dark(#f7f2e9, #211c18);
+  --admin-panel: light-dark(#fffdf8, #2c2520);
+  --admin-soft: light-dark(#e8dcc8, #393027);
+  --admin-ink: light-dark(#35251d, #f7f2e9);
+  --admin-muted: light-dark(#6c5c50, #cdbda9);
+  --admin-line: light-dark(#c6b7a3, #776653);
+  --admin-primary: light-dark(#244c3b, #b4cfba);
+  --admin-on-primary: light-dark(#ffffff, #1b3025);
+  --admin-hover: light-dark(#193b2c, #cde1d1);
+  --admin-accent: light-dark(#8b5a30, #d7ad80);
+  --admin-sidebar: #35251d;
+  --admin-nav-text: #f7f2e9;
+  --admin-nav-muted: #d2bfa7;
+  --admin-nav-hover: #4c382b;
+  --admin-nav-active: #244c3b;
+  --color-cafe-paper: var(--admin-paper);
+  --color-cafe-ink: var(--admin-ink);
+  --color-cafe-muted: var(--admin-muted);
+  --color-cafe-line: var(--admin-line);
+  --color-cafe-brand: var(--admin-primary);
+  --color-cafe-brand-hover: var(--admin-hover);
+  background: var(--admin-paper);
+  color: var(--admin-ink);
+  font-family: 'Be Vietnam Pro', ui-sans-serif, system-ui, sans-serif;
+  height: 100dvh;
+}
+@media (prefers-color-scheme: dark) { .admin-root { color-scheme: dark; } }
+.admin-root:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *) { color-scheme: dark; }
+.admin-root:where([data-theme="light"], [data-theme="light"] *) { color-scheme: light; }
+.admin-column { min-width: 0; scrollbar-gutter: stable; }
+.admin-main { min-width: 0; }
+.admin-content { width: 100%; padding: clamp(1rem, 2.3vw, 2rem); }
+.admin-root :is(h1, h2) { font-family: 'Playfair Display', Georgia, serif; font-weight: 500; line-height: 1.3; text-wrap: balance; }
+.admin-root h1 { font-size: clamp(1.65rem, 2.5vw, 2.35rem); }
+.admin-root .admin-sidebar { flex-shrink: 0; background: var(--admin-sidebar); color: var(--admin-nav-text); height: 100dvh; width: min(272px, calc(100vw - 48px)); }
+.admin-brand { min-height: 92px; padding: 1rem; border-color: var(--admin-nav-hover); }
+.admin-brand > a { gap: .5rem; min-width: 0; }
+.admin-brand > a > div:first-child { padding: 0; flex-shrink: 0; }
+.admin-logo { width: 48px; height: 48px; object-fit: contain; }
+.admin-brand > a > div:last-child { min-width: 0; overflow-wrap: anywhere; }
+.admin-brand span:last-child { color: var(--admin-nav-muted); font-size: .625rem; letter-spacing: .08em; }
+.admin-sidebar .admin-nav-group { min-height: 44px; }
+.admin-sidebar .admin-nav-group :is(span, svg) { color: var(--admin-nav-muted); }
+.admin-sidebar .admin-nav-link { min-height: 44px; border-radius: .375rem; color: var(--admin-nav-text); background: transparent; box-shadow: none; font-size: .8125rem; }
+.admin-sidebar .admin-nav-link span, .admin-sidebar .admin-nav-link svg { color: inherit; }
+.admin-sidebar .admin-nav-link:hover { background: var(--admin-nav-hover); }
+.admin-sidebar .admin-nav-link[aria-current="page"] { background: var(--admin-nav-active); background-image: none; color: var(--admin-nav-text); }
+.admin-sidebar .admin-nav-link[aria-current="page"] > span.absolute { background: var(--admin-nav-muted); }
+.admin-root .admin-header { background: var(--admin-panel); border-color: var(--admin-line); box-shadow: none; }
+.admin-header > div { gap: .75rem; min-height: 72px; height: auto; padding-block: .65rem; }
+.admin-header > div > div:first-child { flex: 1; }
+.admin-header > div > div:last-child { flex-shrink: 0; gap: .5rem; }
+.admin-header nav { overflow: hidden; }
+.admin-header nav > span { min-width: 0; flex-shrink: 0; }
+.admin-header nav > span:last-child { flex-shrink: 1; }
+.admin-header nav > span:last-child > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-root .admin-account { min-width: 44px; min-height: 44px; border-radius: .375rem; }
+.admin-root .admin-account > span:first-child > span:first-child { background: var(--admin-primary); background-image: none; color: var(--admin-on-primary); box-shadow: none; border-radius: .375rem; }
+.admin-root .admin-footer { background: var(--admin-panel); border-color: var(--admin-line); padding-inline: 1rem; }
+/* Bridge legacy utility surfaces without affecting semantic alerts/statuses. */
+.admin-root :is([class~="bg-white"], [class~="bg-slate-50/50"], .ds-dialog-panel) { background-color: var(--admin-panel); border-color: var(--admin-line); }
+.admin-root :is([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-slate-50/80"]) { background-color: var(--admin-paper); }
+.admin-root :is([class~="text-slate-900"], [class~="text-slate-800"], [class~="text-slate-700"]) { color: var(--admin-ink); }
+.admin-root :is([class~="text-slate-600"], [class~="text-slate-500"], [class~="text-slate-400"]) { color: var(--admin-muted); }
+.admin-root :is([class~="border-slate-100"], [class~="border-slate-200"], [class~="border-slate-300"]) { border-color: var(--admin-line); }
+.admin-root :is([class~="shadow-sm"], [class~="shadow-lg"]) { box-shadow: none; }
+.admin-root :is([class~="rounded-2xl"], [class~="rounded-3xl"]) { border-radius: .5rem; }
+.admin-root :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) { min-height: 44px; max-width: 100%; background: var(--admin-panel); color: var(--admin-ink); border-color: var(--admin-line); border-radius: .375rem; font-size: .875rem; }
+.admin-root :is(input, textarea)::placeholder { color: var(--admin-muted); opacity: 1; }
+.admin-root :is(input, select, textarea):disabled { background: var(--admin-soft); cursor: not-allowed; }
+.admin-root :is(button, a, input, select, textarea, [tabindex]):focus-visible { outline: 3px solid var(--admin-accent); outline-offset: 3px; }
+.admin-root .admin-sidebar :focus-visible { outline-color: var(--admin-nav-muted); }
+.admin-root [data-ds="button"][data-variant="primary"] { background: var(--admin-primary); color: var(--admin-on-primary); }
+.admin-root [data-ds="button"][data-variant="primary"]:hover:not(:disabled) { background: var(--admin-hover); }
+.admin-root [data-ds="button"][data-variant="secondary"] { background: var(--admin-soft); color: var(--admin-ink); }
+.admin-root button:disabled { cursor: not-allowed; }
+.admin-root .ds-table { overflow-x: auto; background: var(--admin-panel); border-color: var(--admin-line); }
+.admin-root .ds-table table { width: 100%; font-size: .8125rem; font-variant-numeric: tabular-nums; }
+.admin-root .ds-table th { background: var(--admin-soft); color: var(--admin-ink); white-space: nowrap; font-size: .75rem; }
+.admin-root .ds-table :is(th, td) { padding: .75rem 1rem; border-color: var(--admin-line); }
+.admin-root .ds-table tbody tr:hover { background: var(--admin-paper); }
+.admin-root .ds-dialog-panel { max-height: calc(100dvh - 2rem); overflow-y: auto; }
+.admin-root .product-workspace {
+  --product-paper: var(--admin-paper); --product-panel: var(--admin-panel);
+  --product-ink: var(--admin-ink); --product-muted: var(--admin-muted);
+  --product-line: var(--admin-line); --product-soft: var(--admin-soft);
+  --product-green: var(--admin-primary); --product-on-green: var(--admin-on-primary);
+  --color-cafe-ink: var(--admin-ink); --color-cafe-muted: var(--admin-muted);
+  --color-cafe-line: var(--admin-line); --color-cafe-brand-hover: var(--admin-hover);
+  color-scheme: inherit; border: 0; padding: 0; background: transparent;
+}
+.admin-root :is(.ingredients-workspace, .ingredient-detail, .ingredient-dialog, .ingredient-operations) {
+  --ing-paper: var(--admin-panel); --ing-ink: var(--admin-ink); --ing-muted: var(--admin-muted);
+  --ing-line: var(--admin-line); --ing-soft: var(--admin-soft); --ing-green: var(--admin-primary);
+}
+.admin-root .product-form { max-width: 68rem; margin-inline: auto; }
+.admin-root .product-form fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+.admin-root .product-form fieldset > * { grid-column: 1 / -1; margin-top: 0; min-width: 0; }
+.admin-root .product-form fieldset > :nth-child(-n+2) { grid-column: auto; }
+.admin-root .product-form form > div:last-child { flex-wrap: wrap; gap: .75rem; }
+.admin-skip { position: fixed; top: .5rem; left: .5rem; transform: translateY(-200%); z-index: 10000; padding: .75rem; background: var(--admin-panel); color: var(--admin-ink); }
+.admin-skip:focus { transform: none; }
+@media (max-width: 639px) {
+  .admin-content { padding: 1rem; }
+  .admin-root .product-form fieldset { grid-template-columns: minmax(0, 1fr); }
+  .admin-header > div { gap: .5rem; padding-inline: 1rem; }
+  .admin-header > div > div:first-child { gap: .5rem; }
+  .admin-header [class~="w-96"] { width: min(24rem, calc(100vw - 2rem)); position: fixed; right: 1rem; }
+  .admin-root .ds-table :is(th, td) { padding: .75rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-root *, .admin-root *::before, .admin-root *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+.admin-root .admin-header button[aria-controls="admin-navigation"], .admin-root .admin-brand > button { min-width: 44px; min-height: 44px; }
+.admin-root .admin-brand > button { color: var(--admin-nav-text); }
+@media (max-width: 1023px) {
+  .admin-sidebar[class~="-translate-x-full"] { visibility: hidden; }
+}
+
+.admin-root .admin-header button[aria-label="ThÃ´ng bÃ¡o"] { min-width: 44px; min-height: 44px; }
+
+/* Validation stays stronger than neutral control styling. */
+.admin-root :is(input, select, textarea)[aria-invalid="true"] { border-color: light-dark(#a12635, #ff9da9); }
+.admin-root .ds-alert { background: light-dark(#eef4f7, #263b46); color: light-dark(#25516d, #c0e1f4); border-color: light-dark(#8eafc2, #7499ae); }
+.admin-root .ds-alert[data-tone="danger"] { background: light-dark(#fff0f1, #47272e); color: light-dark(#a12635, #ffb5bf); border-color: light-dark(#cd8e98, #bc7b86); }
+.admin-root .ds-alert[data-tone="warning"] { background: light-dark(#fff6df, #40341e); color: light-dark(#785009, #f0cd87); border-color: light-dark(#b59a60, #af9359); }
+.admin-root .ds-alert[data-tone="success"] { background: light-dark(#edf6ef, #243b2d); color: light-dark(#245b42, #b4dfc5); border-color: light-dark(#84ac94, #709c80); }
+.admin-root .admin-header [class*="hover:bg-slate"]:hover { background-color: var(--admin-paper); }

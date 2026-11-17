@@ -66,7 +66,7 @@ export function BrandStory() {
           <figcaption>Một tách cà phê. Thêm một câu chuyện.</figcaption>
         </figure>
         <div className="home-story-copy">
-          <p className="home-eyebrow">02 / Cách bạn thưởng thức</p>
+          <p className="home-eyebrow">02 / Nghệ thuật pha</p>
           <h2 id="home-story-title">Từ một tách quen,<br />thành <em>một nghi thức.</em></h2>
           <p>
             Đong cà phê, thêm nước, đợi hương thơm lan ra.
@@ -96,7 +96,7 @@ export function HomeGallery() {
     <section id="gallery" className="home-gallery home-container" aria-labelledby="home-gallery-title">
       <div className="home-section-heading">
         <div>
-          <p className="home-eyebrow">04 / Những khoảng dừng</p>
+          <p className="home-eyebrow">04 / Trải nghiệm</p>
           <h2 id="home-gallery-title">Cảm hứng <em>quanh ta.</em></h2>
         </div>
         <p>Một góc nhỏ, một tách quen.<br />Đôi khi, vậy là đủ.</p>

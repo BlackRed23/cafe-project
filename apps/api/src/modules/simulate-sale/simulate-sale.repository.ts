@@ -431,11 +431,17 @@ export const simulateSaleRepository = {
                     const batches = await tx.ingredientBatch.findMany({
                         where: {
                             ingredientId: ingId,
+                            qualityStatus: 'AVAILABLE',
                             quantityRemaining: { gt: 0 },
-                            OR: [{ expirationDate: null }, { expirationDate: { gte: startOfToday } }]
+                            OR: [{ expirationDate: null }, { expirationDate: { gt: new Date() } }]
                         },
                         orderBy: [{ expirationDate: 'asc' }, { receivedAt: 'asc' }]
                     });
+
+                    const eligibleQuantity = batches.reduce((sum, batch) => sum + Number(batch.quantityRemaining), 0);
+                    if (eligibleQuantity - Number(currentIng.reserved) + 1e-6 < neededBase) {
+                        throw new HttpError(400, 'Insufficient usable lots; quarantined, recalled and expired stock cannot be simulated as consumed.');
+                    }
 
                     let remainingToDeduct = neededBase;
                     for (const batch of batches) {
@@ -466,21 +472,7 @@ export const simulateSaleRepository = {
                     }
 
                     if (remainingToDeduct > 1e-6) {
-                        const txn = await tx.inventoryTransaction.create({
-                            data: {
-                                productId: product.id,
-                                ingredientId: ingId,
-                                performedBy: userId,
-                                type: InventoryTransactionType.SIMULATE_SALE,
-                                quantity: -remainingToDeduct,
-                                unitCost: currentIng.costPerBaseUnit,
-                                totalCost: Number(currentIng.costPerBaseUnit) * remainingToDeduct,
-                                referenceType: 'SimulateSaleRecipe',
-                                referenceId: simGroupId,
-                                reason: `${note ?? `Mô phỏng bán ${plan.decrease} Ly ${product.name}`} [sim-cups:${plan.decrease}]`
-                            }
-                        });
-                        if (!firstTxnId) firstTxnId = txn.id;
+                        throw new HttpError(409, 'Usable lot allocation changed; no unbatched stock movement is permitted.');
                     }
 
                     await tx.ingredient.update({

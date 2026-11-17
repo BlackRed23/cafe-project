@@ -5,9 +5,27 @@ import type {
   CreateIngredientPayload,
   ImportIngredientPayload,
   WasteIngredientPayload,
+  InternalUsagePayload,
+  IngredientIncident,
 } from "../types/ingredient.types";
 
 export const ingredientsApi = {
+  internalUse: async (id: string, payload: InternalUsagePayload) => {
+    const response = await apiClient.post(`/ingredients/${id}/internal-use`, payload);
+    return unwrapApiData<{ ingredient: Ingredient; consumedQuantityBase: number; totalCost: number; transactionIds: string[]; replayed: boolean }>(response.data);
+  },
+  createIncident: async (id: string, payload: { actualQuantity: number; reason: string }) => {
+    const response = await apiClient.post(`/ingredients/${id}/incidents`, payload);
+    return unwrapApiData<IngredientIncident>(response.data);
+  },
+  getIncident: async (id: string, incidentId: string) => {
+    const response = await apiClient.get(`/ingredients/${id}/incidents/${encodeURIComponent(incidentId)}`);
+    return unwrapApiData<IngredientIncident>(response.data);
+  },
+  approveIncident: async (id: string, incidentId: string) => {
+    const response = await apiClient.post(`/ingredients/${id}/incidents/${encodeURIComponent(incidentId)}/approve`, {});
+    return unwrapApiData<IngredientIncident>(response.data);
+  },
   getIngredients: async (params?: {
     search?: string;
     categoryId?: string;

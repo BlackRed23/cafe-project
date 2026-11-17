@@ -14,6 +14,7 @@ export type ProductDto = {
     unit: string;
     imageUrl: string | null;
     isActive: boolean;
+    requiresRecipe: boolean | null;
     categoryId: string;
     category: {
         id: string;
@@ -93,6 +94,7 @@ const toProductDto = (product: ProductRecord): ProductDto => {
         unit: product.servingUnit || 'Ly',
         imageUrl: product.imageUrl ?? null,
         isActive: product.isActive ?? true,
+        requiresRecipe: product.requiresRecipe,
         categoryId: product.categoryId,
         category: product.category ? {
             id: product.category.id,
@@ -192,11 +194,11 @@ const getDeleteBlockedMessage = async (productId: string): Promise<string | null
     const blockerCount = [hasOrderItems, hasInventoryTransactions, hasPurchaseRequestItems].filter(Boolean).length;
 
     if (blockerCount > 1) {
-        return 'Không thể xóa sản phẩm vì đã phát sinh đơn hàng, lịch sử kho hoặc yêu cầu nhập hàng.';
+        return 'Không thể xóa sản phẩm vì đã phát sinh đơn hàng, lịch sử kho hoặc yêu cầu nhập hàng. Hãy ngừng kinh doanh sản phẩm.';
     }
 
     if (hasOrderItems) {
-        return 'Không thể xóa sản phẩm vì sản phẩm này đã có trong đơn hàng.';
+        return 'Không thể xóa sản phẩm vì sản phẩm này đã có trong đơn hàng. Hãy ngừng kinh doanh sản phẩm.';
     }
 
     if (hasInventoryTransactions) {
@@ -206,6 +208,8 @@ const getDeleteBlockedMessage = async (productId: string): Promise<string | null
     if (hasPurchaseRequestItems) {
         return 'Không thể xóa sản phẩm vì sản phẩm này đã có trong yêu cầu nhập hàng.';
     }
+
+    if (blockers.auditLogs > 0) return 'Không thể xóa sản phẩm có lịch sử cập nhật. Hãy ngừng kinh doanh sản phẩm.';
 
     return null;
 };
@@ -260,6 +264,7 @@ export const createProduct = async (input: CreateProductInput): Promise<ProductD
             categoryId: input.categoryId,
             imageUrl: normalizeOptionalString(input.imageUrl),
             isActive: input.isActive ?? true,
+            requiresRecipe: input.requiresRecipe ?? null,
             nutritionFacts: normalizeOptionalString(input.nutritionFacts ?? input.nutrition_facts),
             usageInstructions: normalizeOptionalString(input.usageInstructions ?? input.usage_instructions),
             storageInstructions: normalizeOptionalString(input.storageInstructions ?? input.storage_instructions),
@@ -278,7 +283,7 @@ export const createProduct = async (input: CreateProductInput): Promise<ProductD
     }
 };
 
-export const updateProduct = async (id: string, input: UpdateProductInput): Promise<ProductDto> => {
+export const updateProduct = async (id: string, input: UpdateProductInput, actorId?: string): Promise<ProductDto> => {
     const parsed = updateProductSchema.safeParse(input);
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid product.');
     input = parsed.data;
@@ -304,6 +309,7 @@ export const updateProduct = async (id: string, input: UpdateProductInput): Prom
             ...(input.costPrice !== undefined ? { costPrice: input.costPrice } : {}),
             ...(input.unit !== undefined ? { servingUnit: input.unit.trim() || 'hộp' } : {}),
             ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+            ...(input.requiresRecipe !== undefined ? { requiresRecipe: input.requiresRecipe } : {}),
             ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
             ...(input.imageUrl !== undefined ? { imageUrl: normalizeOptionalString(input.imageUrl) } : {}),
             ...(input.nutritionFacts !== undefined || input.nutrition_facts !== undefined ? { nutritionFacts: normalizeOptionalString(input.nutritionFacts ?? input.nutrition_facts) } : {}),
@@ -312,7 +318,7 @@ export const updateProduct = async (id: string, input: UpdateProductInput): Prom
             ...(input.origin !== undefined ? { origin: normalizeOptionalString(input.origin) } : {}),
             ...(input.certifications !== undefined ? { certifications: normalizeOptionalString(input.certifications) } : {}),
             ...(input.expiryInfo !== undefined || input.expiry_info !== undefined ? { expiryInfo: normalizeOptionalString(input.expiryInfo ?? input.expiry_info) } : {})
-        }, expectedUpdatedAt);
+        }, expectedUpdatedAt, actorId);
 
         return toProductDto(updatedProduct);
     } catch (error) {
@@ -335,7 +341,7 @@ export const deleteProduct = async (id: string): Promise<ProductDto> => {
     return toProductDto(await productRepository.delete(id));
 };
 
-export const scheduleDelete = async (id: string): Promise<ProductDto> => {
+export const scheduleDelete = async (id: string, actorId?: string): Promise<ProductDto> => {
     await ensureProductExists(id, true);
 
     const pendingDeleteUntil = new Date();
@@ -347,12 +353,12 @@ export const scheduleDelete = async (id: string): Promise<ProductDto> => {
         deletedAt: new Date(),
         // @ts-ignore
         pendingDeleteUntil
-    });
+    }, undefined, actorId);
 
     return toProductDto(updatedProduct);
 };
 
-export const restore = async (id: string): Promise<ProductDto> => {
+export const restore = async (id: string, actorId?: string): Promise<ProductDto> => {
     await ensureProductExists(id, true);
 
     const updatedProduct = await productRepository.update(id, {
@@ -361,7 +367,7 @@ export const restore = async (id: string): Promise<ProductDto> => {
         deletedAt: null,
         // @ts-ignore
         pendingDeleteUntil: null
-    });
+    }, undefined, actorId);
 
     return toProductDto(updatedProduct);
 };

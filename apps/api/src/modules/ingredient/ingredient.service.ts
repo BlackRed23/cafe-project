@@ -1,5 +1,6 @@
 import { InventoryTransactionType, prisma, Prisma } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
+import { isIngredientBatchUsable } from '../../common/ingredient-batch-availability';
 import {
     allocateFifoBatches,
     calculateMovingAverageCost,
@@ -36,7 +37,11 @@ const getIngredientStatus = (availableQty: Prisma.Decimal, minThreshold: Prisma.
 export const toIngredientDto = (ingredient: IngredientRecord) => {
     const qty = toDecimal(ingredient.quantity);
     const reserved = toDecimal(ingredient.reserved);
-    const available = roundQty3(qty.sub(reserved));
+    const now = new Date();
+    const expired = (ingredient.batches ?? []).reduce((sum, batch) =>
+        isIngredientBatchUsable(batch, now) ? sum : sum.add(batch.quantityRemaining),
+        new Prisma.Decimal(0));
+    const available = roundQty3(Prisma.Decimal.max(0, qty.sub(expired).sub(reserved)));
     const minThreshold = toDecimal(ingredient.minThreshold);
     const costPerBaseUnit = toDecimal(ingredient.costPerBaseUnit);
 
@@ -45,6 +50,8 @@ export const toIngredientDto = (ingredient: IngredientRecord) => {
         const uCost = toDecimal(b.unitCost);
         return {
             id: b.id,
+            qualityStatus: b.qualityStatus,
+            usableQuantity: isIngredientBatchUsable(b, now) ? Number(rem) : 0,
             batchCode: b.batchCode,
             quantityInitial: Number(b.quantityInitial),
             quantityRemaining: Number(rem),
@@ -76,6 +83,8 @@ export const toIngredientDto = (ingredient: IngredientRecord) => {
         baseUnit: ingredient.baseUnit,
         costPerBaseUnit: Number(costPerBaseUnit),
         quantity: Number(qty),
+        physicalQuantity: Number(qty),
+        usableQuantity: Number(Prisma.Decimal.max(0, qty.sub(expired))),
         reserved: Number(reserved),
         availableQuantity: Number(available),
         minThreshold: Number(minThreshold),
@@ -85,6 +94,8 @@ export const toIngredientDto = (ingredient: IngredientRecord) => {
         storageInstructions: ingredient.storageInstructions,
         expiryInfo: ingredient.expiryInfo,
         shelfLifeDays: ingredient.shelfLifeDays,
+        expiryClassification: ingredient.expiryClassification,
+        expiryClassificationRequired: ingredient.expiryClassificationRequired,
         imageUrl: ingredient.imageUrl,
         isActive: ingredient.isActive,
         rowVersion: ingredient.rowVersion,
@@ -192,6 +203,7 @@ export const ingredientService = {
                 storageInstructions: input.storageInstructions?.trim() || null,
                 expiryInfo: input.expiryInfo?.trim() || null,
                 shelfLifeDays: input.shelfLifeDays ?? null,
+                expiryClassification: input.expiryClassification ?? null,
                 imageUrl: input.imageUrl?.trim() || null,
                 isActive: input.isActive ?? true
             },
@@ -202,7 +214,7 @@ export const ingredientService = {
     },
 
     async update(id: string, input: UpdateIngredientInput) {
-        const existing = await ingredientRepository.findById(id);
+        let existing = await ingredientRepository.findById(id);
         if (!existing) {
             throw new HttpError(404, 'Không tìm thấy nguyên liệu.');
         }
@@ -215,6 +227,22 @@ export const ingredientService = {
         }
 
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            await tx.$queryRaw`SELECT "id" FROM "Ingredient" WHERE "id" = ${id} FOR UPDATE`;
+            const current = await ingredientRepository.findById(id, tx);
+            if (!current) throw new HttpError(404, 'Không tìm thấy nguyên liệu.');
+            existing = current;
+            if (input.baseUnit !== undefined && input.baseUnit.trim() !== existing.baseUnit) {
+                const used = await tx.ingredient.findFirst({
+                    where: { id, OR: [
+                        { quantity: { not: 0 } }, { reserved: { not: 0 } },
+                        { batches: { some: {} } }, { transactions: { some: {} } },
+                        { recipeItems: { some: {} } }, { toppingItems: { some: {} } },
+                        { supplierLinks: { some: {} } }, { purchaseItems: { some: {} } },
+                        { stockCountItems: { some: {} } }
+                    ] }, select: { id: true }
+                });
+                if (used) throw new HttpError(409, 'Cannot change base unit after stock or business references exist. Use input-unit conversion instead.');
+            }
             const costChanged =
                 input.costPerBaseUnit !== undefined &&
                 !roundCost4(toDecimal(input.costPerBaseUnit)).equals(toDecimal(existing.costPerBaseUnit));
@@ -237,6 +265,7 @@ export const ingredientService = {
                         ? { storageInstructions: input.storageInstructions?.trim() || null }
                         : {}),
                     ...(input.expiryInfo !== undefined ? { expiryInfo: input.expiryInfo?.trim() || null } : {}),
+                    ...(input.expiryClassification !== undefined ? { expiryClassification: input.expiryClassification } : {}),
                     ...(input.shelfLifeDays !== undefined ? { shelfLifeDays: input.shelfLifeDays ?? null } : {}),
                     ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl?.trim() || null } : {}),
                     ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
@@ -291,6 +320,13 @@ export const ingredientService = {
             const inputUnit = input.unit?.trim() || ingredient.baseUnit;
             const importQtyBase = convertToBaseQuantity(input.quantity, inputUnit, ingredient.baseUnit);
 
+            if (!ingredient.expiryClassification && ingredient.expiryClassificationRequired) {
+                throw new HttpError(409, 'Classify new ingredient expiry policy before receipt.');
+            }
+            if (ingredient.expiryClassification === 'PERISHABLE' && !input.expirationDate) {
+                throw new HttpError(400, 'PERISHABLE ingredient requires an explicit valid expirationDate.');
+            }
+
             let unitCostPerBase: Prisma.Decimal;
             let totalCostMoney: Prisma.Decimal;
 
@@ -315,7 +351,11 @@ export const ingredientService = {
             let expirationDate: Date | null = null;
             if (input.expirationDate) {
                 expirationDate = new Date(input.expirationDate);
-                if (!Number.isFinite(expirationDate.getTime())) {
+                const datePart = input.expirationDate.slice(0, 10);
+                const calendarDay = new Date(`${datePart}T00:00:00.000Z`);
+                if (!/^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(input.expirationDate) ||
+                    !Number.isFinite(expirationDate.getTime()) || !Number.isFinite(calendarDay.getTime()) ||
+                    calendarDay.toISOString().slice(0, 10) !== datePart) {
                     throw new HttpError(400, 'Ngày hết hạn của lô nguyên liệu không hợp lệ.');
                 }
             } else if (ingredient.shelfLifeDays) {

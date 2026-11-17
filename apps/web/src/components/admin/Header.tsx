@@ -66,7 +66,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
 
   return (
     <>
-    <header className="sticky top-0 z-40 flex w-full border-b border-slate-200 bg-white shadow-sm">
+    <header className="admin-header sticky top-0 z-40 flex w-full border-b border-slate-200 bg-white shadow-sm">
       <div className="flex flex-grow items-center justify-between px-4 md:px-6 lg:px-8 h-[60px]">
 
         {/* LEFT: hamburger + breadcrumb */}
@@ -74,13 +74,15 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
           <button
             onClick={(e) => { e.stopPropagation(); setSidebarOpen(!sidebarOpen); }}
             className="lg:hidden flex items-center justify-center w-9 h-9 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 transition-all flex-shrink-0"
-            aria-label="Toggle sidebar"
+            aria-label="Mở điều hướng"
+            aria-expanded={sidebarOpen}
+            aria-controls="admin-navigation"
           >
             <Menu size={19} />
           </button>
 
           {/* Breadcrumb */}
-          <nav className="hidden sm:flex items-center gap-1.5 min-w-0">
+          <nav aria-label="Đường dẫn trang" className="hidden sm:flex items-center gap-1.5 min-w-0">
             {breadcrumbs.map((crumb, idx) => (
               <span key={idx} className="flex items-center gap-1.5">
                 {idx > 0 && <span className="text-sm text-slate-300">/</span>}
@@ -117,26 +119,28 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, setSidebarOpen, tit
           <div className="h-7 w-px bg-slate-200 mx-0.5 hidden sm:block" />
 
           {/* User card detailed with Dropdown */}
-          <div className="relative flex items-center gap-3 pl-3 py-1 cursor-pointer hover:bg-slate-50 rounded-xl transition-colors" ref={userMenuRef} onClick={() => setUserMenuOpen(!userMenuOpen)}>
-            <div className="relative">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-600 to-amber-800 flex items-center justify-center font-black text-white text-base shadow-sm ring-2 ring-white">
+          <div className="relative flex items-center gap-3 pl-3 py-1 cursor-pointer hover:bg-slate-50 rounded-xl transition-colors" ref={userMenuRef}>
+            <button type="button" aria-label="Tài khoản" aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen(!userMenuOpen)} className="admin-account relative flex items-center gap-3 text-left">
+            <span className="relative">
+              <span className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-600 to-amber-800 flex items-center justify-center font-black text-white text-base shadow-sm ring-2 ring-white">
                 {user?.name ? user.name.charAt(0).toUpperCase() : "A"}
-              </div>
+              </span>
               <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white shadow-sm" title="Đang hoạt động" />
-            </div>
-            <div className="hidden md:flex flex-col justify-center">
-              <div className="flex items-center gap-1.5 mb-1">
-                <p className="text-[14px] font-bold text-slate-800 leading-none">
+            </span>
+            <span className="hidden md:flex flex-col justify-center">
+              <span className="flex items-center gap-1.5 mb-1">
+                <span className="text-[14px] font-bold text-slate-800 leading-none">
                   {user?.name || "Quản trị viên"}
-                </p>
+                </span>
                 <ChevronDown size={14} className={`text-slate-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
-              </div>
-              <div className="flex items-center gap-2">
+              </span>
+              <span className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded uppercase tracking-wider">
                   {user?.role === "ADMIN" ? "Admin" : "Staff"}
                 </span>
-              </div>
-            </div>
+              </span>
+            </span>
+            </button>
             
             {/* User Dropdown Menu */}
             {userMenuOpen && (

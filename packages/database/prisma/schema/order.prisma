@@ -1,6 +1,7 @@
 enum OrderStatus {
   PENDING
   PROCESSING
+  PREPARING
   COMPLETED
   CANCELLED
 }
@@ -62,6 +63,9 @@ model Order {
   paymentMethod   PaymentMethod?
   paymentStatus   PaymentStatus  @default(PENDING)
   paidAt          DateTime?
+  version         Int            @default(0)
+  adjustmentTotal Decimal        @default(0) @db.Decimal(12, 2)
+  operations      OrderOperation[]
 
   items    OrderItem[]
   payments Payment[]
@@ -85,6 +89,9 @@ model OrderItem {
   startedAt         DateTime?
   committedAt       DateTime?
   voidedAt          DateTime?
+  originalItemId    String?
+  attemptType       String            @default("SALE")
+  replacedAt        DateTime?
   ingredientCost    Decimal           @default(0) @db.Decimal(12, 2)
   toppingCost       Decimal           @default(0) @db.Decimal(12, 2)
   totalCost         Decimal           @default(0) @db.Decimal(12, 2)
@@ -94,6 +101,28 @@ model OrderItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model OrderOperation {
+  id                String   @id @default(cuid())
+  orderId           String
+  order             Order    @relation(fields: [orderId], references: [id])
+  requestId         String
+  requestHash       String
+  kind              String
+  status            String   @default("REQUESTED")
+  actorId           String
+  approvedBy        String?
+  reason            String
+  originalItemId    String?
+  replacementItemId String?
+  payload           Json
+  amountDelta       Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt         DateTime @default(now())
+  approvedAt        DateTime?
+
+  @@unique([orderId, requestId])
+  @@index([orderId, createdAt])
 }
 
 model OrderItemTopping {

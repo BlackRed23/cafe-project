@@ -21,9 +21,9 @@ test('Product acceptance against isolated PostgreSQL', { skip: !url && 'BLOCKED:
         const category = await db.category.create({ data: { name: 'product-test-' + suffix } });
         const admin = await db.user.create({ data: { name: 'Admin', email: suffix + '@product-test.invalid', role: 'ADMIN' } });
         const secondAdmin = await db.user.create({ data: { name: 'Admin 2', email: suffix + '-2@product-test.invalid', role: 'ADMIN' } });
-        const input = (sku, extra = {}) => ({ name: 'Test product', sku: sku + '-' + suffix, price: 25000, categoryId: category.id, ...extra });
+        const input = (sku, extra = {}) => ({ name: 'Test product', sku: sku + '-' + suffix, price: 25000, categoryId: category.id, requiresRecipe: false, ...extra });
         const create = (sku, extra) => h.service.createProduct(input(sku, extra));
-        const update = (product, extra) => h.service.updateProduct(product.id, { expectedUpdatedAt: new Date(product.updatedAt).toISOString(), ...extra });
+        const update = (product, extra) => h.service.updateProduct(product.id, { expectedUpdatedAt: new Date(product.updatedAt).toISOString(), ...extra }, admin.id);
         const orderInput = productId => ({ items: [{ productId, quantity: 2, toppings: [] }], paymentMethod: 'CASH' });
         const stock = productId => db.inventory.create({ data: { productId, quantity: 100, unit: 'chai',
             batches: { create: { batchCode: 'test-batch-' + suffix, quantity: 100, expirationDate: new Date('2099-01-01') } } } });

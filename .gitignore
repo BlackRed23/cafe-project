@@ -86,3 +86,5 @@ _archive/
 
 # Local rollback checkpoints, verification logs and screenshots
 .task-artifacts/
+
+AGENTS.md

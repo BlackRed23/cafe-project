@@ -36,6 +36,7 @@ export type Product = {
   unit: string;
   imageUrl: string | null;
   isActive: boolean;
+  requiresRecipe?: boolean | null;
   categoryId: string;
   category: ProductCategory;
   inventory: ProductInventory | null;
@@ -59,6 +60,7 @@ export type CreateProductPayload = {
   costPrice?: number;
   unit?: string;
   isActive?: boolean;
+  requiresRecipe?: boolean;
   imageUrl?: string | null;
   nutritionFacts?: string | null;
   usageInstructions?: string | null;

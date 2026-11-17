@@ -20,7 +20,7 @@ import { env } from './common/env';
 import { errorHandler } from './common/error-handler';
 import { sendSuccess } from './common/response';
 import { scheduleJobs } from './modules/cron/cron.service';
-
+import { ingredientBatchRoutes } from './modules/ingredient/ingredient-batch.route';
 const app = express();
 const PORT = env.port;
 const SERVER_URL = `http://localhost:${PORT}`;
@@ -83,7 +83,7 @@ app.use('/api/system-settings', systemSettingRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/upload', uploadRoutes);
-
+app.use('/api/ingredient-batches', ingredientBatchRoutes);
 app.get('/health', (_req: Request, res: Response) => {
     sendSuccess(res, 200, 'Cafe API server is running.', { status: 'OK' });
 });

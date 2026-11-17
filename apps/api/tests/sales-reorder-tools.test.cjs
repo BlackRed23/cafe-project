@@ -66,6 +66,7 @@ function fixture() {
     } };
     const db = { Prisma, prisma };
     const orderRepository = load('modules/order/order.repository.ts', { '@cafe-project/database': db,
+        './order-submission': {},
         '../../common/http-error': { HttpError },
         '../../common/ingredient-cost.utils': costs, './shipping.service': {}, '../agent/agent.client': {}, '../payment/payment.repository': {} });
     const orderService = load('modules/order/order.service.ts', { '@cafe-project/database': db, '../../common/http-error': { HttpError },
@@ -80,6 +81,7 @@ function fixture() {
         './system-setting.repository': { systemSettingRepository: { findByKey: async key => state.settings[key] ?? null } },
         './system-setting.validator': { systemSettingKeySchema: { safeParse: key => ({ success: true, data: key }) } } });
     const ingredientService = load('modules/ingredient/ingredient.service.ts', { '@cafe-project/database': db, '../../common/http-error': { HttpError },
+        '../../common/ingredient-batch-availability': load('common/ingredient-batch-availability.ts', {}),
         '../../common/ingredient-cost.utils': costs, '../../common/unit-conversion': units, '../agent/agent.client': {}, '../recipe/recipe.service': {},
         './ingredient.repository': ingredients, '../supplier/supplier.service': suppliers, '../system-setting/system-setting.service': settings,
         '../../common/ingredient-reorder': reorder });

@@ -1,7 +1,7 @@
-import { apiClient, unwrapApiField, unwrapApiList } from "./client";
-import type { Product } from "../types/product.types";
+import { apiClient, unwrapApiField } from "./client";
+import type { Product, ProductWritePayload, ProductUpdatePayload } from "../types/product.types";
 
-const normalizeProduct = (product: any): Product => ({
+const normalizeProduct = (product: Product): Product => ({
   ...product,
   image_url: product?.image_url ?? product?.imageUrl,
   category_id: product?.category_id ?? product?.categoryId,
@@ -17,7 +17,7 @@ const normalizeProduct = (product: any): Product => ({
   expiryInfo: product?.expiryInfo ?? product?.expiry_info,
 });
 
-const normalizeProductPayload = (payload: Partial<Product>) => ({
+const normalizeProductPayload = (payload: ProductWritePayload) => ({
   ...payload,
   imageUrl: payload.imageUrl ?? payload.image_url,
   categoryId: payload.categoryId ?? payload.category_id,
@@ -32,39 +32,54 @@ const normalizeProductPayload = (payload: Partial<Product>) => ({
 export const productsApi = {
   getProducts: async (params?: { includeInactive?: boolean }): Promise<Product[]> => {
     const response = await apiClient.get("/products", { params });
-    return unwrapApiList<any>(response.data, "products").map(normalizeProduct);
+    const products = unwrapApiField<Product[]>(response.data, "products");
+    if (response.data?.success === false || !Array.isArray(products)) throw new Error("Product list not confirmed");
+    return products.map(normalizeProduct);
   },
 
   getProductById: async (id: string): Promise<Product> => {
     const response = await apiClient.get(`/products/${id}`);
-    return normalizeProduct(unwrapApiField<any>(response.data, "product"));
+    const product = unwrapApiField<Product>(response.data, "product");
+    if (response.data?.success === false || !product?.id) throw new Error("Product response not confirmed");
+    return normalizeProduct(product);
   },
 
-  createProduct: async (payload: Partial<Product>): Promise<Product> => {
+  createProduct: async (payload: ProductWritePayload): Promise<Product> => {
     const response = await apiClient.post("/products", normalizeProductPayload(payload));
-    return normalizeProduct(unwrapApiField<any>(response.data, "product"));
+    const product = unwrapApiField<Product>(response.data, "product");
+    if (response.data?.success === false || !product?.id) throw new Error("Product response not confirmed");
+    return normalizeProduct(product);
   },
 
-  updateProduct: async (id: string, payload: Partial<Product>): Promise<Product> => {
+  updateProduct: async (id: string, payload: ProductUpdatePayload): Promise<Product> => {
+    if (!payload.expectedUpdatedAt) throw new Error("Product version required");
     const response = await apiClient.put(`/products/${id}`, normalizeProductPayload(payload));
-    return normalizeProduct(unwrapApiField<any>(response.data, "product"));
+    const product = unwrapApiField<Product>(response.data, "product");
+    if (response.data?.success === false || !product?.id) throw new Error("Product response not confirmed");
+    return normalizeProduct(product);
   },
 
   deleteProduct: async (id: string): Promise<void> => {
-    await apiClient.delete(`/products/${id}`);
+    const response = await apiClient.delete(`/products/${id}`);
+    if (response.data?.success === false || !unwrapApiField<Product>(response.data, "product")?.id) throw new Error("Product deletion not confirmed");
   },
 
   scheduleDeleteProduct: async (id: string): Promise<Product> => {
     const response = await apiClient.patch(`/products/${id}/schedule-delete`);
-    return normalizeProduct(unwrapApiField<any>(response.data, "product"));
+    const product = unwrapApiField<Product>(response.data, "product");
+    if (response.data?.success === false || !product?.id) throw new Error("Product response not confirmed");
+    return normalizeProduct(product);
   },
 
   restoreProduct: async (id: string): Promise<Product> => {
     const response = await apiClient.patch(`/products/${id}/restore`);
-    return normalizeProduct(unwrapApiField<any>(response.data, "product"));
+    const product = unwrapApiField<Product>(response.data, "product");
+    if (response.data?.success === false || !product?.id) throw new Error("Product response not confirmed");
+    return normalizeProduct(product);
   },
 
   purgeProduct: async (id: string): Promise<void> => {
-    await apiClient.delete(`/products/${id}/purge`);
+    const response = await apiClient.delete(`/products/${id}/purge`);
+    if (response.data?.success === false || !unwrapApiField<Product>(response.data, "product")?.id) throw new Error("Product deletion not confirmed");
   },
 };

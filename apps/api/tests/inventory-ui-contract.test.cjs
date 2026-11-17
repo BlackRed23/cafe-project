@@ -75,13 +75,14 @@ test('multi-product simulation reads fresh stock rather than stale plan quantiti
  await f.repo.applySale([{ inventory: { id: 'inv', productId: 'p', product: { name: 'P' }, quantity: 999 }, decrease: 4 }], null, 'admin');
  assert.equal(f.state().quantity, 16); assert.equal(f.state().batch, 16); assert.equal(f.state().reservedStock, 5);
 });
-for (const nextStatus of ['COMPLETED', 'CANCELLED']) test(`order ${nextStatus} uses atomic reserved/stock deltas and rejects stale status (mock)`, async () => {
+for (const nextStatus of ['PREPARING', 'CANCELLED']) test(`order ${nextStatus} uses atomic reserved/stock deltas and rejects stale status (mock)`, async () => {
  let state = { quantity: 20, reservedStock: 5, batch: 20, status: 'PROCESSING', history: [] };
  const prisma = { async $transaction(callback) {
   const d = structuredClone(state);
   const tx = {
    order: { updateMany: async ({ where, data }) => { if (where.status !== d.status) return { count: 0 }; d.status = data.status; return { count: 1 }; }, findUnique: async () => ({ status: d.status }) },
    orderItem: { update: async () => ({}), updateMany: async () => ({ count: 0 }) },
+   orderOperation: { create: async () => ({}) },
    payment: { updateMany: async () => ({ count: 0 }) },
    inventory: { findUnique: async () => ({ id: 'inv', quantity: 999, reservedStock: 999 }), updateMany: async ({ data }) => { if (data.quantity) { assert.equal(data.quantity.decrement, 3); d.quantity -= 3; } assert.equal(data.reservedStock.decrement, 3); d.reservedStock -= 3; return { count: 1 }; } },
    inventoryBatch: { findMany: async () => [{ id: 'b', quantity: d.batch }], updateMany: async ({ data }) => { d.batch -= data.quantity.decrement; return { count: 1 }; } },
@@ -90,15 +91,16 @@ for (const nextStatus of ['COMPLETED', 'CANCELLED']) test(`order ${nextStatus} u
   const result = await callback(tx); state = d; return result;
  } };
  const { orderRepository } = load('apps/api/src/modules/order/order.repository.ts', {
+  './order-submission': {},
   '../../common/http-error': load('apps/api/src/common/http-error.ts'),
-  '@cafe-project/database': { prisma, InventoryTransactionType: { ORDER: 'ORDER', CANCEL: 'CANCEL' }, OrderStatus: { PENDING: 'PENDING', PROCESSING: 'PROCESSING', COMPLETED: 'COMPLETED', CANCELLED: 'CANCELLED' }, PaymentStatus: { PAID: 'PAID' }, TransactionStatus: { PAID: 'PAID' }, ConsumptionStatus: { COMMITTED: 'COMMITTED', VOIDED: 'VOIDED' } },
+  '@cafe-project/database': { prisma, InventoryTransactionType: { ORDER: 'ORDER', CANCEL: 'CANCEL' }, OrderStatus: { PENDING: 'PENDING', PROCESSING: 'PROCESSING', COMPLETED: 'COMPLETED', PREPARING: 'PREPARING', CANCELLED: 'CANCELLED' }, PaymentStatus: { PAID: 'PAID' }, TransactionStatus: { PAID: 'PAID' }, ConsumptionStatus: { PENDING: 'PENDING', COMMITTED: 'COMMITTED', VOIDED: 'VOIDED' } },
   '../../common/ingredient-cost.utils': { toDecimal: () => ({ mul: () => 0, abs: () => ({ lte: () => true }) }), roundCost4: v => v, roundMoney2: v => v, roundQty3: v => v, calculateOrderItemCostSnapshot: () => ({ ingredientCost: 0, toppingCost: 0, totalCost: 0, grossProfit: 0 }) },
   '../payment/payment.repository': { appendManualPaymentAudit: () => ({}) },
   './shipping.service': {},
   '../agent/agent.client': { scanInventoryViaAgentService: async () => {} }
  });
- const stale = { id: 'order', status: 'PROCESSING', stockDeductedAt: null, items: [{ productId: 'p', quantity: 3 }] };
+ const stale = { id: 'order', status: 'PROCESSING', stockDeductedAt: null, version: 0, items: [{ productId: 'p', quantity: 3, consumptionStatus: 'PENDING' }] };
  await orderRepository.updateStatus(stale, nextStatus, 'admin');
- assert.equal(state.quantity, nextStatus === 'COMPLETED' ? 17 : 20); assert.equal(state.batch, state.quantity); assert.equal(state.reservedStock, 2); assert.equal(state.history.length, 1);
+ assert.equal(state.quantity, nextStatus === 'PREPARING' ? 17 : 20); assert.equal(state.batch, state.quantity); assert.equal(state.reservedStock, 2); assert.equal(state.history.length, 1);
  await assert.rejects(orderRepository.updateStatus(stale, nextStatus, 'admin')); assert.equal(state.history.length, 1);
 });

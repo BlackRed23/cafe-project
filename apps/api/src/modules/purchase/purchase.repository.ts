@@ -352,12 +352,18 @@ export const purchaseRepository = {
                                               batchCode: null,
                                               expirationDate: currentIng.shelfLifeDays
                                                   ? new Date(Date.now() + currentIng.shelfLifeDays * 86400000).toISOString()
-                                                  : new Date(Date.now() + 180 * 86400000).toISOString(),
+                                                  : null,
                                               quantity: receiveItem.receivedQuantity
                                           }
                                       ];
 
                             for (const b of batchesToCreate) {
+                                // LO-08: No arbitrary fallback (previously +180 days).
+                                // Validate at the DB transaction boundary as well as at the HTTP layer.
+                                const expiresAt = b.expirationDate ? new Date(b.expirationDate) : null;
+                                if (!expiresAt || !Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
+                                    throw new HttpError(400, 'Phiếu nhận nguyên liệu phải có hạn sử dụng hợp lệ trong tương lai cho từng lô.');
+                                }
                                 const batchBaseQty = roundQty3(singlePurchaseUnitInBase.mul(b.quantity));
                                 const batchTotalCost = roundMoney2(batchBaseQty.mul(unitCostPerBase));
                                 const batchCode =
@@ -371,7 +377,7 @@ export const purchaseRepository = {
                                         quantityInitial: batchBaseQty,
                                         quantityRemaining: batchBaseQty,
                                         unitCost: unitCostPerBase,
-                                        expirationDate: b.expirationDate ? new Date(b.expirationDate) : null,
+                                        expirationDate: expiresAt,
                                         supplierId: request.supplierId,
                                         goodsReceiptId: goodsReceipt.id,
                                         purchaseRequestItemId: requestItem.id,

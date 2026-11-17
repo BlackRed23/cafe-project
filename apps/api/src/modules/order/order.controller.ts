@@ -1,5 +1,7 @@
 import type { Response } from 'express';
 import { sendError, sendSuccess } from '../../common/response';
+import { submissionOrderId } from './order-submission';
+import { HttpError } from '../../common/http-error';
 import type { AuthenticatedRequest } from '../auth/auth.middleware';
 import {
     confirmOrderPayment,
@@ -41,6 +43,16 @@ export const findOrder = async (req: AuthenticatedRequest, res: Response): Promi
     if (!req.user) return sendError(res, 401, 'Authentication is required.');
     const order = await getOrderById(req.params.id, req.user);
     sendSuccess(res, 200, 'Get order successfully.', { order });
+};
+
+export const findOrderByRequest = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    if (!req.user) return sendError(res, 401, 'Authentication is required.');
+    const requestId = req.params.requestId;
+    if (!requestId || requestId.length > 128 || requestId !== requestId.trim()) {
+        throw new HttpError(400, 'Invalid requestId.');
+    }
+    const order = await getOrderById(submissionOrderId(req.user.id, requestId), req.user);
+    sendSuccess(res, 200, 'Get submission order successfully.', { order });
 };
 
 export const listOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {

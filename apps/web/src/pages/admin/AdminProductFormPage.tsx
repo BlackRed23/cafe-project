@@ -1,85 +1,31 @@
 import { mockEnabled } from '../../mock/config';
 import { MockWorkspace } from '../../mock/MockWorkspace';
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
+import { RecipeManager } from "../../features/recipes/RecipeManager";
 import { productsApi } from "../../api/products.api";
 import { categoriesApi } from "../../api/categories.api";
 import { uploadApi } from "../../api/upload.api";
-import { ingredientsApi } from "../../api/ingredients.api";
-import { recipesApi } from "../../api/recipes.api";
 import type { Category } from "../../types/category.types";
-import type { Ingredient } from "../../types/ingredient.types";
-import type { Recipe, PreviewRecipeCostResponse } from "../../types/recipe.types";
 import { Input } from "../../components/common/Input";
 import { Button } from "../../components/common/Button";
 import { Loading } from "../../components/common/Loading";
-import { getErrorMessage } from "../../api/client";
+import { useToast } from "../../contexts/ToastContext";
+import { Alert } from "../../components/common/Alert";
+import { ConfirmDialog } from "../../components/common/ConfirmDialog";
+import { productFailure, validateProduct } from "./productFeedback";
+import "./products.css";
 import { formatCurrency } from "../../utils/formatCurrency";
-import { formatDate } from "../../utils/formatDate";
 import {
-  AlertOctagon,
-  AlertTriangle,
   ArrowLeft,
-  CheckCircle,
   Save,
   Image,
   Info,
   UploadCloud,
-  X,
-  Plus,
-  Trash2,
-  FlaskConical,
-  History,
 } from "lucide-react";
 import { ALLOWED_PRODUCT_UNITS, isAllowedProductUnit } from "../../constants/units";
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
-const TOAST_DURATION = 5000;
-
-type ToastType = "success" | "error" | "warning" | "info";
-
-interface Toast {
-  id: string;
-  type: ToastType;
-  message: string;
-}
-
-interface EditableRecipeItem {
-  ingredientId: string;
-  quantity: number;
-  unit: string;
-  isOptional: boolean;
-}
-
-let toastId = 0;
-
-const toastStyles: Record<ToastType, { bg: string; border: string; text: string; icon: React.ReactNode }> = {
-  success: {
-    bg: "bg-emerald-50",
-    border: "border-emerald-300",
-    text: "text-emerald-900",
-    icon: <CheckCircle size={18} className="text-emerald-600 shrink-0" />,
-  },
-  error: {
-    bg: "bg-rose-50",
-    border: "border-rose-300",
-    text: "text-rose-900",
-    icon: <AlertOctagon size={18} className="text-rose-600 shrink-0" />,
-  },
-  warning: {
-    bg: "bg-amber-50",
-    border: "border-amber-300",
-    text: "text-amber-900",
-    icon: <AlertTriangle size={18} className="text-amber-600 shrink-0" />,
-  },
-  info: {
-    bg: "bg-sky-50",
-    border: "border-sky-300",
-    text: "text-sky-900",
-    icon: <Info size={18} className="text-sky-600 shrink-0" />,
-  },
-};
-
 export const AdminProductFormPage: React.FC = () => mockEnabled ? <MockWorkspace area="menu" /> : <LegacyAdminProductFormPage />;
 
 const LegacyAdminProductFormPage: React.FC = () => {
@@ -88,6 +34,11 @@ const LegacyAdminProductFormPage: React.FC = () => {
   const isEdit = !!id;
 
   const [categories, setCategories] = useState<Category[]>([]);
+  const [sku, setSku] = useState("");
+  const [requiresRecipe, setRequiresRecipe] = useState<boolean | null>(null);
+  const [needsReload, setNeedsReload] = useState(false);
+  const [confirmReload, setConfirmReload] = useState(false);
+  const submitLock = useRef(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState<number>(NaN);
@@ -95,7 +46,7 @@ const LegacyAdminProductFormPage: React.FC = () => {
   const [unit, setUnit] = useState("hộp");
   const [imageUrl, setImageUrl] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [isActive, setIsActive] = useState(true);
+  const [isActive, setIsActive] = useState(false);
   const [expectedUpdatedAt, setExpectedUpdatedAt] = useState<string>();
   const [nutritionFacts, setNutritionFacts] = useState("");
   const [usageInstructions, setUsageInstructions] = useState("");
@@ -107,69 +58,15 @@ const LegacyAdminProductFormPage: React.FC = () => {
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
-  // Recipe & Costing states (for isEdit)
-  const [allIngredients, setAllIngredients] = useState<Ingredient[]>([]);
-  const [recipeVersions, setRecipeVersions] = useState<Recipe[]>([]);
-  const [recipeItems, setRecipeItems] = useState<EditableRecipeItem[]>([]);
-  const [yieldQuantity, setYieldQuantity] = useState<number>(1);
-  const [laborCost, setLaborCost] = useState<number>(0);
-  const [overheadCost, setOverheadCost] = useState<number>(0);
-  const [recipeNote, setRecipeNote] = useState<string>("");
-  const [costPreview, setCostPreview] = useState<PreviewRecipeCostResponse | null>(null);
   const [isSavingRecipe, setIsSavingRecipe] = useState(false);
 
-  const [errors, setErrors] = useState<{ name?: string; price?: string; unit?: string; categoryId?: string }>({});
+  const [errors, setErrors] = useState<ReturnType<typeof validateProduct>>({});
   const [apiError, setApiError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  }, []);
-
-  const addToast = useCallback((type: ToastType, message: string) => {
-    const id = `product-toast-${++toastId}`;
-
-    setToasts((prev) => {
-      if (prev.some((toast) => toast.type === type && toast.message === message)) {
-        return prev;
-      }
-
-      return [...prev, { id, type, message }];
-    });
-
-    window.setTimeout(() => removeToast(id), TOAST_DURATION);
-  }, [removeToast]);
-
-  const loadRecipeData = useCallback(async (productId: string) => {
-    try {
-      const [ingList, versions] = await Promise.all([
-        ingredientsApi.getIngredients(),
-        recipesApi.getRecipesByProduct(productId),
-      ]);
-      setAllIngredients(ingList);
-      setRecipeVersions(versions);
-
-      const active = versions.find((v) => v.isActive) || versions[0];
-      if (active) {
-        setYieldQuantity(active.yieldQuantity || 1);
-        setLaborCost(active.laborCost || 0);
-        setOverheadCost(active.overheadCost || 0);
-        setRecipeNote(active.note || "");
-        setRecipeItems(
-          active.ingredients.map((ri) => ({
-            ingredientId: ri.ingredientId,
-            quantity: ri.quantity,
-            unit: ri.unit,
-            isOptional: ri.isOptional,
-          }))
-        );
-      }
-    } catch (err) {
-      console.error("Failed to load recipe data:", err);
-    }
-  }, []);
+  const toast = useToast();
+  const addToast = useCallback((type: 'success' | 'error' | 'warning' | 'info', message: string) => toast[type](message), [toast]);
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -178,7 +75,7 @@ const LegacyAdminProductFormPage: React.FC = () => {
         setCategories(data);
       } catch (err) {
         console.error(err);
-        addToast("error", getErrorMessage(err));
+        addToast("error", productFailure(err).message);
       }
     };
     fetchCategories();
@@ -190,6 +87,8 @@ const LegacyAdminProductFormPage: React.FC = () => {
           const product = await productsApi.getProductById(id);
           setExpectedUpdatedAt(product.updatedAt);
           setName(product.name);
+          setSku(product.sku ?? "");
+          setRequiresRecipe(product.requiresRecipe ?? null);
           setDescription(product.description || "");
           setPrice(product.price);
           setCostPrice(product.costPrice ?? 0);
@@ -198,7 +97,7 @@ const LegacyAdminProductFormPage: React.FC = () => {
           setSelectedImageName("");
           setImageUploadError(null);
           setCategoryId(product.category_id || product.categoryId || "");
-          setIsActive(product.isActive !== false);
+          setIsActive(product.isActive === true);
           setNutritionFacts(product.nutrition_facts || product.nutritionFacts || "");
           setUsageInstructions(product.usage_instructions || product.usageInstructions || "");
           setStorageInstructions(product.storage_instructions || product.storageInstructions || "");
@@ -206,9 +105,9 @@ const LegacyAdminProductFormPage: React.FC = () => {
           setCertifications(product.certifications || "");
           setExpiryInfo(product.expiry_info || product.expiryInfo || "");
 
-          await loadRecipeData(id);
+
         } catch (err) {
-          const message = getErrorMessage(err) || "Không thể tải thông tin sản phẩm.";
+          const message = productFailure(err, "read").message;
           setApiError(message);
           addToast("error", message);
         } finally {
@@ -217,103 +116,7 @@ const LegacyAdminProductFormPage: React.FC = () => {
       };
       fetchProductDetails();
     }
-  }, [id, isEdit, addToast, loadRecipeData]);
-
-  // Realtime cost preview when recipe items or price/costs change
-  useEffect(() => {
-    if (!isEdit || !id) return;
-    const validItems = recipeItems.filter(
-      (it) => it.ingredientId && it.quantity > 0 && it.unit.trim()
-    );
-    if (validItems.length === 0) {
-      setCostPreview(null);
-      return;
-    }
-
-    const timer = window.setTimeout(async () => {
-      try {
-        const res = await recipesApi.previewRecipeCost(id, {
-          yieldQuantity: yieldQuantity > 0 ? yieldQuantity : 1,
-          laborCost: laborCost >= 0 ? laborCost : 0,
-          overheadCost: overheadCost >= 0 ? overheadCost : 0,
-          productPrice: Number.isNaN(price) ? 0 : price,
-          ingredients: validItems,
-        });
-        setCostPreview(res);
-      } catch {
-        // Ignore transient validation errors while typing
-      }
-    }, 250);
-
-    return () => window.clearTimeout(timer);
-  }, [isEdit, id, recipeItems, yieldQuantity, laborCost, overheadCost, price]);
-
-  const handleAddRecipeRow = () => {
-    const firstAvailable = allIngredients.find(
-      (ing) => !recipeItems.some((r) => r.ingredientId === ing.id)
-    );
-    setRecipeItems((prev) => [
-      ...prev,
-      {
-        ingredientId: firstAvailable?.id || "",
-        quantity: 20,
-        unit: firstAvailable?.baseUnit || "g",
-        isOptional: false,
-      },
-    ]);
-  };
-
-  const handleRemoveRecipeRow = (idx: number) => {
-    setRecipeItems((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const handleSaveRecipeVersion = async () => {
-    if (!id) return;
-    const validItems = recipeItems.filter(
-      (it) => it.ingredientId && it.quantity > 0 && it.unit.trim()
-    );
-    if (validItems.length === 0) {
-      addToast("error", "Công thức phải có ít nhất 1 nguyên liệu hợp lệ.");
-      return;
-    }
-
-    setIsSavingRecipe(true);
-    try {
-      const saved = await recipesApi.createRecipeVersion(id, {
-        yieldQuantity: yieldQuantity > 0 ? yieldQuantity : 1,
-        laborCost: laborCost >= 0 ? laborCost : 0,
-        overheadCost: overheadCost >= 0 ? overheadCost : 0,
-        note: recipeNote.trim() || undefined,
-        activate: true,
-        ingredients: validItems,
-      });
-      setCostPrice(saved.costSummary.unitCost);
-      addToast(
-        "success",
-        `Đã lưu công thức v${saved.version} và cập nhật giá vốn món: ${formatCurrency(saved.costSummary.unitCost)}`
-      );
-      await loadRecipeData(id);
-    } catch (err) {
-      addToast("error", getErrorMessage(err) || "Không thể lưu phiên bản công thức.");
-    } finally {
-      setIsSavingRecipe(false);
-    }
-  };
-
-  const handleActivateVersion = async (recipeId: string) => {
-    if (!id) return;
-    try {
-      const activated = await recipesApi.activateRecipeVersion(id, recipeId);
-      setCostPrice(activated.costSummary.unitCost);
-      addToast(
-        "success",
-        `Đã kích hoạt công thức v${activated.version} (Giá vốn: ${formatCurrency(activated.costSummary.unitCost)}).`
-      );
-      await loadRecipeData(id);
-    } catch (err) {
-      addToast("error", getErrorMessage(err) || "Không thể kích hoạt phiên bản công thức.");
-    }
-  };
+  }, [id, isEdit, addToast]);
 
   const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -348,7 +151,7 @@ const LegacyAdminProductFormPage: React.FC = () => {
       setImageUrl(uploadedUrl);
       addToast("success", "Upload ảnh thành công.");
     } catch (err) {
-      const message = getErrorMessage(err) || "Upload ảnh thất bại, vui lòng thử lại.";
+      const message = productFailure(err).message || "Upload ảnh thất bại, vui lòng thử lại.";
       setImageUploadError(message);
       addToast("error", message);
     } finally {
@@ -358,84 +161,68 @@ const LegacyAdminProductFormPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitLock.current || needsReload || (isEdit && !expectedUpdatedAt)) return;
     setApiError(null);
-    const newErrors: typeof errors = {};
-
     if (isUploadingImage) {
-      const message = "Vui lòng đợi upload ảnh hoàn tất trước khi lưu sản phẩm.";
-      setApiError(message);
-      addToast("warning", message);
+      addToast('warning', 'Vui lòng đợi tải ảnh hoàn tất trước khi lưu.');
       return;
     }
-
-    let validationToast: string | null = null;
-
-    if (!name.trim()) {
-      newErrors.name = "Tên sản phẩm không được để trống";
-      validationToast = "Vui lòng nhập tên sản phẩm.";
-    }
-
-    if (Number.isNaN(price)) {
-      newErrors.price = "Vui lòng nhập giá sản phẩm";
-      validationToast = validationToast || "Vui lòng nhập giá sản phẩm.";
-    } else if (price <= 0) {
-      newErrors.price = "Giá sản phẩm phải lớn hơn 0";
-      validationToast = validationToast || "Giá sản phẩm phải lớn hơn 0.";
-    }
-
-    if (!unit.trim()) {
-      newErrors.unit = "Đơn vị tính không được để trống";
-    }
-
-    if (!categoryId) {
-      newErrors.categoryId = "Vui lòng chọn danh mục sản phẩm";
-      validationToast = validationToast || "Vui lòng chọn danh mục sản phẩm.";
-    }
-
+    const newErrors = validateProduct({ name, sku, description, price, unit, categoryId, requiresRecipe, isActive });
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      if (validationToast) addToast("error", validationToast);
+      addToast("error", "Vui lòng kiểm tra các trường được đánh dấu.");
       return;
     }
 
     setErrors({});
+    submitLock.current = true;
     setIsLoading(true);
     addToast("info", "Đang lưu sản phẩm...");
 
     const payload = {
-      name,
-      description: description.trim() || undefined,
+      name: name.trim(),
+      sku: sku.trim(),
+      ...(requiresRecipe === null ? {} : { requiresRecipe }),
+      description: description.trim(),
       price,
       unit,
-      image_url: imageUrl.trim() || undefined,
-      imageUrl: imageUrl.trim() || undefined,
+      image_url: imageUrl.trim(),
+      imageUrl: imageUrl.trim(),
       category_id: categoryId || undefined,
       categoryId: categoryId || undefined,
       isActive,
-      nutritionFacts: nutritionFacts.trim() || undefined,
-      usageInstructions: usageInstructions.trim() || undefined,
-      storageInstructions: storageInstructions.trim() || undefined,
-      origin: origin.trim() || undefined,
-      certifications: certifications.trim() || undefined,
-      expiryInfo: expiryInfo.trim() || undefined,
+      nutritionFacts: nutritionFacts.trim(),
+      usageInstructions: usageInstructions.trim(),
+      storageInstructions: storageInstructions.trim(),
+      origin: origin.trim(),
+      certifications: certifications.trim(),
+      expiryInfo: expiryInfo.trim(),
     };
 
+    let confirmed = false;
     try {
       const successMessage = isEdit ? "Cập nhật sản phẩm thành công." : "Tạo sản phẩm thành công.";
 
       if (isEdit && id) {
-        await productsApi.updateProduct(id, { ...payload, expectedUpdatedAt });
+        const saved = await productsApi.updateProduct(id, { ...payload, expectedUpdatedAt: expectedUpdatedAt! });
+        setExpectedUpdatedAt(saved.updatedAt);
       } else {
         await productsApi.createProduct(payload);
       }
 
+      confirmed = true;
+      setIsSaved(true);
       addToast("success", successMessage);
       window.setTimeout(() => navigate("/admin/products"), 700);
-    } catch (err: any) {
-      const message = getErrorMessage(err) || "Không thể lưu sản phẩm, vui lòng thử lại.";
+    } catch (err: unknown) {
+      const failure = productFailure(err);
+      if (failure.kind === "stale") setNeedsReload(true);
+      if (failure.kind === "sku") setErrors(previous => ({ ...previous, sku: failure.message }));
+      const message = failure.message;
       setApiError(message);
       addToast("error", message);
     } finally {
+      submitLock.current = confirmed;
       setIsLoading(false);
     }
   };
@@ -449,7 +236,7 @@ const LegacyAdminProductFormPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto flex flex-col gap-6 pb-12">
+    <div className="product-workspace product-form max-w-4xl mx-auto flex flex-col gap-6 pb-12">
       {/* Back link */}
       <div>
         <Link
@@ -483,28 +270,36 @@ const LegacyAdminProductFormPage: React.FC = () => {
         </div>
 
         <div className="p-6 sm:p-8">
-          {apiError && (
-            <div className="mb-6 p-4 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium rounded-xl flex items-center gap-2">
-              <Info size={16} className="flex-shrink-0" />
-              {apiError}
-            </div>
+          {apiError && <Alert tone="danger" title="Chưa thể lưu sản phẩm">{apiError}</Alert>}
+          {(needsReload || (isEdit && !expectedUpdatedAt)) && (
+            <Alert tone="warning" title="Cần tải lại dữ liệu">
+              Công thức hoặc sản phẩm có thể đã thay đổi. Sao chép nội dung cần giữ trước khi tải lại.
+              <Button type="button" variant="outline" onClick={() => setConfirmReload(true)}>Tải lại dữ liệu</Button>
+            </Alert>
           )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            <fieldset disabled={isLoading || isSaved || isSavingRecipe || isUploadingImage} className="space-y-5">
             <Input
               label="Tên sản phẩm"
+              maxLength={255}
+              required
               placeholder="Cà Phê Espresso Blend..."
               value={name}
               onChange={(e) => setName(e.target.value)}
               error={errors.name}
             />
 
+            <Input label="Mã SKU" value={sku} maxLength={100} onChange={e => setSku(e.target.value)} error={errors.sku} placeholder="Để trống để tự tạo mã" />
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
                 Mô tả chi tiết
               </label>
               <textarea
                 rows={3}
+                maxLength={1000}
+                aria-label="Mô tả chi tiết"
+                aria-invalid={!!errors.description}
+                aria-describedby={errors.description ? "product-description-error" : undefined}
                 placeholder="Hương vị thơm ngon, rang xay nguyên chất..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -512,10 +307,14 @@ const LegacyAdminProductFormPage: React.FC = () => {
               />
             </div>
 
+            {errors.description && <p id="product-description-error" className="ds-field-error">{errors.description}</p>}
             <div className="grid sm:grid-cols-2 gap-4">
               <Input
                 label="Giá bán (VND)"
                 type="number"
+                min="0"
+                max="9999999999.99"
+                step="0.01"
                 placeholder="120000"
                 value={Number.isNaN(price) ? "" : price}
                 onChange={(e) => setPrice(e.target.value === "" ? NaN : Number(e.target.value))}
@@ -526,6 +325,8 @@ const LegacyAdminProductFormPage: React.FC = () => {
                   Đơn vị bán
                 </label>
                 <select
+                  aria-label="Đơn vị bán"
+                  aria-invalid={!!errors.unit}
                   value={unit}
                   onChange={(e) => setUnit(e.target.value)}
                   className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-slate-900 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
@@ -552,6 +353,8 @@ const LegacyAdminProductFormPage: React.FC = () => {
                   Danh mục
                 </label>
                 <select
+                  aria-label="Danh mục sản phẩm"
+                  aria-invalid={!!errors.categoryId}
                   value={categoryId}
                   onChange={(e) => setCategoryId(e.target.value)}
                   className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-slate-900 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
@@ -608,6 +411,15 @@ const LegacyAdminProductFormPage: React.FC = () => {
               </div>
             </div>
 
+            <div>
+              <label htmlFor="product-recipe-class" className="ds-label">Phân loại công thức</label>
+              <select id="product-recipe-class" value={requiresRecipe === null ? 'unreviewed' : String(requiresRecipe)} onChange={e => setRequiresRecipe(e.target.value === 'unreviewed' ? null : e.target.value === 'true')} aria-invalid={!!errors.requiresRecipe} aria-describedby="product-recipe-help">
+                <option value="unreviewed" disabled={requiresRecipe !== null}>Chưa đánh giá</option>
+                <option value="true">Cần công thức</option>
+                <option value="false">Không cần công thức</option>
+              </select>
+              <p id="product-recipe-help" className="product-help">{errors.requiresRecipe || 'Chưa đánh giá không đồng nghĩa với không cần công thức. Sản phẩm cần công thức phải có đúng một công thức hợp lệ trước khi bật bán.'}</p>
+            </div>
             {/* Active toggle */}
             <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
               <label className="relative inline-flex items-center cursor-pointer">
@@ -615,13 +427,14 @@ const LegacyAdminProductFormPage: React.FC = () => {
                   type="checkbox"
                   id="isActive"
                   checked={isActive}
+                  disabled={requiresRecipe === null && !isActive}
                   onChange={(e) => setIsActive(e.target.checked)}
                   className="sr-only peer"
                 />
                 <div className="w-10 h-5.5 bg-slate-200 peer-focus:ring-2 peer-focus:ring-amber-700/20 rounded-full peer peer-checked:bg-amber-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all" />
               </label>
               <label htmlFor="isActive" className="text-sm font-medium text-slate-700 cursor-pointer">
-                Sẵn sàng bán (Active)
+                Bật bán · máy chủ kiểm tra điều kiện công thức
               </label>
               <span className={`ml-auto text-xs font-semibold px-2 py-0.5 rounded-full ${isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
                 {isActive ? "Đang bán" : "Ngưng bán"}
@@ -727,346 +540,19 @@ const LegacyAdminProductFormPage: React.FC = () => {
                   Hủy
                 </Button>
               </Link>
-              <Button type="submit" isLoading={isLoading} disabled={isUploadingImage} className="flex items-center gap-1.5">
+              <Button type="submit" isLoading={isLoading} disabled={isUploadingImage || isSavingRecipe || needsReload || (isEdit && !expectedUpdatedAt)} className="flex items-center gap-1.5">
                 <Save size={15} /> {isEdit ? "Cập nhật sản phẩm" : "Lưu sản phẩm"}
               </Button>
             </div>
+            </fieldset>
           </form>
         </div>
       </div>
 
-      {/* ── SECTION: CÔNG THỨC & GIÁ VỐN (chỉ hiển thị khi Edit sản phẩm) ── */}
-      {isEdit && id && (
-        <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-6 py-5 border-b border-slate-100 bg-amber-50/40 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <FlaskConical size={18} className="text-amber-800" />
-                Công thức & Giá vốn nguyên liệu
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Thiết lập định lượng nguyên liệu pha chế, tính giá vốn tự động và kiểm soát biên lợi nhuận
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleAddRecipeRow}
-              className="flex items-center gap-1.5 text-xs"
-            >
-              <Plus size={14} /> Thêm dòng nguyên liệu
-            </Button>
-          </div>
+      {isEdit && id && <RecipeManager key={id} productId={id} productName={name} disabled={isLoading || isSaved || isUploadingImage} onBusyChange={setIsSavingRecipe} onChanged={() => setNeedsReload(true)} />}
 
-          <div className="p-6 sm:p-8 space-y-6">
-            {/* Ingredient rows */}
-            {recipeItems.length === 0 ? (
-              <div className="py-8 text-center border border-dashed border-slate-200 rounded-xl text-slate-400 text-sm">
-                Sản phẩm này chưa có công thức nguyên liệu. Nhấn <b>Thêm dòng nguyên liệu</b> để bắt đầu tính giá vốn tự động.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {recipeItems.map((row, idx) => {
-                  const selectedIng = allIngredients.find((i) => i.id === row.ingredientId);
-                  const previewLine = costPreview?.breakdown?.[idx];
-                  return (
-                    <div
-                      key={idx}
-                      className="grid sm:grid-cols-12 gap-3 items-center p-3 bg-slate-50/80 border border-slate-200/70 rounded-xl text-sm"
-                    >
-                      <div className="sm:col-span-5">
-                        <label className="text-[11px] font-semibold text-slate-400 block mb-1">
-                          Nguyên liệu
-                        </label>
-                        <select
-                          value={row.ingredientId}
-                          onChange={(e) => {
-                            const newIng = allIngredients.find((i) => i.id === e.target.value);
-                            setRecipeItems((prev) =>
-                              prev.map((item, i) =>
-                                i === idx
-                                  ? {
-                                      ...item,
-                                      ingredientId: e.target.value,
-                                      unit: newIng?.baseUnit || item.unit,
-                                    }
-                                  : item
-                              )
-                            );
-                          }}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm"
-                        >
-                          <option value="">-- Chọn nguyên liệu --</option>
-                          {allIngredients.map((ing) => (
-                            <option key={ing.id} value={ing.id}>
-                              {ing.name} ({ing.costPerBaseUnit.toLocaleString("vi-VN")}đ/{ing.baseUnit})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+      <ConfirmDialog isOpen={confirmReload} onClose={() => setConfirmReload(false)} onConfirm={() => window.location.reload()} title="Tải lại sản phẩm?" message="Nội dung chưa lưu sẽ bị thay thế bằng dữ liệu mới nhất. Hãy sao chép nội dung cần giữ trước khi tiếp tục." confirmText="Tải lại" />
 
-                      <div className="sm:col-span-2">
-                        <label className="text-[11px] font-semibold text-slate-400 block mb-1">
-                          Định lượng
-                        </label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={row.quantity}
-                          onChange={(e) =>
-                            setRecipeItems((prev) =>
-                              prev.map((item, i) =>
-                                i === idx ? { ...item, quantity: Number(e.target.value) } : item
-                              )
-                            )
-                          }
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="text-[11px] font-semibold text-slate-400 block mb-1">
-                          Đơn vị
-                        </label>
-                        <select
-                          value={row.unit}
-                          onChange={(e) =>
-                            setRecipeItems((prev) =>
-                              prev.map((item, i) =>
-                                i === idx ? { ...item, unit: e.target.value } : item
-                              )
-                            )
-                          }
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm"
-                        >
-                          <option value={selectedIng?.baseUnit || "g"}>
-                            {selectedIng?.baseUnit || "g"}
-                          </option>
-                          {selectedIng?.baseUnit === "g" && <option value="kg">kg</option>}
-                          {selectedIng?.baseUnit === "ml" && <option value="l">l</option>}
-                        </select>
-                      </div>
-
-                      <div className="sm:col-span-2 text-right">
-                        <span className="text-[11px] font-semibold text-slate-400 block mb-1">
-                          Chi phí dòng
-                        </span>
-                        <span className="font-bold text-amber-800">
-                          {formatCurrency(previewLine?.lineCost ?? 0)}
-                        </span>
-                        <label className="flex items-center justify-end gap-1 text-[11px] text-slate-500 mt-1 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={row.isOptional}
-                            onChange={(e) =>
-                              setRecipeItems((prev) =>
-                                prev.map((item, i) =>
-                                  i === idx ? { ...item, isOptional: e.target.checked } : item
-                                )
-                              )
-                            }
-                          />
-                          Tùy chọn
-                        </label>
-                      </div>
-
-                      <div className="sm:col-span-1 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveRecipeRow(idx)}
-                          className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"
-                          title="Xóa nguyên liệu"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Extra recipe costs */}
-            <div className="grid sm:grid-cols-3 gap-4 pt-2">
-              <Input
-                label="Sản lượng mẻ (yieldQuantity)"
-                type="number"
-                step="0.1"
-                value={yieldQuantity}
-                onChange={(e) => setYieldQuantity(Number(e.target.value) || 1)}
-              />
-              <Input
-                label="Chi phí nhân công / mẻ (VND)"
-                type="number"
-                value={laborCost}
-                onChange={(e) => setLaborCost(Number(e.target.value) || 0)}
-              />
-              <Input
-                label="Chi phí vận hành / mẻ (VND)"
-                type="number"
-                value={overheadCost}
-                onChange={(e) => setOverheadCost(Number(e.target.value) || 0)}
-              />
-            </div>
-
-            <Input
-              label="Ghi chú phiên bản công thức"
-              placeholder="VD: Công thức chuẩn mùa hè, giảm 5g đường..."
-              value={recipeNote}
-              onChange={(e) => setRecipeNote(e.target.value)}
-            />
-
-            {/* Realtime Cost Summary & Margin Warning */}
-            {costPreview && (
-              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
-                <div className="grid sm:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <span className="text-xs text-slate-400 block">Chi phí nguyên liệu chính</span>
-                    <span className="font-bold text-slate-800 text-base">
-                      {formatCurrency(costPreview.ingredientsCost)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-slate-400 block">Giá vốn ước tính / 1 {unit || "ly"}</span>
-                    <span className="font-black text-amber-800 text-lg">
-                      {formatCurrency(costPreview.unitCost)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-slate-400 block">Lợi nhuận gộp / 1 {unit || "ly"}</span>
-                    <span
-                      className={`font-black text-lg ${
-                        costPreview.marginAmount >= 0 ? "text-emerald-700" : "text-rose-600"
-                      }`}
-                    >
-                      {formatCurrency(costPreview.marginAmount)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-slate-400 block">% Biên lợi nhuận (Margin)</span>
-                    <span
-                      className={`font-black text-lg ${
-                        costPreview.lowMarginWarning ? "text-rose-600" : "text-emerald-700"
-                      }`}
-                    >
-                      {costPreview.marginPercent}%
-                    </span>
-                  </div>
-                </div>
-
-                {costPreview.lowMarginWarning && (
-                  <div className="p-3.5 rounded-xl bg-amber-100/80 border border-amber-300 text-amber-900 text-xs font-semibold flex items-center gap-2">
-                    <AlertTriangle size={16} className="text-amber-700 shrink-0" />
-                    Cảnh báo: Biên lợi nhuận hiện tại ({costPreview.marginPercent}%) thấp hơn ngưỡng khuyến nghị 30% giá bán! Vui lòng cân nhắc điều chỉnh định lượng hoặc giá bán.
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                onClick={handleSaveRecipeVersion}
-                isLoading={isSavingRecipe}
-                className="bg-amber-800 hover:bg-amber-900 text-white"
-              >
-                <Save size={15} className="mr-1.5" /> Lưu thành phiên bản công thức mới
-              </Button>
-            </div>
-
-            {/* Version History */}
-            {recipeVersions.length > 0 && (
-              <div className="pt-6 border-t border-slate-100">
-                <h4 className="text-sm font-bold text-slate-700 flex items-center gap-1.5 mb-3">
-                  <History size={15} className="text-amber-800" />
-                  Lịch sử phiên bản công thức ({recipeVersions.length})
-                </h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-slate-400 uppercase font-bold">
-                        <th className="py-2 px-3">Phiên bản</th>
-                        <th className="py-2 px-3">Số nguyên liệu</th>
-                        <th className="py-2 px-3 text-right">Giá vốn / ĐV</th>
-                        <th className="py-2 px-3 text-right">Margin</th>
-                        <th className="py-2 px-3">Ngày hiệu lực</th>
-                        <th className="py-2 px-3 text-center">Trạng thái</th>
-                        <th className="py-2 px-3 text-right">Thao tác</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {recipeVersions.map((ver) => (
-                        <tr key={ver.id} className="hover:bg-slate-50/60">
-                          <td className="py-2.5 px-3 font-bold text-slate-800">v{ver.version}</td>
-                          <td className="py-2.5 px-3 text-slate-600">
-                            {ver.ingredients.length} nguyên liệu
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-bold text-amber-800">
-                            {formatCurrency(ver.costSummary.unitCost)}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-semibold text-emerald-700">
-                            {ver.costSummary.marginPercent}%
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-500">
-                            {formatDate(ver.effectiveFrom)}
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            {ver.isActive ? (
-                              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold">
-                                Đang áp dụng
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
-                                Lịch sử
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
-                            {!ver.isActive && (
-                              <button
-                                type="button"
-                                onClick={() => handleActivateVersion(ver.id)}
-                                className="text-amber-800 hover:underline font-bold"
-                              >
-                                Kích hoạt lại
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {toasts.length > 0 && (
-        <div className="fixed top-4 right-4 z-50 flex w-[min(360px,calc(100vw-2rem))] flex-col gap-3">
-          {toasts.map((toast) => {
-            const style = toastStyles[toast.type];
-            return (
-              <div
-                key={toast.id}
-                className={`flex items-start gap-3 rounded-xl border ${style.border} ${style.bg} ${style.text} px-4 py-3 text-sm font-medium shadow-lg`}
-              >
-                {style.icon}
-                <span className="flex-1">{toast.message}</span>
-                <button
-                  type="button"
-                  onClick={() => removeToast(toast.id)}
-                  className="rounded-md p-0.5 opacity-70 transition hover:bg-white/60 hover:opacity-100"
-                  aria-label="Đóng thông báo"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 };

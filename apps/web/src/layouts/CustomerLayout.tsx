@@ -113,25 +113,26 @@ export const CustomerLayout: React.FC = () => {
       {/* Header */}
       <header ref={headerRef} className="storefront-header">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20">
+          <div className="storefront-header-row">
             {/* Logo */}
             <Link to="/" aria-label="Coffee INV — Trang chủ" className="storefront-logo flex items-center group">
-              <div className="p-2.5 bg-white-300 text-white  group-hover:bg-white-600 transition-all ">
-                <img className="w-20 h-20" src={logoInventory} alt="" />
+              <div>
+                <img src={logoInventory} alt="" width="48" height="48" />
               </div>
-              <span className="font-bold text-xl tracking-tight text-white uppercase font-serif">
-                COFFEE <span className="text-[#c49b76]">INV</span>
+              <span>
+                COFFEE <span>INV</span>
               </span>
             </Link>
 
             {/* Navigation links */}
-            <nav aria-label="Điều hướng chính" className="hidden md:flex items-center gap-6">
+            <nav aria-label="Điều hướng chính" className="storefront-desktop-nav">
               {navItems.map((item) => {
                 if (item.protected && !isAuthenticated) return null;
                 return (
                   <Link
                     key={item.path}
                     to={item.path}
+                    aria-current={isActive(item) ? "page" : undefined}
                     onClick={(e) => handleNavClick(item, e)}
                     className={`text-xs font-bold transition-all duration-200 relative py-1 uppercase tracking-wider ${isActive(item)
                       ? "text-[#c49b76] font-bold"
@@ -150,7 +151,7 @@ export const CustomerLayout: React.FC = () => {
             <ThemeControl {...theme} />
 
             {/* Right side actions */}
-            <div className="hidden md:flex items-center gap-4">
+            <div className="storefront-desktop-actions">
               {/* Admin Panel button if role === "ADMIN" */}
               {isAuthenticated && isAdmin && (
                 <Link
@@ -258,7 +259,7 @@ export const CustomerLayout: React.FC = () => {
             </div>
 
             {/* Mobile menu button */}
-            <div className="md:hidden flex items-center gap-2">
+            <div className="storefront-mobile-actions">
               {/* Cart Icon for mobile */}
               <Link
                 to="/cart"
@@ -288,7 +289,7 @@ export const CustomerLayout: React.FC = () => {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <nav id="storefront-mobile-nav" aria-label="Điều hướng di động" className="md:hidden bg-[#150d0a] border-t border-amber-955/30 px-4 pt-2 pb-4 space-y-2">
+          <nav id="storefront-mobile-nav" aria-label="Điều hướng di động" className="storefront-mobile-nav bg-[#150d0a] border-t border-amber-955/30 px-4 pt-2 pb-4 space-y-2">
             {navItems.map((item) => {
               if (item.protected && !isAuthenticated) return null;
               return (

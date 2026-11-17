@@ -6,15 +6,22 @@ import type {
   PreviewRecipeCostResponse,
 } from "../types/recipe.types";
 
+function confirmed<T>(envelope: { success?: boolean; data?: T }, validate: (value: T) => boolean): T {
+  const data = unwrapApiData<T>(envelope);
+  if (envelope?.success !== true || !data || !validate(data)) throw new Error("Recipe response not confirmed");
+  return data;
+}
+const isRecipe = (value: Recipe): boolean => typeof value.id === "string" && typeof value.version === "number" && Array.isArray(value.ingredients) && !!value.costSummary;
+
 export const recipesApi = {
   getRecipesByProduct: async (productId: string): Promise<Recipe[]> => {
     const response = await apiClient.get(`/products/${productId}/recipes`);
-    return unwrapApiData<Recipe[]>(response.data) ?? [];
+    return confirmed<Recipe[]>(response.data, value => Array.isArray(value) && value.every(isRecipe));
   },
 
-  getActiveRecipe: async (productId: string): Promise<Recipe | null> => {
+  getActiveRecipe: async (productId: string): Promise<Recipe> => {
     const response = await apiClient.get(`/products/${productId}/recipes/active`);
-    return unwrapApiData<Recipe | null>(response.data);
+    return confirmed<Recipe>(response.data, isRecipe);
   },
 
   previewRecipeCost: async (
@@ -22,7 +29,7 @@ export const recipesApi = {
     payload: PreviewRecipeCostPayload
   ): Promise<PreviewRecipeCostResponse> => {
     const response = await apiClient.post(`/products/${productId}/recipes/cost-preview`, payload);
-    return unwrapApiData<PreviewRecipeCostResponse>(response.data);
+    return confirmed<PreviewRecipeCostResponse>(response.data, value => Array.isArray(value.breakdown) && Number.isFinite(value.unitCost) && Number.isFinite(value.totalBatchCost));
   },
 
   createRecipeVersion: async (
@@ -30,7 +37,7 @@ export const recipesApi = {
     payload: CreateRecipePayload
   ): Promise<Recipe> => {
     const response = await apiClient.post(`/products/${productId}/recipes`, payload);
-    return unwrapApiData<Recipe>(response.data);
+    return confirmed<Recipe>(response.data, isRecipe);
   },
 
   activateRecipeVersion: async (
@@ -38,8 +45,8 @@ export const recipesApi = {
     recipeId: string
   ): Promise<Recipe> => {
     const response = await apiClient.post(
-      `/products/${productId}/recipes/${recipeId}/activate`
+      `/products/${productId}/recipes/${recipeId}/activate`, {}
     );
-    return unwrapApiData<Recipe>(response.data);
+    return confirmed<Recipe>(response.data, isRecipe);
   },
 };

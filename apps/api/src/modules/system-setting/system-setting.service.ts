@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
     'ai.promptPrefix': '',
     'ai.scanCron': '*/5 * * * *',
     'inventory.defaultMinThreshold': '10',
+    'inventory.lotNearExpiryDays': '7',
     'inventory.reorderPlanningPeriod': 'WEEKLY',
     'inventory.reorderPlanningCustomDays': '14',
     'store.name': 'Cafe System',
@@ -88,6 +89,10 @@ export const getSettingByKey = async (key: string): Promise<SystemSettingDto> =>
 
 export const upsertSetting = async (key: string, value: string): Promise<SystemSettingDto> => {
     const normalizedKey = normalizeKey(key);
+    if (normalizedKey === 'inventory.lotNearExpiryDays' &&
+        (!/^(0|[1-9]\d*)$/.test(value) || !Number.isSafeInteger(Number(value) * 86400000))) {
+        throw new HttpError(400, 'Near-expiry threshold must be nonnegative whole days.');
+    }
     const setting = await systemSettingRepository.upsert(normalizedKey, value);
 
     return toDto(setting);

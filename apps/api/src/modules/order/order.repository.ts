@@ -21,21 +21,35 @@ import { detectShippingZone, calculateShippingFee } from './shipping.service';
 import { scanInventoryViaAgentService } from '../agent/agent.client';
 import { appendManualPaymentAudit } from '../payment/payment.repository';
 import { HttpError } from '../../common/http-error';
+import { submissionOrderId, submissionPaymentId } from './order-submission';
 
 // Share locks serialize acceptance with product deactivation/price updates.
 // Stable order prevents deadlocks for carts listing products in different orders.
 const lockActiveProducts = async (tx: Prisma.TransactionClient, ids: string[]): Promise<void> => {
     const uniqueIds = Array.from(new Set(ids)).sort();
-    const products = await tx.$queryRaw<Array<{ id: string; isActive: boolean; deletedAt: Date | null }>>(
-        Prisma.sql`SELECT id, "isActive", "deletedAt" FROM "Product"
+    const products = await tx.$queryRaw<Array<{ id: string; isActive: boolean; deletedAt: Date | null; requiresRecipe: boolean | null }>>(
+        Prisma.sql`SELECT id, "isActive", "deletedAt", "requiresRecipe" FROM "Product"
             WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR SHARE`
     );
     if (products.length !== uniqueIds.length || products.some(p => !p.isActive || p.deletedAt)) {
         throw new HttpError(409, 'Product inactive or unavailable. Refresh your cart.');
     }
+    for (const product of products) {
+        if (product.requiresRecipe === null) throw new HttpError(409, 'Review requiresRecipe before enabling sales.');
+        if (product.requiresRecipe) {
+            const recipes = await tx.recipe.findMany({ where: { productId: product.id, isActive: true },
+                include: { ingredients: { include: { ingredient: true } } } });
+            const now = new Date();
+            if (recipes.length !== 1 || recipes.some(recipe => !recipe.ingredients.length || !recipe.yieldQuantity.gt(0) ||
+                recipe.effectiveFrom > now || (recipe.effectiveTo !== null && recipe.effectiveTo <= now) ||
+                recipe.ingredients.some(item => !item.quantityBase.gt(0) || !item.ingredient.isActive || item.ingredient.deletedAt !== null))) {
+                throw new HttpError(409, 'Product recipe is invalid or unavailable.');
+            }
+        }
+    }
 };
 
-const orderInclude = {
+export const orderInclude = {
     user: { select: { id: true, name: true, email: true } },
     items: {
         include: {
@@ -48,10 +62,476 @@ const orderInclude = {
             }
         }
     },
+    operations: { orderBy: { createdAt: 'asc' } },
     payments: { orderBy: [{ attemptNo: 'desc' }, { createdAt: 'desc' }] }
 } satisfies Prisma.OrderInclude;
 
 export type OrderRecord = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
+
+export const consumeReservedOrder = async (tx: Prisma.TransactionClient, order: OrderRecord, userId?: string | null): Promise<void> => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const now = new Date();
+    for (const item of order.items.filter(item => item.consumptionStatus === ConsumptionStatus.PENDING)) {
+        if (item.recipeId) {
+            // Luồng trừ kho Nguyên liệu theo Recipe + FIFO Batch
+            const recipe = await tx.recipe.findUnique({
+                where: { id: item.recipeId },
+                include: {
+                    ingredients: {
+                        include: { ingredient: true }
+                    }
+                }
+            });
+
+            if (!recipe) {
+                throw new Error(`Không tìm thấy công thức (${item.recipeId}) cho dòng đơn hàng.`);
+            }
+
+            const toppingIds = item.toppings.map((t) => t.toppingId);
+            const toppingsFull = toppingIds.length > 0
+                ? await tx.topping.findMany({
+                      where: { id: { in: toppingIds } },
+                      include: { ingredients: { include: { ingredient: true } } }
+                  })
+                : [];
+            const toppingById = new Map(toppingsFull.map((t) => [t.id, t]));
+
+            // Never spend another order's pooled reservation or silently rewrite legacy demand.
+            const expected = new Map<string, Prisma.Decimal>();
+            const add = (id: string, qty: Prisma.Decimal) => expected.set(id, (expected.get(id) ?? new Prisma.Decimal(0)).add(qty));
+            for (const ri of recipe.ingredients.filter(ri => !ri.isOptional)) {
+                add(ri.ingredientId, roundQty3(ri.quantityBase.mul(item.quantity).div(recipe.yieldQuantity)));
+            }
+            for (const topping of item.toppings) for (const ti of toppingById.get(topping.toppingId)?.ingredients ?? []) {
+                add(ti.ingredientId, roundQty3(ti.quantityBase.mul(topping.quantity)));
+            }
+            const reserved = new Map<string, Prisma.Decimal>();
+            const rows = await tx.inventoryTransaction.findMany({ where: { orderItemId: item.id, type: InventoryTransactionType.RESERVE, ingredientId: { not: null } } });
+            for (const row of rows) reserved.set(row.ingredientId!, (reserved.get(row.ingredientId!) ?? new Prisma.Decimal(0)).add(row.quantity));
+            if (expected.size !== reserved.size || [...expected].some(([id, qty]) => qty.lte(0) || !qty.eq(reserved.get(id) ?? -1))) {
+                throw new HttpError(409, 'Reservation snapshot differs from recipe demand. Reconcile or cancel before preparation.');
+            }
+
+            // 1. Trừ nguyên liệu của Recipe chính
+            let recipeIngredientActualCost = new Prisma.Decimal(0);
+
+            for (const ri of recipe.ingredients) {
+                if (ri.isOptional) continue;
+                const needQty = roundQty3(toDecimal(ri.quantityBase).mul(item.quantity).div(recipe.yieldQuantity));
+                if (needQty.lte(0)) continue;
+
+                await tx.$queryRaw`SELECT "id" FROM "Ingredient" WHERE "id" = ${ri.ingredientId} FOR UPDATE`;
+                const updatedIng = await tx.ingredient.updateMany({
+                    where: {
+                        id: ri.ingredientId,
+                        isActive: true, deletedAt: null,
+                        quantity: { gte: needQty },
+                        reserved: { gte: needQty }
+                    },
+                    data: {
+                        quantity: { decrement: needQty },
+                        reserved: { decrement: needQty },
+                        rowVersion: { increment: 1 }
+                    }
+                });
+
+                if (updatedIng.count !== 1) {
+                    throw new Error(
+                        `Không đủ số lượng nguyên liệu "${ri.ingredient.name}" đang giữ để hoàn tất đơn hàng.`
+                    );
+                }
+
+                const batches = await tx.ingredientBatch.findMany({
+                    where: {
+                        ingredientId: ri.ingredientId,
+                        qualityStatus: 'AVAILABLE',
+                        quantityRemaining: { gt: 0 },
+                        OR: [
+                            { expirationDate: null },
+                            { expirationDate: { gt: new Date() } }
+                        ]
+                    },
+                    orderBy: [
+                        { expirationDate: 'asc' },
+                        { receivedAt: 'asc' },
+                        { id: 'asc' }
+                    ]
+                });
+
+                const { allocations, totalCost } = allocateFifoBatches(
+                    batches,
+                    needQty,
+                    ri.ingredient.name
+                );
+
+                for (const alloc of allocations) {
+                    const idempotencyKey = `consume:${item.id}:${ri.ingredientId}:${alloc.batchId}`;
+                    const updatedBatch = await tx.ingredientBatch.updateMany({
+                        where: { id: alloc.batchId, quantityRemaining: { gte: alloc.quantity } },
+                        data: { quantityRemaining: { decrement: alloc.quantity } }
+                    });
+                    if (updatedBatch.count !== 1) {
+                        throw new Error(`Lô nguyên liệu "${ri.ingredient.name}" vừa thay đổi, vui lòng thử lại.`);
+                    }
+
+                    await tx.inventoryTransaction.upsert({
+                        where: { idempotencyKey },
+                        update: {},
+                        create: {
+                            idempotencyKey,
+                            ingredientId: ri.ingredientId,
+                            batchId: alloc.batchId,
+                            type: InventoryTransactionType.CONSUME,
+                            quantity: alloc.quantity.neg(),
+                            unitCost: alloc.unitCost,
+                            totalCost: alloc.totalCost,
+                            orderItemId: item.id,
+                            referenceType: 'Order',
+                            referenceId: order.id,
+                            performedBy: userId,
+                            reason: `Tiêu hao nguyên liệu cho đơn ${order.id}`
+                        }
+                    });
+                }
+
+                recipeIngredientActualCost = recipeIngredientActualCost.add(totalCost);
+            }
+
+            // 2. Trừ nguyên liệu của Toppings (nếu có) và ghi nhận costSnapshot
+            const toppingsForSnapshot: Array<{
+                toppingId: string;
+                quantity: number;
+                price: Prisma.Decimal;
+                unitCostSnapshot: Prisma.Decimal;
+            }> = [];
+
+            for (const oit of item.toppings) {
+                const toppingFull = toppingById.get(oit.toppingId);
+                let totalToppingItemCost = new Prisma.Decimal(0);
+
+                if (toppingFull && toppingFull.ingredients.length > 0) {
+                    for (const ti of toppingFull.ingredients) {
+                        const needQty = roundQty3(toDecimal(ti.quantityBase).mul(oit.quantity));
+                        if (needQty.lte(0)) continue;
+
+                        await tx.$queryRaw`SELECT "id" FROM "Ingredient" WHERE "id" = ${ti.ingredientId} FOR UPDATE`;
+                        const updatedIng = await tx.ingredient.updateMany({
+                            where: {
+                                id: ti.ingredientId,
+                                    isActive: true, deletedAt: null,
+                                quantity: { gte: needQty },
+                                reserved: { gte: needQty }
+                            },
+                            data: {
+                                quantity: { decrement: needQty },
+                                reserved: { decrement: needQty },
+                                rowVersion: { increment: 1 }
+                            }
+                        });
+
+                        if (updatedIng.count !== 1) {
+                            throw new Error(
+                                `Không đủ số lượng nguyên liệu "${ti.ingredient.name}" của topping để hoàn tất đơn hàng.`
+                            );
+                        }
+
+                        const batches = await tx.ingredientBatch.findMany({
+                            where: {
+                                ingredientId: ti.ingredientId,
+                                qualityStatus: 'AVAILABLE',
+                                quantityRemaining: { gt: 0 },
+                                OR: [
+                                    { expirationDate: null },
+                                    { expirationDate: { gt: new Date() } }
+                                ]
+                            },
+                            orderBy: [
+                                { expirationDate: 'asc' },
+                                { receivedAt: 'asc' },
+                                { id: 'asc' }
+                            ]
+                        });
+
+                        const { allocations, totalCost } = allocateFifoBatches(
+                            batches,
+                            needQty,
+                            ti.ingredient.name
+                        );
+
+                        for (const alloc of allocations) {
+                            const idempotencyKey = `consume:${item.id}:topping:${oit.id}:${ti.ingredientId}:${alloc.batchId}`;
+                            const updatedBatch = await tx.ingredientBatch.updateMany({
+                                where: { id: alloc.batchId, quantityRemaining: { gte: alloc.quantity } },
+                                data: { quantityRemaining: { decrement: alloc.quantity } }
+                            });
+                            if (updatedBatch.count !== 1) {
+                                throw new Error(`Lô nguyên liệu "${ti.ingredient.name}" vừa thay đổi, vui lòng thử lại.`);
+                            }
+
+                            await tx.inventoryTransaction.upsert({
+                                where: { idempotencyKey },
+                                update: {},
+                                create: {
+                                    idempotencyKey,
+                                    ingredientId: ti.ingredientId,
+                                    batchId: alloc.batchId,
+                                    type: InventoryTransactionType.CONSUME,
+                                    quantity: alloc.quantity.neg(),
+                                    unitCost: alloc.unitCost,
+                                    totalCost: alloc.totalCost,
+                                    orderItemId: item.id,
+                                    referenceType: 'Order',
+                                    referenceId: order.id,
+                                    performedBy: userId,
+                                    reason: `Tiêu hao nguyên liệu topping cho đơn ${order.id}`
+                                }
+                            });
+                        }
+
+                        totalToppingItemCost = totalToppingItemCost.add(totalCost);
+                    }
+                }
+
+                const unitCostSnapshot = oit.quantity > 0
+                    ? roundCost4(totalToppingItemCost.div(oit.quantity))
+                    : new Prisma.Decimal(0);
+
+                await tx.orderItemTopping.update({
+                    where: { id: oit.id },
+                    data: { costSnapshot: roundMoney2(totalToppingItemCost) }
+                });
+
+                toppingsForSnapshot.push({
+                    toppingId: oit.toppingId,
+                    quantity: oit.quantity,
+                    price: oit.price,
+                    unitCostSnapshot
+                });
+            }
+
+            const snapshot = calculateOrderItemCostSnapshot({
+                price: item.price,
+                quantity: item.quantity,
+                ingredientCostTotal: recipeIngredientActualCost,
+                toppings: toppingsForSnapshot,
+                recipe: {
+                    yieldQuantity: recipe.yieldQuantity,
+                    laborCost: recipe.laborCost,
+                    overheadCost: recipe.overheadCost
+                }
+            });
+
+            await tx.orderItem.update({
+                where: { id: item.id },
+                data: {
+                    consumptionStatus: ConsumptionStatus.COMMITTED,
+                    startedAt: item.startedAt ?? now,
+                    committedAt: now,
+                    ingredientCost: snapshot.ingredientCost,
+                    toppingCost: snapshot.toppingCost,
+                    totalCost: snapshot.totalCost,
+                    grossProfit: snapshot.grossProfit
+                }
+            });
+        } else {
+            // Tương thích ngược (Mục 2.8): Sản phẩm chưa có recipe active -> trừ Inventory cũ + lấy Product.costPrice
+            const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
+            if (inventory) {
+                const updated = await tx.inventory.updateMany({
+                    where: {
+                        id: inventory.id,
+                        quantity: { gte: item.quantity },
+                        reservedStock: { gte: item.quantity }
+                    },
+                    data: {
+                        quantity: { decrement: item.quantity },
+                        reservedStock: { decrement: item.quantity }
+                    }
+                });
+
+                if (updated.count !== 1) {
+                    throw new Error('Không đủ số lượng hàng đang giữ để cập nhật đơn hàng.');
+                }
+
+                const batches = await tx.inventoryBatch.findMany({
+                    where: { inventoryId: inventory.id, quantity: { gt: 0 }, expirationDate: { gte: startOfToday } },
+                    orderBy: [{ expirationDate: 'asc' }, { id: 'asc' }]
+                });
+
+                const totalSellable = batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
+                if (totalSellable < item.quantity) {
+                    throw new Error(`Không đủ lô hàng còn hạn để xuất. Yêu cầu: ${item.quantity}, Có thể xuất: ${totalSellable}.`);
+                }
+
+                let remainingToDeduct = item.quantity;
+                const fallbackUnitCost = roundCost4(toDecimal(item.product?.costPrice));
+
+                for (const batch of batches) {
+                    if (remainingToDeduct <= 0) break;
+
+                    let currentBatchQuantity = batch.quantity;
+                    let retryCount = 0;
+                    const MAX_RETRY = 5;
+
+                    while (currentBatchQuantity > 0 && remainingToDeduct > 0) {
+                        if (retryCount >= MAX_RETRY) {
+                            throw new Error('Hệ thống đang xử lý nhiều giao dịch cùng lúc, vui lòng thử lại.');
+                        }
+
+                        const deduction = Math.min(currentBatchQuantity, remainingToDeduct);
+                        const updatedBatch = await tx.inventoryBatch.updateMany({
+                            where: { id: batch.id, quantity: { gte: deduction } },
+                            data: { quantity: { decrement: deduction } }
+                        });
+
+                        if (updatedBatch.count === 1) {
+                            await tx.inventoryTransaction.create({
+                                data: {
+                                    productId: item.productId,
+                                    performedBy: userId,
+                                    type: InventoryTransactionType.ORDER,
+                                    quantity: -deduction,
+                                    unitCost: fallbackUnitCost,
+                                    totalCost: roundMoney2(fallbackUnitCost.mul(deduction)),
+                                    orderItemId: item.id,
+                                    referenceType: 'Order',
+                                    referenceId: order.id,
+                                    reason: `Trừ kho thật cho đơn ${order.id}`,
+                                    legacyBatchId: batch.id
+                                }
+                            });
+                            remainingToDeduct -= deduction;
+                            break;
+                        } else {
+                            retryCount++;
+                            const freshBatch = await tx.inventoryBatch.findUnique({
+                                where: { id: batch.id }
+                            });
+                            if (!freshBatch || freshBatch.quantity <= 0) {
+                                break;
+                            }
+                            currentBatchQuantity = freshBatch.quantity;
+                        }
+                    }
+                }
+
+                if (remainingToDeduct > 0) {
+                    throw new Error(`Không đủ lô hàng còn hạn để xuất (vừa bị giành mất). Số lượng còn thiếu: ${remainingToDeduct}.`);
+                }
+            }
+
+            const snapshot = calculateOrderItemCostSnapshot({
+                price: item.price,
+                quantity: item.quantity,
+                recipe: null,
+                fallbackProductCostPrice: item.product?.costPrice
+            });
+
+            await tx.orderItem.update({
+                where: { id: item.id },
+                data: {
+                    consumptionStatus: ConsumptionStatus.COMMITTED,
+                    startedAt: item.startedAt ?? now,
+                    committedAt: now,
+                    ingredientCost: snapshot.ingredientCost,
+                    toppingCost: snapshot.toppingCost,
+                    totalCost: snapshot.totalCost,
+                    grossProfit: snapshot.grossProfit
+                }
+            });
+        }
+    }
+};
+
+export const releaseReservedOrder = async (tx: Prisma.TransactionClient, order: OrderRecord, actorId?: string | null): Promise<void> => {
+    const now = new Date();
+    for (const item of order.items.filter(item => item.consumptionStatus === ConsumptionStatus.PENDING)) {
+        if (item.recipeId) {
+            // Nhả giữ chỗ nguyên liệu dựa trên các giao dịch RESERVE của OrderItem
+            const reserveTxns = await tx.inventoryTransaction.findMany({
+                where: {
+                    orderItemId: item.id,
+                    type: InventoryTransactionType.RESERVE,
+                    ingredientId: { not: null }
+                }
+            });
+
+            for (const rTx of reserveTxns) {
+                if (!rTx.ingredientId) continue;
+                const releaseQty = roundQty3(toDecimal(rTx.quantity).abs());
+                if (releaseQty.lte(0)) continue;
+
+                const updatedIng = await tx.ingredient.updateMany({
+                    where: {
+                        id: rTx.ingredientId,
+                        reserved: { gte: releaseQty }
+                    },
+                    data: {
+                        reserved: { decrement: releaseQty },
+                        rowVersion: { increment: 1 }
+                    }
+                });
+
+                if (updatedIng.count !== 1) {
+                    throw new Error('Không đủ số lượng nguyên liệu đang giữ để nhả cho đơn hủy.');
+                }
+
+                await tx.inventoryTransaction.create({
+                    data: {
+                        ingredientId: rTx.ingredientId,
+                        performedBy: actorId,
+                        type: InventoryTransactionType.RELEASE,
+                        quantity: releaseQty.neg(),
+                        unitCost: 0,
+                        totalCost: 0,
+                        orderItemId: item.id,
+                        referenceType: 'Order',
+                        referenceId: order.id,
+                        reason: actorId
+                            ? `Nhả giữ nguyên liệu cho đơn ${order.id}`
+                            : `Tự động nhả giữ nguyên liệu do đơn ${order.id} quá hạn thanh toán`
+                    }
+                });
+            }
+        } else {
+            const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
+            if (inventory) {
+                const updated = await tx.inventory.updateMany({
+                    where: { id: inventory.id, reservedStock: { gte: item.quantity } },
+                    data: { reservedStock: { decrement: item.quantity } }
+                });
+
+                if (updated.count !== 1) {
+                    throw new Error('Không đủ số lượng hàng đang giữ để cập nhật đơn hàng.');
+                }
+
+                await tx.inventoryTransaction.create({
+                    data: {
+                        productId: item.productId,
+                        performedBy: actorId,
+                        type: InventoryTransactionType.CANCEL,
+                        quantity: -item.quantity,
+                        orderItemId: item.id,
+                        referenceType: 'Order',
+                        referenceId: order.id,
+                        reason: actorId
+                            ? `Nhả giữ hàng cho đơn ${order.id}`
+                            : `Tự động nhả giữ hàng do đơn ${order.id} quá hạn thanh toán`
+                    }
+                });
+            }
+        }
+
+        await tx.orderItem.update({
+            where: { id: item.id },
+            data: {
+                consumptionStatus: ConsumptionStatus.VOIDED,
+                voidedAt: now
+            }
+        });
+    }
+};
 
 export const orderRepository = {
     /** Bounded read-only history projection. No mutable updatedAt used as sale timestamp. */
@@ -112,6 +592,19 @@ export const orderRepository = {
 
     async create(userId: string, input: CreateOrderInput): Promise<OrderRecord> {
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const submissionId = input.requestId ? submissionOrderId(userId, input.requestId) : undefined;
+            const paymentId = submissionId ? submissionPaymentId(submissionId, input) : undefined;
+            if (submissionId) {
+                // Select integer, never PostgreSQL void (Prisma cannot deserialize void).
+                await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${submissionId}, 0))`;
+                const existing = await tx.order.findUnique({ where: { id: submissionId }, include: orderInclude });
+                if (existing) {
+                    if (!existing.payments.some(payment => payment.id === paymentId)) {
+                        throw new HttpError(409, 'requestId already used with a different order payload.');
+                    }
+                    return existing;
+                }
+            }
             const productIds = Array.from(new Set(input.items.map((item) => item.productId)));
             await lockActiveProducts(tx, productIds);
             const products = await tx.product.findMany({
@@ -199,6 +692,7 @@ export const orderRepository = {
 
             const order = await tx.order.create({
                 data: {
+                    ...(submissionId ? { id: submissionId } : {}),
                     userId,
                     status: OrderStatus.PENDING,
                     totalAmount: grandTotal,
@@ -242,6 +736,7 @@ export const orderRepository = {
                     },
                     payments: {
                         create: {
+                            ...(paymentId ? { id: paymentId } : {}),
                             method: input.paymentMethod,
                             amount: grandTotal,
                             status: initialTxStatus,
@@ -265,7 +760,7 @@ export const orderRepository = {
 
                     for (const ri of activeRecipe.ingredients) {
                         if (ri.isOptional) continue;
-                        const need = roundQty3(toDecimal(ri.quantityBase).mul(createdItem.quantity));
+                        const need = roundQty3(toDecimal(ri.quantityBase).mul(createdItem.quantity).div(activeRecipe.yieldQuantity));
                         if (need.lte(0)) continue;
                         const prev = needMap.get(ri.ingredientId);
                         needMap.set(ri.ingredientId, {
@@ -291,6 +786,8 @@ export const orderRepository = {
                     }
 
                     for (const [ingredientId, info] of needMap.entries()) {
+                        // Serialize with receipt/internal use before evaluating expired physical stock.
+                        await tx.$queryRaw`SELECT "id" FROM "Ingredient" WHERE "id" = ${ingredientId} FOR UPDATE`;
                         const updateResult = await tx.$executeRaw`
                             UPDATE "Ingredient"
                             SET "reserved" = "reserved" + ${info.qty},
@@ -300,10 +797,16 @@ export const orderRepository = {
                               AND "deletedAt" IS NULL
                               AND "isActive" = true
                               AND "quantity" - "reserved" >= ${info.qty}
+                              AND "quantity" - "reserved" - COALESCE((
+                                  SELECT SUM("quantityRemaining") FROM "IngredientBatch"
+                                  WHERE "ingredientId" = ${ingredientId}
+                                    AND "quantityRemaining" > 0
+                                    AND ("expirationDate" <= clock_timestamp() OR "qualityStatus" IS DISTINCT FROM 'AVAILABLE')
+                              ), 0) >= ${info.qty}
                         `;
 
                         if (updateResult !== 1) {
-                            throw new Error(
+                            throw new HttpError(400,
                                 `Không đủ tồn kho nguyên liệu "${info.name}" khả dụng để tạo đơn hàng cho món "${product.name}".`
                             );
                         }
@@ -447,11 +950,39 @@ export const orderRepository = {
         startOfToday.setHours(0, 0, 0, 0);
         const updatedOrder = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             if (order.status === OrderStatus.PENDING && nextStatus === OrderStatus.PROCESSING) {
-                const items = await tx.orderItem.findMany({ where: { orderId: order.id }, select: { productId: true } });
+                // Serialize confirmation with payment/status writers before repricing.
+                await tx.$queryRaw(Prisma.sql`SELECT id FROM "Order" WHERE id = ${order.id} FOR UPDATE`);
+                const currentOrder = await tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
+                if (currentOrder.status !== order.status || currentOrder.paymentStatus !== order.paymentStatus) {
+                    throw new HttpError(409, 'Order changed. Reload before updating.');
+                }
+                const items = currentOrder.items.filter(item => item.consumptionStatus !== ConsumptionStatus.VOIDED && !item.replacedAt && item.attemptType === 'SALE');
                 await lockActiveProducts(tx, items.map(item => item.productId));
+                const products = await tx.product.findMany({ where: { id: { in: items.map(item => item.productId) } } });
+                const productById = new Map(products.map(product => [product.id, product]));
+                const priceChanged = items.some(item => !item.price.eq(productById.get(item.productId)!.price));
+                if (priceChanged) {
+                    if (currentOrder.paymentMethod !== PaymentMethod.CASH || currentOrder.paymentStatus === PaymentStatus.PAID ||
+                        currentOrder.payments.some(payment => payment.status === TransactionStatus.PAID || payment.method !== PaymentMethod.CASH)) {
+                        throw new HttpError(409, 'Product price changed. Reconcile payment before confirming order.');
+                    }
+                    let subtotal = new Prisma.Decimal(0);
+                    for (const item of items) {
+                        const price = productById.get(item.productId)!.price;
+                        subtotal = subtotal.add(price.mul(item.quantity));
+                        for (const topping of item.toppings) subtotal = subtotal.add(topping.price.mul(topping.quantity));
+                        await tx.orderItem.update({ where: { id: item.id }, data: { price } });
+                    }
+                    const totalAmount = subtotal.add(currentOrder.shippingFee);
+                    await tx.order.update({ where: { id: order.id }, data: { totalAmount } });
+                    await tx.payment.updateMany({ where: { orderId: order.id, method: PaymentMethod.CASH,
+                        status: { in: [TransactionStatus.INITIATED, TransactionStatus.PENDING] } }, data: { amount: totalAmount } });
+                    // Following same-transaction manual payment uses repriced total too.
+                    order = { ...order, totalAmount };
+                }
             }
             const isStatusSame = order.status === nextStatus;
-            const shouldFinalizeStock = !order.stockDeductedAt && nextStatus === OrderStatus.COMPLETED;
+            const shouldFinalizeStock = !order.stockDeductedAt && nextStatus === OrderStatus.PREPARING;
             const shouldReleaseReserved =
                 !order.stockDeductedAt &&
                 nextStatus === OrderStatus.CANCELLED &&
@@ -463,12 +994,14 @@ export const orderRepository = {
                     where: {
                         id: order.id,
                         status: order.status,
+                        version: order.version,
                         ...(nextStatus === OrderStatus.CANCELLED && order.paymentStatus !== PaymentStatus.PAID
                             ? { paymentStatus: { not: PaymentStatus.PAID } }
                             : {})
                     },
                     data: {
                         status: nextStatus,
+                        version: { increment: 1 },
                         ...(paymentStatus
                             ? {
                                   paymentStatus,
@@ -565,455 +1098,16 @@ export const orderRepository = {
                 });
             }
 
-            if (nextStatus === OrderStatus.PROCESSING && order.status === OrderStatus.PENDING) {
-                await tx.orderItem.updateMany({
-                    where: { orderId: order.id, startedAt: null },
-                    data: { startedAt: new Date() }
-                });
-            }
+            if (shouldFinalizeStock) await consumeReservedOrder(tx, order, userId);
 
-            if (shouldFinalizeStock) {
-                const now = new Date();
-                for (const item of order.items) {
-                    if (item.recipeId) {
-                        // Luồng trừ kho Nguyên liệu theo Recipe + FIFO Batch
-                        const recipe = await tx.recipe.findUnique({
-                            where: { id: item.recipeId },
-                            include: {
-                                ingredients: {
-                                    include: { ingredient: true }
-                                }
-                            }
-                        });
+            if (shouldReleaseReserved) await releaseReservedOrder(tx, order, actorId);
 
-                        if (!recipe) {
-                            throw new Error(`Không tìm thấy công thức (${item.recipeId}) cho dòng đơn hàng.`);
-                        }
-
-                        const toppingIds = item.toppings.map((t) => t.toppingId);
-                        const toppingsFull = toppingIds.length > 0
-                            ? await tx.topping.findMany({
-                                  where: { id: { in: toppingIds } },
-                                  include: { ingredients: { include: { ingredient: true } } }
-                              })
-                            : [];
-                        const toppingById = new Map(toppingsFull.map((t) => [t.id, t]));
-
-                        // 1. Trừ nguyên liệu của Recipe chính
-                        let recipeIngredientActualCost = new Prisma.Decimal(0);
-
-                        for (const ri of recipe.ingredients) {
-                            if (ri.isOptional) continue;
-                            const needQty = roundQty3(toDecimal(ri.quantityBase).mul(item.quantity));
-                            if (needQty.lte(0)) continue;
-
-                            await tx.$queryRaw`SELECT "id" FROM "Ingredient" WHERE "id" = ${ri.ingredientId} FOR UPDATE`;
-                            const updatedIng = await tx.ingredient.updateMany({
-                                where: {
-                                    id: ri.ingredientId,
-                                    quantity: { gte: needQty },
-                                    reserved: { gte: needQty }
-                                },
-                                data: {
-                                    quantity: { decrement: needQty },
-                                    reserved: { decrement: needQty },
-                                    rowVersion: { increment: 1 }
-                                }
-                            });
-
-                            if (updatedIng.count !== 1) {
-                                throw new Error(
-                                    `Không đủ số lượng nguyên liệu "${ri.ingredient.name}" đang giữ để hoàn tất đơn hàng.`
-                                );
-                            }
-
-                            const batches = await tx.ingredientBatch.findMany({
-                                where: {
-                                    ingredientId: ri.ingredientId,
-                                    quantityRemaining: { gt: 0 },
-                                    OR: [
-                                        { expirationDate: null },
-                                        { expirationDate: { gte: startOfToday } }
-                                    ]
-                                },
-                                orderBy: [
-                                    { expirationDate: 'asc' },
-                                    { receivedAt: 'asc' },
-                                    { id: 'asc' }
-                                ]
-                            });
-
-                            const { allocations, totalCost } = allocateFifoBatches(
-                                batches,
-                                needQty,
-                                ri.ingredient.name
-                            );
-
-                            for (const alloc of allocations) {
-                                const idempotencyKey = `consume:${item.id}:${ri.ingredientId}:${alloc.batchId}`;
-                                const updatedBatch = await tx.ingredientBatch.updateMany({
-                                    where: { id: alloc.batchId, quantityRemaining: { gte: alloc.quantity } },
-                                    data: { quantityRemaining: { decrement: alloc.quantity } }
-                                });
-                                if (updatedBatch.count !== 1) {
-                                    throw new Error(`Lô nguyên liệu "${ri.ingredient.name}" vừa thay đổi, vui lòng thử lại.`);
-                                }
-
-                                await tx.inventoryTransaction.upsert({
-                                    where: { idempotencyKey },
-                                    update: {},
-                                    create: {
-                                        idempotencyKey,
-                                        ingredientId: ri.ingredientId,
-                                        batchId: alloc.batchId,
-                                        type: InventoryTransactionType.CONSUME,
-                                        quantity: alloc.quantity.neg(),
-                                        unitCost: alloc.unitCost,
-                                        totalCost: alloc.totalCost,
-                                        orderItemId: item.id,
-                                        referenceType: 'Order',
-                                        referenceId: order.id,
-                                        performedBy: userId,
-                                        reason: `Tiêu hao nguyên liệu cho đơn ${order.id}`
-                                    }
-                                });
-                            }
-
-                            recipeIngredientActualCost = recipeIngredientActualCost.add(totalCost);
-                        }
-
-                        // 2. Trừ nguyên liệu của Toppings (nếu có) và ghi nhận costSnapshot
-                        const toppingsForSnapshot: Array<{
-                            toppingId: string;
-                            quantity: number;
-                            price: Prisma.Decimal;
-                            unitCostSnapshot: Prisma.Decimal;
-                        }> = [];
-
-                        for (const oit of item.toppings) {
-                            const toppingFull = toppingById.get(oit.toppingId);
-                            let totalToppingItemCost = new Prisma.Decimal(0);
-
-                            if (toppingFull && toppingFull.ingredients.length > 0) {
-                                for (const ti of toppingFull.ingredients) {
-                                    const needQty = roundQty3(toDecimal(ti.quantityBase).mul(oit.quantity));
-                                    if (needQty.lte(0)) continue;
-
-                                    await tx.$queryRaw`SELECT "id" FROM "Ingredient" WHERE "id" = ${ti.ingredientId} FOR UPDATE`;
-                                    const updatedIng = await tx.ingredient.updateMany({
-                                        where: {
-                                            id: ti.ingredientId,
-                                            quantity: { gte: needQty },
-                                            reserved: { gte: needQty }
-                                        },
-                                        data: {
-                                            quantity: { decrement: needQty },
-                                            reserved: { decrement: needQty },
-                                            rowVersion: { increment: 1 }
-                                        }
-                                    });
-
-                                    if (updatedIng.count !== 1) {
-                                        throw new Error(
-                                            `Không đủ số lượng nguyên liệu "${ti.ingredient.name}" của topping để hoàn tất đơn hàng.`
-                                        );
-                                    }
-
-                                    const batches = await tx.ingredientBatch.findMany({
-                                        where: {
-                                            ingredientId: ti.ingredientId,
-                                            quantityRemaining: { gt: 0 },
-                                            OR: [
-                                                { expirationDate: null },
-                                                { expirationDate: { gte: startOfToday } }
-                                            ]
-                                        },
-                                        orderBy: [
-                                            { expirationDate: 'asc' },
-                                            { receivedAt: 'asc' },
-                                            { id: 'asc' }
-                                        ]
-                                    });
-
-                                    const { allocations, totalCost } = allocateFifoBatches(
-                                        batches,
-                                        needQty,
-                                        ti.ingredient.name
-                                    );
-
-                                    for (const alloc of allocations) {
-                                        const idempotencyKey = `consume:${item.id}:topping:${oit.id}:${ti.ingredientId}:${alloc.batchId}`;
-                                        const updatedBatch = await tx.ingredientBatch.updateMany({
-                                            where: { id: alloc.batchId, quantityRemaining: { gte: alloc.quantity } },
-                                            data: { quantityRemaining: { decrement: alloc.quantity } }
-                                        });
-                                        if (updatedBatch.count !== 1) {
-                                            throw new Error(`Lô nguyên liệu "${ti.ingredient.name}" vừa thay đổi, vui lòng thử lại.`);
-                                        }
-
-                                        await tx.inventoryTransaction.upsert({
-                                            where: { idempotencyKey },
-                                            update: {},
-                                            create: {
-                                                idempotencyKey,
-                                                ingredientId: ti.ingredientId,
-                                                batchId: alloc.batchId,
-                                                type: InventoryTransactionType.CONSUME,
-                                                quantity: alloc.quantity.neg(),
-                                                unitCost: alloc.unitCost,
-                                                totalCost: alloc.totalCost,
-                                                orderItemId: item.id,
-                                                referenceType: 'Order',
-                                                referenceId: order.id,
-                                                performedBy: userId,
-                                                reason: `Tiêu hao nguyên liệu topping cho đơn ${order.id}`
-                                            }
-                                        });
-                                    }
-
-                                    totalToppingItemCost = totalToppingItemCost.add(totalCost);
-                                }
-                            }
-
-                            const unitCostSnapshot = oit.quantity > 0
-                                ? roundCost4(totalToppingItemCost.div(oit.quantity))
-                                : new Prisma.Decimal(0);
-
-                            await tx.orderItemTopping.update({
-                                where: { id: oit.id },
-                                data: { costSnapshot: roundMoney2(totalToppingItemCost) }
-                            });
-
-                            toppingsForSnapshot.push({
-                                toppingId: oit.toppingId,
-                                quantity: oit.quantity,
-                                price: oit.price,
-                                unitCostSnapshot
-                            });
-                        }
-
-                        const snapshot = calculateOrderItemCostSnapshot({
-                            price: item.price,
-                            quantity: item.quantity,
-                            ingredientCostTotal: recipeIngredientActualCost,
-                            toppings: toppingsForSnapshot,
-                            recipe: {
-                                yieldQuantity: recipe.yieldQuantity,
-                                laborCost: recipe.laborCost,
-                                overheadCost: recipe.overheadCost
-                            }
-                        });
-
-                        await tx.orderItem.update({
-                            where: { id: item.id },
-                            data: {
-                                consumptionStatus: ConsumptionStatus.COMMITTED,
-                                startedAt: item.startedAt ?? now,
-                                committedAt: now,
-                                ingredientCost: snapshot.ingredientCost,
-                                toppingCost: snapshot.toppingCost,
-                                totalCost: snapshot.totalCost,
-                                grossProfit: snapshot.grossProfit
-                            }
-                        });
-                    } else {
-                        // Tương thích ngược (Mục 2.8): Sản phẩm chưa có recipe active -> trừ Inventory cũ + lấy Product.costPrice
-                        const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
-                        if (inventory) {
-                            const updated = await tx.inventory.updateMany({
-                                where: {
-                                    id: inventory.id,
-                                    quantity: { gte: item.quantity },
-                                    reservedStock: { gte: item.quantity }
-                                },
-                                data: {
-                                    quantity: { decrement: item.quantity },
-                                    reservedStock: { decrement: item.quantity }
-                                }
-                            });
-
-                            if (updated.count !== 1) {
-                                throw new Error('Không đủ số lượng hàng đang giữ để cập nhật đơn hàng.');
-                            }
-
-                            const batches = await tx.inventoryBatch.findMany({
-                                where: { inventoryId: inventory.id, quantity: { gt: 0 }, expirationDate: { gte: startOfToday } },
-                                orderBy: [{ expirationDate: 'asc' }, { id: 'asc' }]
-                            });
-
-                            const totalSellable = batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
-                            if (totalSellable < item.quantity) {
-                                throw new Error(`Không đủ lô hàng còn hạn để xuất. Yêu cầu: ${item.quantity}, Có thể xuất: ${totalSellable}.`);
-                            }
-
-                            let remainingToDeduct = item.quantity;
-                            const fallbackUnitCost = roundCost4(toDecimal(item.product?.costPrice));
-
-                            for (const batch of batches) {
-                                if (remainingToDeduct <= 0) break;
-
-                                let currentBatchQuantity = batch.quantity;
-                                let retryCount = 0;
-                                const MAX_RETRY = 5;
-
-                                while (currentBatchQuantity > 0 && remainingToDeduct > 0) {
-                                    if (retryCount >= MAX_RETRY) {
-                                        throw new Error('Hệ thống đang xử lý nhiều giao dịch cùng lúc, vui lòng thử lại.');
-                                    }
-
-                                    const deduction = Math.min(currentBatchQuantity, remainingToDeduct);
-                                    const updatedBatch = await tx.inventoryBatch.updateMany({
-                                        where: { id: batch.id, quantity: { gte: deduction } },
-                                        data: { quantity: { decrement: deduction } }
-                                    });
-
-                                    if (updatedBatch.count === 1) {
-                                        await tx.inventoryTransaction.create({
-                                            data: {
-                                                productId: item.productId,
-                                                performedBy: userId,
-                                                type: InventoryTransactionType.ORDER,
-                                                quantity: -deduction,
-                                                unitCost: fallbackUnitCost,
-                                                totalCost: roundMoney2(fallbackUnitCost.mul(deduction)),
-                                                orderItemId: item.id,
-                                                referenceType: 'Order',
-                                                referenceId: order.id,
-                                                reason: `Trừ kho thật cho đơn ${order.id}`,
-                                                legacyBatchId: batch.id
-                                            }
-                                        });
-                                        remainingToDeduct -= deduction;
-                                        break;
-                                    } else {
-                                        retryCount++;
-                                        const freshBatch = await tx.inventoryBatch.findUnique({
-                                            where: { id: batch.id }
-                                        });
-                                        if (!freshBatch || freshBatch.quantity <= 0) {
-                                            break;
-                                        }
-                                        currentBatchQuantity = freshBatch.quantity;
-                                    }
-                                }
-                            }
-
-                            if (remainingToDeduct > 0) {
-                                throw new Error(`Không đủ lô hàng còn hạn để xuất (vừa bị giành mất). Số lượng còn thiếu: ${remainingToDeduct}.`);
-                            }
-                        }
-
-                        const snapshot = calculateOrderItemCostSnapshot({
-                            price: item.price,
-                            quantity: item.quantity,
-                            recipe: null,
-                            fallbackProductCostPrice: item.product?.costPrice
-                        });
-
-                        await tx.orderItem.update({
-                            where: { id: item.id },
-                            data: {
-                                consumptionStatus: ConsumptionStatus.COMMITTED,
-                                startedAt: item.startedAt ?? now,
-                                committedAt: now,
-                                ingredientCost: snapshot.ingredientCost,
-                                toppingCost: snapshot.toppingCost,
-                                totalCost: snapshot.totalCost,
-                                grossProfit: snapshot.grossProfit
-                            }
-                        });
-                    }
-                }
-            }
-
-            if (shouldReleaseReserved) {
-                const now = new Date();
-                for (const item of order.items) {
-                    if (item.recipeId) {
-                        // Nhả giữ chỗ nguyên liệu dựa trên các giao dịch RESERVE của OrderItem
-                        const reserveTxns = await tx.inventoryTransaction.findMany({
-                            where: {
-                                orderItemId: item.id,
-                                type: InventoryTransactionType.RESERVE,
-                                ingredientId: { not: null }
-                            }
-                        });
-
-                        for (const rTx of reserveTxns) {
-                            if (!rTx.ingredientId) continue;
-                            const releaseQty = roundQty3(toDecimal(rTx.quantity).abs());
-                            if (releaseQty.lte(0)) continue;
-
-                            const updatedIng = await tx.ingredient.updateMany({
-                                where: {
-                                    id: rTx.ingredientId,
-                                    reserved: { gte: releaseQty }
-                                },
-                                data: {
-                                    reserved: { decrement: releaseQty },
-                                    rowVersion: { increment: 1 }
-                                }
-                            });
-
-                            if (updatedIng.count !== 1) {
-                                throw new Error('Không đủ số lượng nguyên liệu đang giữ để nhả cho đơn hủy.');
-                            }
-
-                            await tx.inventoryTransaction.create({
-                                data: {
-                                    ingredientId: rTx.ingredientId,
-                                    performedBy: actorId,
-                                    type: InventoryTransactionType.RELEASE,
-                                    quantity: releaseQty.neg(),
-                                    unitCost: 0,
-                                    totalCost: 0,
-                                    orderItemId: item.id,
-                                    referenceType: 'Order',
-                                    referenceId: order.id,
-                                    reason: actorId
-                                        ? `Nhả giữ nguyên liệu cho đơn ${order.id}`
-                                        : `Tự động nhả giữ nguyên liệu do đơn ${order.id} quá hạn thanh toán`
-                                }
-                            });
-                        }
-                    } else {
-                        const inventory = await tx.inventory.findUnique({ where: { productId: item.productId } });
-                        if (inventory) {
-                            const updated = await tx.inventory.updateMany({
-                                where: { id: inventory.id, reservedStock: { gte: item.quantity } },
-                                data: { reservedStock: { decrement: item.quantity } }
-                            });
-
-                            if (updated.count !== 1) {
-                                throw new Error('Không đủ số lượng hàng đang giữ để cập nhật đơn hàng.');
-                            }
-
-                            await tx.inventoryTransaction.create({
-                                data: {
-                                    productId: item.productId,
-                                    performedBy: actorId,
-                                    type: InventoryTransactionType.CANCEL,
-                                    quantity: -item.quantity,
-                                    orderItemId: item.id,
-                                    referenceType: 'Order',
-                                    referenceId: order.id,
-                                    reason: actorId
-                                        ? `Nhả giữ hàng cho đơn ${order.id}`
-                                        : `Tự động nhả giữ hàng do đơn ${order.id} quá hạn thanh toán`
-                                }
-                            });
-                        }
-                    }
-
-                    await tx.orderItem.update({
-                        where: { id: item.id },
-                        data: {
-                            consumptionStatus: ConsumptionStatus.VOIDED,
-                            voidedAt: now
-                        }
-                    });
-                }
-            }
+            await tx.orderOperation.create({ data: { orderId: order.id,
+                requestId: `status:${order.version}:${nextStatus}:${paymentStatus ?? ''}`,
+                requestHash: `${order.status}:${nextStatus}`, kind: 'STATUS', status: 'APPLIED',
+                actorId: auditActor, reason: 'Order status transition',
+                payload: { from: order.status, to: nextStatus, version: order.version ?? 0 },
+                approvedBy: actorId, approvedAt: now } });
 
             const updatedOrder = await tx.order.findUnique({
                 where: { id: order.id },
@@ -1025,7 +1119,7 @@ export const orderRepository = {
 
         // The transaction promise resolves only after commit. Do not start remote work
         // from its callback: callback success can still be followed by a commit failure.
-        if (!order.stockDeductedAt && nextStatus === OrderStatus.COMPLETED) {
+        if (!order.stockDeductedAt && nextStatus === OrderStatus.PREPARING) {
             scanInventoryViaAgentService({
                 productIds: order.items.map(item => item.productId),
                 triggerType: 'ORDER_COMPLETED',

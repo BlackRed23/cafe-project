@@ -1,10 +1,15 @@
 import { mockEnabled } from '../../mock/config';
 import { MockWorkspace } from '../../mock/MockWorkspace';
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { productsApi } from "../../api/products.api";
 import { categoriesApi } from "../../api/categories.api";
-import { getErrorMessage } from "../../api/client";
+import { RecipeManager } from "../../features/recipes/RecipeManager";
+import { Modal } from "../../components/common/Modal";
+import { useToast } from "../../contexts/ToastContext";
+import { Alert } from "../../components/common/Alert";
+import { productFailure } from "./productFeedback";
+import "./products.css";
 import type { Product } from "../../types/product.types";
 import type { Category } from "../../types/category.types";
 import { formatCurrency } from "../../utils/formatCurrency";
@@ -14,7 +19,7 @@ import { EmptyState } from "../../components/common/EmptyState";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { DataTable } from "../../components/admin/DataTable";
 import { useAuth } from "../../contexts/AuthContext";
-import { Plus, Edit2, Trash2, Coffee, RefreshCw, AlertCircle, CheckCircle, Info } from "lucide-react";
+import { Plus, Edit2, Trash2, Coffee, RefreshCw, Pause } from "lucide-react";
 
 export const AdminProductsPage: React.FC = () => mockEnabled ? <MockWorkspace area="menu" /> : <LegacyAdminProductsPage />;
 
@@ -23,6 +28,8 @@ const LegacyAdminProductsPage: React.FC = () => {
   const { isStaff } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [recipeProduct, setRecipeProduct] = useState<Product | null>(null);
+  const [recipeBusy, setRecipeBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE" | "PENDING_DELETE">("ALL");
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
@@ -38,23 +45,26 @@ const LegacyAdminProductsPage: React.FC = () => {
   const [purgeId, setPurgeId] = useState<string | null>(null);
   const [isPurging, setIsPurging] = useState(false);
 
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
-  const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
+  const toast = useToast();
+  const mutationLock = useRef(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [restoreId, setRestoreId] = useState<string | null>(null);
+  const [stale, setStale] = useState(false);
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => toast[type](message);
 
   const fetchData = async () => {
     try {
       setIsLoading(true);
+      setError(null);
       const [productsData, categoriesData] = await Promise.all([
         productsApi.getProducts({ includeInactive: true }),
         categoriesApi.getCategories().catch(() => [] as Category[])
       ]);
       setProducts(productsData);
+      setStale(false);
       setCategories(categoriesData);
-    } catch {
-      setError("Không thể tải danh sách sản phẩm.");
+    } catch (err) {
+      setError(productFailure(err, "read").message);
     } finally {
       setIsLoading(false);
     }
@@ -65,68 +75,88 @@ const LegacyAdminProductsPage: React.FC = () => {
   }, []);
 
   const handleDelete = async () => {
-    if (!deleteId) return;
+    if (!deleteId || mutationLock.current || stale) return;
+    mutationLock.current = true;
     setIsDeleting(true);
     try {
       await productsApi.deleteProduct(deleteId);
       setProducts((prev) => prev.filter((p) => p.id !== deleteId));
       showToast("Đã xóa sản phẩm thành công.", "success");
       setDeleteId(null);
-    } catch (err: any) {
-      if (err.response?.status === 409) {
+    } catch (err: unknown) {
+      if (productFailure(err, "delete").kind === "history") {
         const p = products.find((product) => product.id === deleteId);
         if (p) setConflictProduct(p);
         setDeleteId(null);
       } else {
-        showToast(getErrorMessage(err) || "Lỗi khi xóa sản phẩm.", "error");
+        showToast(productFailure(err, "delete").message, "error");
         setDeleteId(null);
       }
     } finally {
+      mutationLock.current = false;
       setIsDeleting(false);
     }
   };
 
-  const handleScheduleDelete = async () => {
-    if (!conflictProduct) return;
+  const handleDeactivate = async () => {
+    if (!conflictProduct || mutationLock.current || stale) return;
+    if (!conflictProduct.updatedAt) { setStale(true); setError('Thiếu phiên bản sản phẩm. Tải lại trước khi ngưng bán.'); return; }
+    mutationLock.current = true;
     setIsDeactivating(true);
     try {
-      await productsApi.scheduleDeleteProduct(conflictProduct.id);
-      showToast("Đã chuyển sản phẩm vào danh sách chờ xoá trong 7 ngày.", "success");
+      const updated = await productsApi.updateProduct(conflictProduct.id, { expectedUpdatedAt: conflictProduct.updatedAt, isActive: false });
+      setProducts(previous => previous.map(product => product.id === updated.id ? updated : product));
+      showToast('Đã ngưng bán sản phẩm. Dữ liệu lịch sử được giữ nguyên.', 'success');
       setConflictProduct(null);
-      fetchData();
-    } catch (err: any) {
-      showToast(getErrorMessage(err) || "Không thể chuyển sản phẩm vào danh sách chờ xoá.", "error");
+    } catch (err) {
+      const failure = productFailure(err);
+      if (failure.kind === 'stale') setStale(true);
+      setError(failure.message);
+      showToast(failure.message, 'error');
     } finally {
+      mutationLock.current = false;
       setIsDeactivating(false);
     }
   };
 
-  const handleRestore = async (id: string) => {
+  const handleRestore = async () => {
+    if (!restoreId || mutationLock.current || stale) return;
+    mutationLock.current = true;
+    setBusyId(restoreId);
     try {
-      await productsApi.restoreProduct(id);
+      const restored = await productsApi.restoreProduct(restoreId);
+      setProducts(previous => previous.map(product => product.id === restored.id ? restored : product));
       showToast("Khôi phục sản phẩm thành công.", "success");
-      fetchData();
-    } catch (err: any) {
-      showToast(getErrorMessage(err) || "Không thể khôi phục sản phẩm.", "error");
+    } catch (err: unknown) {
+      const failure = productFailure(err);
+      if (failure.kind === "stale") setStale(true);
+      setError(failure.message);
+      showToast(failure.message, "error");
+    } finally {
+      mutationLock.current = false;
+      setBusyId(null);
     }
   };
 
   const handlePurge = async () => {
-    if (!purgeId) return;
+    if (!purgeId || mutationLock.current || stale) return;
+    mutationLock.current = true;
     setIsPurging(true);
     try {
       await productsApi.purgeProduct(purgeId);
       showToast("Đã xoá vĩnh viễn sản phẩm.", "success");
       setPurgeId(null);
       fetchData();
-    } catch (err: any) {
-      showToast(getErrorMessage(err) || "Chưa thể xoá vĩnh viễn sản phẩm.", "error");
+    } catch (err: unknown) {
+      showToast(productFailure(err, "delete").message, "error");
     } finally {
+      mutationLock.current = false;
       setIsPurging(false);
     }
   };
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    e.currentTarget.onerror = null;
     e.currentTarget.src =
       "/images/product-fallback.jpg";
   };
@@ -139,14 +169,14 @@ const LegacyAdminProductsPage: React.FC = () => {
     if (statusFilter === "ACTIVE" && (p.isActive === false || !!p.pendingDeleteUntil)) return false;
     if (statusFilter === "INACTIVE" && (p.isActive !== false || !!p.pendingDeleteUntil)) return false;
     if (statusFilter === "PENDING_DELETE" && !p.pendingDeleteUntil) return false;
-    if (categoryFilter !== "ALL" && p.categoryId !== categoryFilter && (p as any).category_id !== categoryFilter) return false;
-    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (categoryFilter !== "ALL" && p.categoryId !== categoryFilter && p.category_id !== categoryFilter) return false;
+    if (search.trim() && !`${p.name} ${p.sku ?? ""}`.toLocaleLowerCase("vi").includes(search.trim().toLocaleLowerCase("vi"))) return false;
     return true;
   });
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-24">
+      <div className="product-workspace flex items-center justify-center py-24" role="status">
         <Loading message="Đang tải danh sách sản phẩm..." />
       </div>
     );
@@ -175,6 +205,7 @@ const LegacyAdminProductsPage: React.FC = () => {
       render: (product: Product) => (
         <div>
           <p className="font-semibold text-slate-800">{product.name}</p>
+          <p className="product-help">{product.sku || "Chưa có mã SKU"}</p>
           {product.description && (
             <p className="text-xs text-slate-400 truncate max-w-[180px] mt-0.5">
               {product.description}
@@ -186,7 +217,7 @@ const LegacyAdminProductsPage: React.FC = () => {
     {
       header: "Danh mục",
       render: (product: Product) => (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-100">
+        <span className="product-category inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium">
           {product.category?.name || "Khác"}
         </span>
       ),
@@ -204,6 +235,10 @@ const LegacyAdminProductsPage: React.FC = () => {
       ),
     },
     {
+      header: "Công thức",
+      render: (product: Product) => <span className="product-classification" data-review={product.requiresRecipe === null || product.requiresRecipe === undefined ? 'pending' : 'reviewed'}>{product.requiresRecipe === true ? 'Cần công thức' : product.requiresRecipe === false ? 'Không cần công thức' : 'Chưa đánh giá'}</span>,
+    },
+    {
       header: "Trạng thái",
       render: (product: Product) => {
         if (product.pendingDeleteUntil) {
@@ -214,7 +249,7 @@ const LegacyAdminProductsPage: React.FC = () => {
                 Chờ xoá
               </span>
               <span className="text-[10px] text-slate-500">
-                {daysLeft > 0 ? `Còn ${daysLeft} ngày` : 'Có thể xoá'}
+                {daysLeft > 0 ? `Còn ${daysLeft} ngày` : 'Đã hết thời hạn chờ'}
               </span>
             </div>
           );
@@ -234,14 +269,17 @@ const LegacyAdminProductsPage: React.FC = () => {
       header: "Hành động",
       className: "text-right",
       render: (product: Product) => {
-        if (isStaff) return null;
+        const recipeLink = <Button size="sm" variant="outline" onClick={() => setRecipeProduct(product)}>Công thức</Button>;
+        if (isStaff) return recipeLink;
         if (product.pendingDeleteUntil) {
           const daysLeft = Math.ceil((new Date(product.pendingDeleteUntil).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
           const isPurgable = daysLeft <= 0;
           return (
             <div className="flex items-center justify-end gap-1.5">
+              {recipeLink}
               <button
-                onClick={() => handleRestore(product.id)}
+                onClick={() => setRestoreId(product.id)}
+                disabled={!!busyId || stale}
                 className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
                 title="Khôi phục"
               >
@@ -250,8 +288,8 @@ const LegacyAdminProductsPage: React.FC = () => {
               <button
                 onClick={() => isPurgable ? setPurgeId(product.id) : undefined}
                 className={`p-2 rounded-lg transition-all ${isPurgable ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50' : 'text-slate-300 cursor-not-allowed'}`}
-                title={isPurgable ? "Xóa vĩnh viễn" : "Sản phẩm chỉ có thể xoá vĩnh viễn sau 7 ngày."}
-                disabled={!isPurgable}
+                title={isPurgable ? "Yêu cầu xóa vĩnh viễn; máy chủ kiểm tra lịch sử" : "Chưa hết thời hạn chờ 7 ngày."}
+                disabled={!isPurgable || stale || isPurging}
               >
                 <Trash2 size={15} />
               </button>
@@ -260,6 +298,7 @@ const LegacyAdminProductsPage: React.FC = () => {
         }
         return (
           <div className="flex items-center justify-end gap-1.5">
+              {recipeLink}
             <button
               onClick={() => navigate(`/admin/products/${product.id}/edit`)}
               className="p-2 text-slate-400 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-all"
@@ -267,7 +306,9 @@ const LegacyAdminProductsPage: React.FC = () => {
             >
               <Edit2 size={15} />
             </button>
+            {product.isActive && <button onClick={() => setConflictProduct(product)} title="Ngưng bán" aria-label={`Ngưng bán ${product.name}`} disabled={stale || isDeactivating} className="p-2 text-slate-500"><Pause size={15} /></button>}
             <button
+              disabled={stale || isDeleting}
               onClick={() => setDeleteId(product.id)}
               className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
               title="Xóa"
@@ -282,7 +323,11 @@ const LegacyAdminProductsPage: React.FC = () => {
 
   return (
     <>
-    <div className="flex flex-col gap-6">
+    <div className="product-workspace flex flex-col gap-6">
+      <div className="product-heading">
+        <div><p className="product-eyebrow">COFFEE INV / Danh mục kinh doanh</p><h1>Quản lý sản phẩm</h1><p>Thông tin rõ ràng. Hương vị nhất quán.</p></div>
+        <Button variant="outline" onClick={fetchData} disabled={isDeleting || isDeactivating || isPurging || !!busyId}><RefreshCw size={16} /> Tải lại</Button>
+      </div>
       {/* Page action bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2">
@@ -300,11 +345,8 @@ const LegacyAdminProductsPage: React.FC = () => {
         )}
       </div>
 
-      {error && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium rounded-xl">
-          {error}
-        </div>
-      )}
+      {error && <Alert tone="danger" title="Không thể hoàn tất yêu cầu">{error}</Alert>}
+      {stale && <Alert tone="warning">Cần tải lại danh sách trước khi tiếp tục thay đổi sản phẩm.</Alert>}
 
       {/* Filters & Tabs */}
       {!isLoading && (
@@ -314,6 +356,7 @@ const LegacyAdminProductsPage: React.FC = () => {
               {(["ALL", "ACTIVE", "INACTIVE", "PENDING_DELETE"] as const).map((status) => (
                 <button
                   key={status}
+                  aria-pressed={statusFilter === status}
                   onClick={() => setStatusFilter(status)}
                   className={`px-4 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${
                     statusFilter === status
@@ -330,6 +373,7 @@ const LegacyAdminProductsPage: React.FC = () => {
             </div>
             <div className="lg:ml-auto w-full lg:w-64 flex-shrink-0">
               <select
+                aria-label="Lọc theo danh mục"
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-800/20 focus:border-amber-800"
@@ -344,29 +388,34 @@ const LegacyAdminProductsPage: React.FC = () => {
         </div>
       )}
 
-      {products.length === 0 ? (
+      {error && products.length === 0 ? null : products.length === 0 ? (
         <EmptyState
           title="Chưa có sản phẩm"
           description="Hệ thống chưa có sản phẩm nào. Nhấn Thêm sản phẩm để bắt đầu."
-          actionText="Thêm sản phẩm đầu tiên"
+          actionText={isStaff ? undefined : "Thêm sản phẩm đầu tiên"}
           actionPath="/admin/products/create"
         />
       ) : (
         <DataTable
           columns={columns}
           data={filteredProducts}
-          searchPlaceholder="Tìm theo tên sản phẩm..."
+          caption="Danh sách sản phẩm · lọc và phân trang trên dữ liệu đã tải"
+          searchPlaceholder="Tìm tên hoặc SKU..."
           searchValue={search}
           onSearchChange={setSearch}
         />
       )}
 
+      <Modal isOpen={!!recipeProduct} onClose={() => { if (!recipeBusy) setRecipeProduct(null); }} title={`Công thức · ${recipeProduct?.name ?? ''}`} size="xl">
+        {recipeProduct && <RecipeManager key={recipeProduct.id} productId={recipeProduct.id} productName={recipeProduct.name} onBusyChange={setRecipeBusy} onChanged={() => setStale(true)} />}
+      </Modal>
+      <ConfirmDialog isOpen={!!restoreId} onClose={() => { if (!mutationLock.current) setRestoreId(null); }} onConfirm={handleRestore} title="Khôi phục sản phẩm?" message="Sản phẩm sẽ được bật bán nếu phân loại và công thức đáp ứng kiểm tra của máy chủ." confirmText="Khôi phục" isLoading={!!busyId} />
       <ConfirmDialog
         isOpen={!!deleteId}
-        onClose={() => setDeleteId(null)}
+        onClose={() => { if (!mutationLock.current) setDeleteId(null); }}
         onConfirm={handleDelete}
         title="Xóa sản phẩm"
-        message="Bạn có chắc chắn muốn xóa sản phẩm này? Thao tác này sẽ thực hiện xóa mềm khỏi hệ thống."
+        message="Xóa vĩnh viễn sản phẩm chưa có lịch sử liên quan. Thao tác không thể hoàn tác. Sản phẩm đã bán không thể xóa; hãy chọn ngưng bán để giữ dữ liệu lịch sử."
         confirmText="Xóa ngay"
         cancelText="Hủy"
         type="danger"
@@ -375,7 +424,7 @@ const LegacyAdminProductsPage: React.FC = () => {
 
       <ConfirmDialog
         isOpen={!!purgeId}
-        onClose={() => setPurgeId(null)}
+        onClose={() => { if (!mutationLock.current) setPurgeId(null); }}
         onConfirm={handlePurge}
         title="Xóa vĩnh viễn sản phẩm"
         message="Thao tác này sẽ xóa vĩnh viễn sản phẩm khỏi hệ thống. Bạn không thể hoàn tác."
@@ -387,42 +436,17 @@ const LegacyAdminProductsPage: React.FC = () => {
 
       <ConfirmDialog
         isOpen={!!conflictProduct}
-        onClose={() => setConflictProduct(null)}
-        onConfirm={handleScheduleDelete}
-        title="Không thể xóa sản phẩm"
-        message={`Không thể xoá sản phẩm "${conflictProduct?.name}" vì đã có lịch sử kho/đơn hàng liên quan. Bạn có muốn chuyển sản phẩm sang chờ xoá trong 7 ngày không?`}
-        confirmText="Chuyển vào chờ xoá"
+        onClose={() => { if (!mutationLock.current) setConflictProduct(null); }}
+        onConfirm={handleDeactivate}
+        title="Ngưng bán sản phẩm"
+        message={`Ngưng bán "${conflictProduct?.name}"? Sản phẩm sẽ không nhận đơn mới. Đơn hàng đã xác nhận, giá lịch sử và dữ liệu kho được giữ nguyên.`}
+        confirmText="Ngưng bán"
         cancelText="Đóng"
         type="warning"
         isLoading={isDeactivating}
       />
     </div>
 
-    {/* Toast Notification Container */}
-    {toast && (
-      <div
-        className={`fixed top-4 right-4 z-[9999] px-4 py-3 rounded-xl border shadow-lg flex items-start gap-2.5 max-w-sm animate-in slide-in-from-right-8 duration-300 ${
-          toast.type === "error"
-            ? "bg-rose-50 border-rose-300 text-rose-900"
-            : toast.type === "success"
-            ? "bg-emerald-50 border-emerald-300 text-emerald-900"
-            : "bg-sky-50 border-sky-300 text-sky-900"
-        }`}
-      >
-        <div
-          className={`mt-0.5 ${
-            toast.type === "error"
-              ? "text-rose-600"
-              : toast.type === "success"
-              ? "text-emerald-600"
-              : "text-sky-600"
-          }`}
-        >
-          {toast.type === "error" ? <AlertCircle size={18} /> : toast.type === "success" ? <CheckCircle size={18} /> : <Info size={18} />}
-        </div>
-        <span className="flex-1 text-sm font-medium leading-snug">{toast.message}</span>
-      </div>
-    )}
     </>
   );
 };

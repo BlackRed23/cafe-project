@@ -1,3 +1,4 @@
+import "./admin.css";
 import React, { useState, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "../components/admin/Sidebar";
@@ -67,7 +68,8 @@ export const AdminLayout: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="admin-root flex h-screen overflow-hidden">
+      <a className="admin-skip" href="#admin-content">Đến nội dung chính</a>
       {/* Mobile backdrop */}
       {sidebarOpen && (
         <div
@@ -80,7 +82,7 @@ export const AdminLayout: React.FC = () => {
       <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
       {/* Right column */}
-      <div className="relative flex flex-1 flex-col overflow-y-auto overflow-x-hidden min-w-0">
+      <div className="admin-column relative flex flex-1 flex-col overflow-y-auto overflow-x-hidden min-w-0">
         {/* Sticky header */}
         <Header
           sidebarOpen={sidebarOpen}
@@ -89,14 +91,14 @@ export const AdminLayout: React.FC = () => {
         />
 
         {/* Page content */}
-        <main className="flex-1">
-          <div className="mx-auto max-w-screen-2xl p-4 md:p-6 lg:p-8">
+        <main id="admin-content" className="admin-main flex-1">
+          <div className="admin-content mx-auto max-w-screen-2xl">
             <Outlet />
           </div>
         </main>
 
         {/* Mini footer */}
-        <footer className="px-8 py-3 border-t border-slate-200 bg-white">
+        <footer className="admin-footer px-8 py-3 border-t border-slate-200 bg-white">
           <p className="text-[11px] text-slate-400 text-center">
             © {new Date().getFullYear()} {storeName} — Quản lý cửa hàng thông minh
           </p>

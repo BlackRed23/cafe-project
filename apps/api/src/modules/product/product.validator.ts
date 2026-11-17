@@ -18,6 +18,7 @@ export const createProductSchema = z.object({
     costPrice: z.coerce.number().min(0, 'Cost price must be greater than or equal to 0.').optional(),
     unit: unitSchema.optional(),
     isActive: z.boolean().optional(),
+    requiresRecipe: z.boolean().optional(),
     categoryId: z.string().trim().min(1, 'Category is required.'),
     imageUrl: z.string().trim().url('Image URL must be a valid URL.').optional().nullable().or(z.literal('')),
     nutritionFacts: z.string().trim().optional().nullable(),

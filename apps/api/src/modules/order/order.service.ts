@@ -76,6 +76,16 @@ const toOrderDto = (order: OrderRecord, includeCost = false) => {
         userId: order.userId,
         customer: order.user,
         status: order.status,
+        version: order.version ?? 0,
+        adjustmentTotal: Number(order.adjustmentTotal ?? 0),
+        adjustedPayable: Number(order.totalAmount) + Number(order.adjustmentTotal ?? 0),
+        additionalAmountDue: Math.max(Number(order.adjustmentTotal ?? 0), 0),
+        refundDue: Math.max(-Number(order.adjustmentTotal ?? 0), 0),
+        operations: order.operations ?? [],
+        itemHistory: order.items.map(item => ({ id: item.id, productId: item.productId, recipeId: item.recipeId,
+            recipeVersion: item.recipeVersion, price: Number(item.price), quantity: item.quantity,
+            originalItemId: item.originalItemId, attemptType: item.attemptType, replacedAt: item.replacedAt,
+            consumptionStatus: item.consumptionStatus })),
         displayStatus: order.status === OrderStatus.PROCESSING ? 'CONFIRMED' : order.status,
         totalAmount: Number(order.totalAmount),
         shippingFee: Number(order.shippingFee),
@@ -94,7 +104,7 @@ const toOrderDto = (order: OrderRecord, includeCost = false) => {
                   grossProfit: totalGrossProfit
               }
             : {}),
-        items: order.items.map((item) => {
+        items: order.items.filter(item => item.consumptionStatus !== 'VOIDED' && !item.replacedAt && item.attemptType !== 'REMAKE').map((item) => {
             const toppingsSubtotal = (item.toppings ?? []).reduce(
                 (sum, t) => sum + Number(t.price) * t.quantity,
                 0
@@ -182,7 +192,8 @@ const assertTransition = (order: OrderRecord, next: OrderStatus, paymentStatus?:
 
     const allowed = new Set([
         `${OrderStatus.PENDING}->${OrderStatus.PROCESSING}`,
-        `${OrderStatus.PROCESSING}->${OrderStatus.COMPLETED}`,
+        `${OrderStatus.PROCESSING}->${OrderStatus.PREPARING}`,
+        `${OrderStatus.PREPARING}->${OrderStatus.COMPLETED}`,
         `${OrderStatus.PENDING}->${OrderStatus.CANCELLED}`,
         `${OrderStatus.PROCESSING}->${OrderStatus.CANCELLED}`
     ]);
@@ -310,8 +321,12 @@ export const confirmOrderPayment = async (
 
 export const updateOrderStatus = async (id: string, input: OrderStatusInput, userId: string): Promise<OrderDto> => {
     const order = await ensureOrderExists(id);
+    if (input.expectedVersion !== undefined && input.expectedVersion !== order.version) throw new HttpError(409, 'Order version changed.');
     const nextStatus = normalizeStatus(input.status);
     assertTransition(order, nextStatus, input.paymentStatus);
+    if (nextStatus === OrderStatus.COMPLETED && order.items.some(item => item.consumptionStatus === 'PENDING' && !item.replacedAt)) {
+        throw new HttpError(409, 'Prepare every active item before completing order.');
+    }
 
     if (input.paymentStatus === PaymentStatus.PAID && order.paymentStatus !== PaymentStatus.PAID) {
         if (order.status === OrderStatus.CANCELLED || nextStatus === OrderStatus.CANCELLED) {

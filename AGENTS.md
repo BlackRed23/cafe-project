@@ -71,3 +71,13 @@ change separately. Never echo back unchanged code the user already has.
 
 Code blocks, file paths, commands, error messages: always written in full.
 Security warnings and destructive action confirmations: use full clarity.
+
+
+## Code Context Engine
+
+- Prefer CCE for source discovery.
+- Use CCE to locate relevant files, functions and dependencies.
+- Read exact source before editing.
+- Avoid repeated repository-wide scans.
+- Fall back to scoped rg searches if CCE is unavailable.
+- Do not use CCE results as test evidence.

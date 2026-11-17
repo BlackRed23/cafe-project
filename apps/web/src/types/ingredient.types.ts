@@ -1,3 +1,4 @@
+export type ExpiryClassification = 'PERISHABLE' | 'NON_PERISHABLE';
 export type IngredientStatus = "OUT_OF_STOCK" | "LOW_STOCK" | "IN_STOCK";
 export type WasteReason = "CUSTOMER_CANCELLED" | "STAFF_ERROR" | "EXPIRED" | "DAMAGED";
 
@@ -31,6 +32,10 @@ export interface Ingredient {
   quantity: number;
   reserved: number;
   availableQuantity: number;
+  physicalQuantity?: number;
+  usableQuantity?: number;
+  expiryClassification?: ExpiryClassification | null;
+  expiryClassificationRequired?: boolean;
   minThreshold: number;
   stockValue: number;
   status: IngredientStatus;
@@ -66,6 +71,7 @@ export interface IngredientTransaction {
 }
 
 export interface CreateIngredientPayload {
+  expiryClassification?: ExpiryClassification;
   sku?: string;
   name: string;
   categoryId?: string | null;
@@ -97,4 +103,22 @@ export interface WasteIngredientPayload {
   wasteReason: WasteReason;
   batchId?: string | null;
   note?: string | null;
+}
+
+export interface InternalUsagePayload {
+  requestId: string;
+  quantity: number;
+  unit: string;
+  purpose: string;
+  recipient: string;
+}
+export interface IngredientIncident {
+  id: string;
+  code: string;
+  status: 'DRAFT' | 'PENDING' | 'COMPLETED' | 'CANCELLED';
+  createdById: string;
+  approvedById: string | null;
+  approvedAt: string | null;
+  note: string | null;
+  items: { id: string; ingredientId: string; systemQty: string; actualQty: string; varianceQty: string; reason: string | null }[];
 }

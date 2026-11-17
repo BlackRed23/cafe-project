@@ -22,6 +22,7 @@ export interface RecipeCostSummary {
   yieldQuantity: number;
   totalBatchCost: number;
   unitCost: number;
+  unitCostDecimal?: string;
   productPrice: number;
   marginAmount: number;
   marginPercent: number;
@@ -86,6 +87,7 @@ export interface PreviewRecipeCostResponse {
   yieldQuantity: number;
   totalBatchCost: number;
   unitCost: number;
+  unitCostDecimal?: string;
   price: number;
   marginAmount: number;
   marginPercent: number;

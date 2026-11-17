@@ -12,11 +12,45 @@ export const createIngredientSchema = z.object({
     storageInstructions: z.string().trim().max(1000).optional().nullable(),
     expiryInfo: z.string().trim().max(500).optional().nullable(),
     shelfLifeDays: z.coerce.number().int().positive('Số ngày bảo quản phải là số nguyên dương.').optional().nullable(),
+    expiryClassification: z.enum(['PERISHABLE', 'NON_PERISHABLE']).optional(),
     imageUrl: z.string().trim().max(1000).optional().nullable(),
     isActive: z.coerce.boolean().optional().default(true)
 });
 
-export const updateIngredientSchema = createIngredientSchema.partial();
+// Zod 4 applies nested defaults even inside partial(); PATCH must not supply them.
+export const updateIngredientSchema = createIngredientSchema.partial().extend({
+    baseUnit: createIngredientSchema.shape.baseUnit.removeDefault().optional(),
+    costPerBaseUnit: createIngredientSchema.shape.costPerBaseUnit.removeDefault().optional(),
+    minThreshold: createIngredientSchema.shape.minThreshold.removeDefault().optional(),
+    isActive: createIngredientSchema.shape.isActive.removeDefault().optional()
+});
+
+export const ingredientIncidentSchema = z.object({
+    actualQuantity: z.number().finite().nonnegative().max(99999999999.999)
+        .refine(value => Math.abs(value * 1000 - Math.round(value * 1000)) < 0.0001, 'Use at most three decimal places.'),
+    reason: z.string().trim().min(1).max(1000)
+}).strict();
+
+export const lotTransitionSchema = z.object({
+    requestId: z.string().uuid(),
+    reason: z.string().trim().min(1).max(1000)
+}).strict();
+
+export const lotReturnSchema = lotTransitionSchema.extend({
+    sourceTransactionId: z.string().trim().min(1),
+    batchId: z.string().trim().min(1),
+    quantity: z.number().finite().positive().max(99999999999.999)
+        .refine(value => Math.abs(value * 1000 - Math.round(value * 1000)) < 0.0001, 'Use at most three decimal places.'),
+    quality: z.enum(['UNKNOWN', 'UNSAFE', 'SAFE'])
+}).strict();
+
+export const ingredientInternalUseSchema = z.object({
+    requestId: z.string().uuid(),
+    quantity: z.number().finite().positive().max(99999999999.999),
+    unit: z.string().trim().min(1).max(50),
+    purpose: z.string().trim().min(1).max(500),
+    recipient: z.string().trim().min(1).max(200)
+}).strict();
 
 export const importIngredientSchema = z.object({
     quantity: z.coerce.number().positive('Số lượng nhập phải lớn hơn 0.'),

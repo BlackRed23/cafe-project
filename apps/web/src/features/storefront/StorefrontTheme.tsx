@@ -4,7 +4,7 @@ import { Monitor, Moon, Sun } from "lucide-react";
 export function ThemeControl({ preference, choose }: ReturnType<typeof useStorefrontTheme>) {
   const Icon = preference === "light" ? Sun : preference === "dark" ? Moon : Monitor;
   return (
-    <label className="storefront-theme">
+    <label className="storefront-theme" title="Chọn giao diện: Hệ thống, Sáng hoặc Tối">
       <Icon size={16} aria-hidden="true" />
       <select aria-label="Giao diện" value={preference} onChange={e => choose(e.target.value as Parameters<ReturnType<typeof useStorefrontTheme>["choose"]>[0])}>
         <option value="system">Hệ thống</option>
