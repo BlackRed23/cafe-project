@@ -13,6 +13,38 @@ import { scanInventoryViaAgentService, createAgentLogViaAgentService } from '../
 
 export type OrderDto = ReturnType<typeof toOrderDto>;
 
+/** Current-state valid sales, bucketed by actual stock commitment; not immutable accounting revenue. */
+export const getSalesHistory = async (input: { productId: string; from: string; to: string }) => {
+    const from = new Date(input.from), to = new Date(input.to);
+    if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to || to.getTime() - from.getTime() > 90 * 86400000) {
+        throw new HttpError(400, 'Sales history requires ordered interval up to 90 days.');
+    }
+    const rows = await orderRepository.findSalesHistory(input.productId, from, to);
+    if (!rows) throw new HttpError(404, 'Product not found.');
+    if (rows.length > 10000) throw new HttpError(409, 'Sales history read limit exceeded.', 'BLOCKED');
+    const result = { productId: input.productId, from: from.toISOString(), to: to.toISOString(), soldQuantity: 0,
+        includedItems: 0, excludedCancelledQuantity: 0, excludedRefundedQuantity: 0, excludedUnpaidQuantity: 0,
+        excludedUncommittedQuantity: 0, missingCommittedAtItems: 0, complete: true,
+        timeBasis: 'OrderItem.committedAt' as const, refundPolicy: 'EXCLUDE_ANY_REFUNDED_ORDER' as const };
+    for (const row of rows) {
+        if (!Number.isSafeInteger(row.quantity) || row.quantity <= 0) throw new HttpError(409, 'Invalid sales quantity.', 'BLOCKED');
+        if (!row.committedAt) {
+            // Cannot assign missing timestamps to requested range. Flag relevant valid candidates; never invent dates.
+            if (row.order.status === 'COMPLETED' && row.order.paymentStatus === 'PAID' &&
+                !row.order.payments.some(p => p.status === 'REFUNDED')) result.missingCommittedAtItems++;
+            continue;
+        }
+        if (row.committedAt < from || row.committedAt >= to) continue;
+        if (row.order.status === 'CANCELLED' || row.consumptionStatus === 'VOIDED') result.excludedCancelledQuantity += row.quantity;
+        else if (row.order.paymentStatus === 'REFUNDED' || row.order.payments.some(p => p.status === 'REFUNDED')) result.excludedRefundedQuantity += row.quantity;
+        else if (row.order.status !== 'COMPLETED' || row.consumptionStatus !== 'COMMITTED') result.excludedUncommittedQuantity += row.quantity;
+        else if (row.order.paymentStatus !== 'PAID') result.excludedUnpaidQuantity += row.quantity;
+        else { result.soldQuantity += row.quantity; result.includedItems++; }
+    }
+    result.complete = result.missingCommittedAtItems === 0;
+    return result;
+};
+
 const toOrderDto = (order: OrderRecord, includeCost = false) => {
     const latestPayment = order.payments?.[0] ?? null;
 

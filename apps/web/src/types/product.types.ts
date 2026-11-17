@@ -18,6 +18,8 @@ export interface Product {
   category?: Category;
   isActive?: boolean;
   is_active?: boolean;
+  updatedAt?: string;
+  expectedUpdatedAt?: string;
   inventory?: {
     quantity: number;
     minThreshold?: number;

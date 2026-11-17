@@ -112,6 +112,32 @@ export class BusinessWorkflows {
     async inventory(actorId: string) {
         return this.repository.read(tx => { requirePermission(tx, actorId, 'inventory.read'); return tx.lots(); });
     }
+    /** P1.5 mock read projection. No legacy command/plan semantics changed. */
+    async readToolSnapshot(actorId: string, kind: 'availability' | 'batches' | 'recipe', id: string) {
+        return this.repository.read(tx => {
+            requirePermission(tx, actorId, 'inventory.read');
+            if (kind === 'recipe') {
+                const now = this.clock();
+                const candidates = tx.candidates(id).filter(row => row.active && row.productActive &&
+                    row.effectiveFrom <= now && (!row.effectiveTo || row.effectiveTo > now));
+                if (!candidates.length) fail('NOT_FOUND', 404);
+                if (candidates.length !== 1) fail('AMBIGUOUS_RECIPE');
+                const row = candidates[0]!;
+                return { recipeId: row.id, productId: id, version: Number(row.version), yieldQuantity: Number(row.yieldQuantity),
+                    ingredients: row.ingredients.map(i => ({ ingredientId: i.ingredientId, baseUnit: i.baseUnit,
+                        quantityBase: Number(normalizeIngredientQuantity(i.quantity, i.unit, i.baseUnit)), optional: i.optional === true })) };
+            }
+            const ingredient = get(tx.ingredient(id));
+            const lots = tx.lots().filter(lot => lot.ingredientId === id);
+            if (kind === 'batches') return { ingredientId: id, baseUnit: ingredient.baseUnit,
+                batches: lots.map(lot => ({ id: lot.id, quantityRemaining: Number(lot.remaining),
+                    expirationDate: lot.expirationDate?.toISOString() ?? null, receivedAt: lot.receivedAt.toISOString() })) };
+            const quantity = lots.reduce((sum, lot) => sum + scaled(lot.remaining), 0n);
+            const reserved = lots.reduce((sum, lot) => sum + scaled(lot.reserved), 0n);
+            return { ingredientId: id, baseUnit: ingredient.baseUnit, quantity: Number(format(quantity)), reserved: Number(format(reserved)),
+                available: Number(format(quantity - reserved)), active: ingredient.active, rowVersion: Number(ingredient.version) };
+        });
+    }
     async recommendInventory(actorId: string, snapshot?: Pick<Lot, 'id' | 'ingredientId' | 'remaining' | 'reserved' | 'version'>[]) {
         return this.repository.read(tx => {
             requirePermission(tx, actorId, 'inventory.read'); const now = this.clock();

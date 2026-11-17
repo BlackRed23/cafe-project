@@ -1,5 +1,6 @@
 import { Prisma } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
+import { getUnitConversionFactor, isKnownUnit, normalizeUnitString } from '../../common/unit-conversion';
 import { supplierRepository, type SupplierIngredientRecord, type SupplierProductRecord, type SupplierRecord } from './supplier.repository';
 import type { CreateSupplierInput, CreateSupplierProductInput, UpdateSupplierInput, UpdateSupplierProductInput } from './supplier.validator';
 
@@ -126,6 +127,27 @@ const ensureProduct = async (productId: string): Promise<void> => {
 };
 
 export const supplierService = {
+    /** Tool read policy: no legacy Product fallback; informational prices only. */
+    async findIngredientSuppliers(ingredientId: string) {
+        const ingredient = await supplierRepository.findActiveIngredientById(ingredientId);
+        if (!ingredient) throw new HttpError(404, 'Ingredient not found.');
+        const mappings = await supplierRepository.findSupplierIngredientsByIngredient(ingredientId);
+        return mappings.filter(row => row.supplier.status === 'ACTIVE' && row.supplier.deletedAt === null).map(row => {
+            const conversion = Number(row.conversionQuantity);
+            const price = Number(row.pricePerBaseUnit);
+            const purchaseUnit = normalizeUnitString(row.purchaseUnit);
+            if (row.ingredientId !== ingredientId || row.conversionTargetUnit !== ingredient.baseUnit || !purchaseUnit ||
+                row.conversionQuantity == null || row.pricePerBaseUnit == null ||
+                !Number.isFinite(conversion) || conversion <= 0 || !Number.isFinite(price) || price < 0 ||
+                (ingredient.baseUnit === 'piece' && !Number.isInteger(conversion))) {
+                throw new HttpError(409, 'Invalid supplier ingredient conversion.');
+            }
+            if ((isKnownUnit(purchaseUnit) || purchaseUnit === ingredient.baseUnit) && !getUnitConversionFactor(purchaseUnit, ingredient.baseUnit).eq(row.conversionQuantity)) {
+                throw new HttpError(409, 'Supplier conversion differs from standard unit.');
+            }
+            return { ...toSupplierIngredientDto(row), purchaseUnit };
+        });
+    },
     async listSuppliers() { return (await supplierRepository.findSuppliers()).map(toSupplierDto); },
     async getSupplier(id: string) { return toSupplierDto(await ensureSupplier(id)); },
     async createSupplier(input: CreateSupplierInput) {

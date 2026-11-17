@@ -2,7 +2,11 @@ import React, { useState, useRef, useEffect } from "react";
 import { Link, Outlet, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
-import { ShoppingCart, LogOut, ShieldAlert, Menu, X, Send, Key, ChevronDown, User, Package } from "lucide-react";
+import { ShoppingCart, LogOut, ShieldAlert, Menu, X, ArrowRight, Key, ChevronDown, User, Package } from "lucide-react";
+import { ThemeControl } from "../features/storefront/StorefrontTheme";
+import { useStorefrontTheme } from "../features/storefront/useStorefrontTheme";
+import { useStorefrontMotion } from "../features/storefront/useStorefrontMotion";
+import "../features/storefront/storefront.css";
 import logoInventory from "../assets/logo-inventory1.png";
 
 type NavItem = {
@@ -13,6 +17,12 @@ type NavItem = {
 };
 
 export const CustomerLayout: React.FC = () => {
+  const theme = useStorefrontTheme();
+  const shellRef = useStorefrontMotion();
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
+  const scrollSentinelRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
   const { user, isAuthenticated, logout } = useAuth();
   const { totalItems } = useCart();
   const location = useLocation();
@@ -33,6 +43,25 @@ export const CustomerLayout: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (userMenuOpen) { setUserMenuOpen(false); accountButtonRef.current?.focus(); }
+      if (mobileMenuOpen) { setMobileMenuOpen(false); menuButtonRef.current?.focus(); }
+    };
+    document.addEventListener("keydown", close);
+    return () => document.removeEventListener("keydown", close);
+  }, [mobileMenuOpen, userMenuOpen]);
+
+  useEffect(() => {
+    if (!("IntersectionObserver" in window) || !scrollSentinelRef.current) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      headerRef.current?.classList.toggle("is-scrolled", !entry.isIntersecting);
+    });
+    observer.observe(scrollSentinelRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   const navItems: NavItem[] = [
     { label: "Trang chủ", path: "/" },
     { label: "Sản phẩm", path: "/products" },
@@ -48,10 +77,10 @@ export const CustomerLayout: React.FC = () => {
       if (location.pathname !== "/") {
         navigate("/");
         setTimeout(() => {
-          document.getElementById(elementId)?.scrollIntoView({ behavior: "smooth" });
+          document.getElementById(elementId)?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
         }, 150);
       } else {
-        document.getElementById(elementId)?.scrollIntoView({ behavior: "smooth" });
+        document.getElementById(elementId)?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
       }
     } else {
       setMobileMenuOpen(false);
@@ -78,13 +107,15 @@ export const CustomerLayout: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#faf6f0] text-slate-800">
+    <div ref={shellRef} data-storefront-theme={theme.preference} className="storefront min-h-screen flex flex-col">
+      <a href="#storefront-main" className="storefront-skip">Đến nội dung chính</a>
+      <div ref={scrollSentinelRef} className="storefront-sentinel" aria-hidden="true" />
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[#150d0a]/95 backdrop-blur-md text-amber-50">
+      <header ref={headerRef} className="storefront-header">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
             {/* Logo */}
-            <Link to="/" className="flex items-center group">
+            <Link to="/" aria-label="Coffee INV — Trang chủ" className="storefront-logo flex items-center group">
               <div className="p-2.5 bg-white-300 text-white  group-hover:bg-white-600 transition-all ">
                 <img className="w-20 h-20" src={logoInventory} alt="" />
               </div>
@@ -94,7 +125,7 @@ export const CustomerLayout: React.FC = () => {
             </Link>
 
             {/* Navigation links */}
-            <nav className="hidden md:flex items-center gap-6">
+            <nav aria-label="Điều hướng chính" className="hidden md:flex items-center gap-6">
               {navItems.map((item) => {
                 if (item.protected && !isAuthenticated) return null;
                 return (
@@ -116,6 +147,8 @@ export const CustomerLayout: React.FC = () => {
               })}
             </nav>
 
+            <ThemeControl {...theme} />
+
             {/* Right side actions */}
             <div className="hidden md:flex items-center gap-4">
               {/* Admin Panel button if role === "ADMIN" */}
@@ -132,6 +165,7 @@ export const CustomerLayout: React.FC = () => {
               {/* Cart Icon */}
               <Link
                 to="/cart"
+                aria-label={`Giỏ hàng, ${totalItems} sản phẩm`}
                 className="relative p-2.5 text-amber-205 hover:text-white transition-colors rounded-xl hover:bg-white/5"
               >
                 <ShoppingCart size={20} />
@@ -146,6 +180,9 @@ export const CustomerLayout: React.FC = () => {
               {isAuthenticated && user ? (
                 <div className="relative flex items-center pl-3 border-l border-amber-955/30" ref={userMenuRef}>
                   <button
+                    ref={accountButtonRef}
+                    aria-expanded={userMenuOpen}
+                    aria-controls="storefront-account"
                     onClick={() => setUserMenuOpen(!userMenuOpen)}
                     className="flex items-center gap-3 p-1.5 rounded-xl hover:bg-white/5 transition-colors"
                   >
@@ -160,7 +197,7 @@ export const CustomerLayout: React.FC = () => {
 
                   {/* Dropdown Menu */}
                   {userMenuOpen && (
-                    <div className="absolute top-full right-0 mt-3 w-56 bg-white rounded-2xl shadow-xl shadow-amber-900/10 border border-amber-900/10 overflow-hidden z-50">
+                    <div id="storefront-account" className="storefront-account absolute top-full right-0 mt-3 w-56 bg-white rounded-2xl shadow-xl shadow-amber-900/10 border border-amber-900/10 overflow-hidden z-50">
                       <div className="p-3 border-b border-amber-900/5 bg-amber-50/50">
                         <p className="text-sm font-bold text-slate-800 truncate">{user.name}</p>
                         <p className="text-xs text-slate-500 truncate">{user.email}</p>
@@ -225,6 +262,7 @@ export const CustomerLayout: React.FC = () => {
               {/* Cart Icon for mobile */}
               <Link
                 to="/cart"
+                aria-label={`Giỏ hàng, ${totalItems} sản phẩm`}
                 className="relative p-2.5 text-amber-205 hover:text-white transition-colors"
               >
                 <ShoppingCart size={20} />
@@ -235,6 +273,10 @@ export const CustomerLayout: React.FC = () => {
                 )}
               </Link>
               <button
+                ref={menuButtonRef}
+                aria-label={mobileMenuOpen ? "Đóng điều hướng" : "Mở điều hướng"}
+                aria-expanded={mobileMenuOpen}
+                aria-controls="storefront-mobile-nav"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="p-2 text-amber-205 hover:text-white transition-colors rounded-lg hover:bg-white/5"
               >
@@ -246,7 +288,7 @@ export const CustomerLayout: React.FC = () => {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-[#150d0a] border-t border-amber-955/30 px-4 pt-2 pb-4 space-y-2">
+          <nav id="storefront-mobile-nav" aria-label="Điều hướng di động" className="md:hidden bg-[#150d0a] border-t border-amber-955/30 px-4 pt-2 pb-4 space-y-2">
             {navItems.map((item) => {
               if (item.protected && !isAuthenticated) return null;
               return (
@@ -335,102 +377,36 @@ export const CustomerLayout: React.FC = () => {
                 </button>
               </div>
             )}
-          </div>
+          </nav>
         )}
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 w-full mx-auto">
+      <main id="storefront-main" tabIndex={-1} className="flex-1 w-full mx-auto">
         <Outlet />
       </main>
 
-      {/* Footer - Enriched with detailed sections exactly like ThemeWagon Coffee */}
-      <footer id="contact" className="bg-[#150d0a] text-amber-100 border-t border-amber-955/30 py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-12">
-          {/* Column 1: About and Socials */}
-          <div className="flex flex-col gap-5">
-            <Link to="/" className="flex items-center gap-2.5 w-fit group">
-              <div className="p-1.5 bg-white-300 text-white group-hover:bg-white-600 transition-all rounded-lg">
-                <img className="h-10 w-10 object-contain" src={logoInventory} alt="Logo" />
-              </div>
-              <span className="font-bold text-xl text-white uppercase tracking-wider font-serif">
-                Cafe INV
-              </span>
-            </Link>
-            <p className="text-[14.5px] text-amber-200/60 leading-relaxed font-light">
-              Hệ thống quản lý bán hàng cà phê tích hợp tự động theo dõi tồn kho và đề xuất nhập hàng thông minh. Cam kết phân phối hạt cà phê mộc chất lượng và nâng cao hiệu suất chuỗi cung ứng.
-            </p>
-            <div className="flex gap-3 mt-2">
-              <a href="#facebook" className="w-9 h-9 rounded-full border border-amber-955/30 hover:border-[#c49b76] flex items-center justify-center text-amber-250 hover:text-[#c49b76] transition-colors">
-                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
-              </a>
-              <a href="#instagram" className="w-9 h-9 rounded-full border border-amber-955/30 hover:border-[#c49b76] flex items-center justify-center text-amber-250 hover:text-[#c49b76] transition-colors">
-                <svg className="w-4 h-4 fill-none stroke-current stroke-2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5" /><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" /><line x1="17.5" y1="6.5" x2="17.51" y2="6.5" /></svg>
-              </a>
-            </div>
+      <footer id="contact" className="storefront-footer">
+        <div className="storefront-footer-content">
+          <div className="storefront-footer-story">
+            <p className="storefront-eyebrow">05 / Kết nối</p>
+            <h2>Hẹn nhau bên<br />một <em>tách cà phê.</em></h2>
+            <p>Một buổi sáng cho riêng mình, hay một lần ngồi lại cùng nhau.
+              Mang hương vị bạn thích vào những khoảnh khắc thường ngày.</p>
+            <Link to="/products" className="storefront-footer-cta">Chọn cà phê cho ngày mai <ArrowRight size={18} aria-hidden="true" /></Link>
           </div>
-
-          {/* Column 2: Navigation links */}
-          <div>
-            <h4 className="text-[14px] font-bold text-white uppercase tracking-widest mb-6">Menu Nhanh</h4>
-            <ul className="space-y-3.5 text-[14.5px] text-amber-200/60 font-light">
-              {navItems.map((item) => {
-                if (item.protected && !isAuthenticated) return null;
-                return (
-                  <li key={item.path}>
-                    <Link
-                      to={item.path}
-                      onClick={(e) => handleNavClick(item, e)}
-                      className="hover:text-[#c49b76] transition-colors"
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-
-          {/* Column 3: Opening Hours */}
-          <div>
-            <h4 className="text-[14px] font-bold text-white uppercase tracking-widest mb-6">Giờ Mở Cửa</h4>
-            <ul className="space-y-3.5 text-[14.5px] text-amber-200/60 font-light">
-              <li className="flex justify-between border-b border-amber-955/10 pb-2">
-                <span>Thứ 2 - Thứ 6:</span>
-                <span className="font-semibold text-white">6:00 AM - 10:00 PM</span>
-              </li>
-              <li className="flex justify-between border-b border-amber-955/10 pb-2">
-                <span>Thứ 7 - Chủ Nhật:</span>
-                <span className="font-semibold text-white">7:00 AM - 11:00 PM</span>
-              </li>
-              <li className="flex justify-between">
-                <span>Ngày lễ:</span>
-                <span className="font-semibold text-[#c49b76]">Mở cửa cả ngày</span>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 4: Newsletter */}
-          <div className="flex flex-col gap-4">
-            <h4 className="text-[14px] font-bold text-white uppercase tracking-widest mb-2">Đăng ký nhận tin</h4>
-            <p className="text-[14.5px] text-amber-200/60 font-light">
-              Nhận thông tin cập nhật về các sản phẩm cà phê hạt và chương trình ưu đãi mới nhất.
-            </p>
-            <form onSubmit={(e) => e.preventDefault()} className="flex border border-amber-955/30 rounded-xl overflow-hidden mt-1 bg-white/5 focus-within:border-[#c49b76] transition-colors">
-              <input
-                type="email"
-                placeholder="Email của bạn..."
-                className="flex-1 px-3 py-2.5 bg-transparent text-[14px] text-white placeholder-amber-200/35 outline-none border-none"
-              />
-              <button type="submit" className="px-4.5 bg-amber-700 hover:bg-amber-600 text-white transition-colors border-none flex items-center justify-center">
-                <Send size={14} />
-              </button>
-            </form>
-          </div>
+          <nav aria-label="Điều hướng cuối trang">
+            <p className="storefront-eyebrow">Khám phá Coffee INV</p>
+            {navItems.map(item => {
+              if (item.protected && !isAuthenticated) return null;
+              return <Link key={item.path} to={item.path} onClick={e => handleNavClick(item, e)}>{item.label}</Link>;
+            })}
+          </nav>
         </div>
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-16 pt-8 border-t border-amber-955/10 text-[12px] text-amber-200/40 flex items-center justify-center">
+        <div className="storefront-footer-bottom">
+          <Link to="/" className="storefront-wordmark">COFFEE <span>INV</span></Link>
           <p>© {new Date().getFullYear()} Cafe INV. Đã đăng ký bản quyền.</p>
+          <span>Cà phê & những khoảng dừng</span>
         </div>
       </footer>
     </div>

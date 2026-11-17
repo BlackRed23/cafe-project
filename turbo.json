@@ -17,6 +17,12 @@
     },
     "db:generate": {
       "cache": false
+    },
+    "check-types": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": []
     }
   }
 }

@@ -1,5 +1,6 @@
+import { submitPurchaseProposal } from '../services/purchase-proposal.client';
 import { requireAgentUser } from '../internal-auth';
-import { prisma, PurchaseRequestStatus, OrderStatus, InventoryTransactionType, type Prisma } from '@cafe-project/database';
+import { prisma, PurchaseRequestStatus, OrderStatus, InventoryTransactionType, Prisma } from '@cafe-project/database';
 import { fixAgentLogDisplayOutputJson, fixVietnameseMojibakeText } from '../utils/textEncoding';
 
 export const ACTIVE_PURCHASE_REQUEST_MESSAGE = 'Sản phẩm này đã có yêu cầu nhập hàng đang xử lý.';
@@ -240,214 +241,45 @@ export const agentRepository = {
         return setting?.value ?? null;
     },
 
-    async createAiPurchaseRequest(
+    async proposeInventoryPurchase(
         inventory: AgentInventoryRecord,
         supplierProduct: AgentInventoryRecord['product']['supplierProducts'][number],
-        quantity: number,
-        reasoning: string,
-        userId?: string,
-        emailDraft?: string
+        quantity: number, reasoning: string, userId?: string, emailDraft?: string
     ) {
-        userId = await requireAgentUser(userId);
-
-        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            const converted = convertRecommendedQuantity(inventory, supplierProduct, quantity);
-            const finalReasoning = `${reasoning.trim()}\n\n${converted.note}`;
-
-            const activeItem = await tx.purchaseRequestItem.findFirst({
-                where: {
-                    productId: inventory.productId,
-                    inventoryId: inventory.id,
-                    request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } }
-                },
-                select: { id: true }
-            });
-            if (activeItem) throw new Error(ACTIVE_PURCHASE_REQUEST_MESSAGE);
-
-            return tx.purchaseRequest.create({
-                data: {
-                    requestNumber: `AI-PR-${Date.now()}-${inventory.productId.slice(-4)}`,
-                    status: PurchaseRequestStatus.PENDING,
-                    supplierId: supplierProduct.supplierId,
-                    requestedBy: userId as string,
-                    aiGenerated: true,
-                    notes: finalReasoning,
-                    emailContent: emailDraft,
-                    totalAmount: Number(supplierProduct.price) * converted.quantity,
-                    items: {
-                        create: {
-                            inventoryId: inventory.id,
-                            productId: inventory.productId,
-                            quantity: converted.quantity,
-                            unitPrice: supplierProduct.price,
-                            notes: finalReasoning
-                        }
-                    }
-                },
-                include: { supplier: true, items: { include: { product: true, inventory: true } } }
-            });
-        });
+        await requireAgentUser(userId);
+        const converted = convertRecommendedQuantity(inventory, supplierProduct, quantity);
+        return submitPurchaseProposal({ supplierId: supplierProduct.supplierId, inventoryId: inventory.id,
+            quantity: converted.quantity, unit: inventory.unit, baseUnit: inventory.unit, unitsPerPack: '1',
+            unitPrice: new Prisma.Decimal(supplierProduct.price).toFixed(2),
+            notes: reasoning.trim() + '\n\n' + converted.note, emailContent: emailDraft ?? null });
     },
 
-    async createPurchaseRequestFromRecommendation(data: {
-        logId: string;
-        productId?: string;
-        ingredientId?: string;
-        supplierId: string;
-        recommendedQuantity: number;
-        reasoning?: string | null;
-        emailDraft?: string | null;
-        userId: string;
+    async proposeFromRecommendation(data: {
+        logId: string; productId?: string; ingredientId?: string; supplierId: string;
+        recommendedQuantity: number; reasoning?: string | null; emailDraft?: string | null; userId: string;
     }) {
         await requireAgentUser(data.userId);
-        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            if (data.ingredientId) {
-                const ingredient = await tx.ingredient.findUnique({
-                    where: { id: data.ingredientId }
-                });
-                if (!ingredient) {
-                    throw new Error('Ingredient record not found.');
-                }
-                const activeItem = await tx.purchaseRequestItem.findFirst({
-                    where: {
-                        ingredientId: data.ingredientId,
-                        request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } }
-                    },
-                    select: { id: true }
-                });
-                if (activeItem) throw new Error(ACTIVE_PURCHASE_REQUEST_MESSAGE);
-
-                const supIng = await tx.supplierIngredient.findUnique({
-                    where: {
-                        supplierId_ingredientId: {
-                            supplierId: data.supplierId,
-                            ingredientId: data.ingredientId
-                        }
-                    }
-                });
-                const convQty = Math.max(1, Number(supIng?.conversionQuantity || 1));
-                const minPacks = Math.max(1, Number(supIng?.minOrderQuantity || 1));
-                const neededPacks = Math.max(minPacks, Math.ceil(data.recommendedQuantity / convQty));
-                const unitPricePerPack = supIng
-                    ? Math.round(Number(supIng.pricePerBaseUnit) * convQty)
-                    : Math.round(Number(ingredient.costPerBaseUnit));
-                const finalReasoning = (data.reasoning ?? '').trim();
-
-                const pr = await tx.purchaseRequest.create({
-                    data: {
-                        requestNumber: `AI-REC-ING-${Date.now()}`,
-                        supplierId: data.supplierId,
-                        requestedBy: data.userId,
-                        aiGenerated: true,
-                        notes: finalReasoning,
-                        emailContent: data.emailDraft,
-                        totalAmount: unitPricePerPack * neededPacks,
-                        items: {
-                            create: {
-                                ingredientId: ingredient.id,
-                                quantity: neededPacks,
-                                unitPrice: unitPricePerPack,
-                                notes: finalReasoning
-                            }
-                        }
-                    }
-                });
-
-                await tx.agentLog.update({
-                    where: { id: data.logId },
-                    data: {
-                        reference_type: 'PurchaseRequest',
-                        reference_id: pr.id,
-                        result: 'CONVERTED_TO_PR'
-                    }
-                });
-
-                return pr;
-            }
-
-            if (!data.productId) {
-                throw new Error('Product ID is required.');
-            }
-
-            const inventory = await tx.inventory.findUnique({
-                where: { productId: data.productId }
-            });
-
-            if (!inventory) {
-                throw new Error('Inventory record for product not found.');
-            }
-
-            const activeItem = await tx.purchaseRequestItem.findFirst({
-                where: {
-                    productId: data.productId,
-                    inventoryId: inventory.id,
-                    request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } }
-                },
-                select: { id: true }
-            });
-            if (activeItem) throw new Error(ACTIVE_PURCHASE_REQUEST_MESSAGE);
-
-            const supplierProduct = await tx.supplierProduct.findUnique({
-                where: {
-                    supplierId_productId: {
-                        supplierId: data.supplierId,
-                        productId: data.productId
-                    }
-                }
-            });
-
-            const price = supplierProduct ? Number(supplierProduct.price) : 0;
-            let finalQuantity = data.recommendedQuantity;
-            let finalReasoning = data.reasoning ?? null;
-
-            if (supplierProduct?.purchaseUnit && supplierProduct.conversionQuantity && supplierProduct.conversionTargetUnit === inventory.unit) {
-                const purchaseQuantity = Math.ceil(data.recommendedQuantity / supplierProduct.conversionQuantity);
-                finalQuantity = Math.ceil(purchaseQuantity * supplierProduct.conversionQuantity);
-                finalReasoning = `${data.reasoning ?? ''}
-
-Nhu cầu bổ sung tối thiểu là ${data.recommendedQuantity} ${inventory.unit}. Theo quy cách nhập hàng của nhà cung cấp: 1 ${supplierProduct.purchaseUnit} = ${supplierProduct.conversionQuantity} ${supplierProduct.conversionTargetUnit}.
-
-Vì vậy hệ thống làm tròn theo quy cách nhập hàng và đề xuất nhập ${purchaseQuantity} ${supplierProduct.purchaseUnit} = ${finalQuantity} ${inventory.unit} để đảm bảo đủ hàng và đúng quy cách nhập.`.trim();
-            } else {
-                finalReasoning = `${data.reasoning ?? ''}
-
-Hệ thống đề xuất nhập thêm ${data.recommendedQuantity} ${inventory.unit} để đưa tồn kho về mức an toàn.
-
-Sản phẩm này chưa có quy cách nhập hàng theo nhà cung cấp, nên số lượng đề xuất đang được hiển thị theo đơn vị tồn kho.`.trim();
-            }
-
-            const pr = await tx.purchaseRequest.create({
-                data: {
-                    requestNumber: `AI-REC-${Date.now()}`,
-                    supplierId: data.supplierId,
-                    requestedBy: data.userId,
-                    aiGenerated: true,
-                    notes: finalReasoning,
-                    emailContent: data.emailDraft,
-                    totalAmount: price * finalQuantity,
-                    items: {
-                        create: {
-                            inventoryId: inventory.id,
-                            productId: data.productId,
-                            quantity: finalQuantity,
-                            unitPrice: price,
-                            notes: finalReasoning
-                        }
-                    }
-                }
-            });
-
-            await tx.agentLog.update({
-                where: { id: data.logId },
-                data: {
-                    reference_type: 'PurchaseRequest',
-                    reference_id: pr.id,
-                    result: 'CONVERTED_TO_PR'
-                }
-            });
-
-            return pr;
-        });
+        if (data.ingredientId) {
+            const ingredient = await prisma.ingredient.findUnique({ where: { id: data.ingredientId } });
+            const link = await prisma.supplierIngredient.findUnique({ where: { supplierId_ingredientId: { supplierId: data.supplierId, ingredientId: data.ingredientId } } });
+            if (!ingredient || !link) throw new Error('Ingredient supplier mapping required.');
+            const conversion = new Prisma.Decimal(link.conversionQuantity);
+            const packs = Math.max(link.minOrderQuantity, new Prisma.Decimal(data.recommendedQuantity).div(conversion).ceil().toNumber());
+            return submitPurchaseProposal({ supplierId: data.supplierId, ingredientId: ingredient.id, quantity: packs,
+                unit: link.purchaseUnit, baseUnit: ingredient.baseUnit, unitsPerPack: conversion.toString(),
+                unitPrice: new Prisma.Decimal(link.pricePerBaseUnit).mul(conversion).toFixed(2),
+                notes: data.reasoning ?? '', emailContent: data.emailDraft ?? null }, 'recommendation-' + data.logId);
+        }
+        if (!data.productId) throw new Error('Product ID required.');
+        const inventory = await prisma.inventory.findUnique({ where: { productId: data.productId }, include: inventoryInclude });
+        const link = await prisma.supplierProduct.findUnique({ where: { supplierId_productId: { supplierId: data.supplierId, productId: data.productId } } });
+        if (!inventory || !link) throw new Error('Inventory supplier mapping required.');
+        const supplierLink = inventory.product.supplierProducts.find(row => row.supplierId === data.supplierId);
+        if (!supplierLink) throw new Error('Inventory supplier mapping required.');
+        const converted = convertRecommendedQuantity(inventory, supplierLink, data.recommendedQuantity);
+        return submitPurchaseProposal({ supplierId: data.supplierId, inventoryId: inventory.id, quantity: converted.quantity,
+            unit: inventory.unit, baseUnit: inventory.unit, unitsPerPack: '1', unitPrice: new Prisma.Decimal(link.price).toFixed(2),
+            notes: data.reasoning ?? '', emailContent: data.emailDraft ?? null }, 'recommendation-' + data.logId);
     },
 
     async createLog(data: Prisma.AgentLogCreateInput) {
@@ -632,62 +464,17 @@ Sản phẩm này chưa có quy cách nhập hàng theo nhà cung cấp, nên s�
         return item?.request ?? null;
     },
 
-    async createAiIngredientPurchaseRequest(
+    async proposeIngredientPurchase(
         ingredient: AgentIngredientRecord,
         supplierIngredient: AgentIngredientRecord['supplierLinks'][number],
-        recommendedBaseQty: number,
-        reasoning: string,
-        userId?: string,
-        emailDraft?: string
+        recommendedBaseQty: number, reasoning: string, userId?: string, emailDraft?: string
     ) {
-        userId = await requireAgentUser(userId);
-
-        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            const activeItem = await tx.purchaseRequestItem.findFirst({
-                where: {
-                    ingredientId: ingredient.id,
-                    request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } }
-                },
-                select: { id: true }
-            });
-            if (activeItem) throw new Error(ACTIVE_PURCHASE_REQUEST_MESSAGE);
-
-            const convQty = Math.max(1, Number(supplierIngredient.conversionQuantity || 1));
-            const minPacks = Math.max(1, Number(supplierIngredient.minOrderQuantity || 1));
-            const neededPacks = Math.max(minPacks, Math.ceil(recommendedBaseQty / convQty));
-            const convertedBaseQty = Math.ceil(neededPacks * convQty);
-            const purchaseUnit = supplierIngredient.purchaseUnit || ingredient.baseUnit;
-            const unitPricePerPack = Math.round(Number(supplierIngredient.pricePerBaseUnit || 0) * convQty);
-            const totalAmount = unitPricePerPack * neededPacks;
-
-            const conversionNote =
-                convQty > 1
-                    ? `Nhu cầu bổ sung tối thiểu là ${Math.ceil(recommendedBaseQty)} ${ingredient.baseUnit}. Theo quy cách nhà cung cấp: 1 ${purchaseUnit} = ${convQty} ${ingredient.baseUnit}.\n\nHệ thống làm tròn theo quy cách nhập hàng và đề xuất nhập ${neededPacks} ${purchaseUnit} (= ${convertedBaseQty} ${ingredient.baseUnit}).`
-                    : `Hệ thống đề xuất nhập thêm ${neededPacks} ${purchaseUnit} nguyên liệu ${ingredient.name} để đưa tồn kho về mức an toàn.`;
-
-            const finalReasoning = `${reasoning.trim()}\n\n${conversionNote}`;
-
-            return tx.purchaseRequest.create({
-                data: {
-                    requestNumber: `AI-ING-${Date.now()}-${ingredient.id.slice(-4)}`,
-                    status: PurchaseRequestStatus.PENDING,
-                    supplierId: supplierIngredient.supplierId,
-                    requestedBy: userId as string,
-                    aiGenerated: true,
-                    notes: finalReasoning,
-                    emailContent: emailDraft,
-                    totalAmount,
-                    items: {
-                        create: {
-                            ingredientId: ingredient.id,
-                            quantity: neededPacks,
-                            unitPrice: unitPricePerPack,
-                            notes: finalReasoning
-                        }
-                    }
-                },
-                include: { supplier: true, items: { include: { ingredient: true } } }
-            });
-        });
+        await requireAgentUser(userId);
+        const conversion = new Prisma.Decimal(supplierIngredient.conversionQuantity);
+        const packs = Math.max(supplierIngredient.minOrderQuantity, new Prisma.Decimal(recommendedBaseQty).div(conversion).ceil().toNumber());
+        return submitPurchaseProposal({ supplierId: supplierIngredient.supplierId, ingredientId: ingredient.id,
+            quantity: packs, unit: supplierIngredient.purchaseUnit, baseUnit: ingredient.baseUnit,
+            unitsPerPack: conversion.toString(), unitPrice: new Prisma.Decimal(supplierIngredient.pricePerBaseUnit).mul(conversion).toFixed(2),
+            notes: reasoning, emailContent: emailDraft ?? null });
     }
 };

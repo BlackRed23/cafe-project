@@ -7,7 +7,7 @@ process.env.AGENT_INTERNAL_TOKEN = require('node:crypto').randomBytes(32).toStri
 const systemLogs=[];
 Module._load=function(r,p,m){if(r==='@cafe-project/database')return db;if(r==='../repositories/agent.repository'&&repoMock)return {agentRepository:repoMock,ACTIVE_PURCHASE_REQUEST_MESSAGE:'duplicate'};if(r==='./recommendation.service')return {recommendationService:{generateForProduct:async()=>({recommendation:{productId:'p'},logId:'rec'})}};if(r==='../utils/logger')return {logger:{info(){},error(){},warn(){}}};return old.call(this,r,p,m)};
 const repository=require('../src/repositories/agent.repository.ts').agentRepository;
-repoMock={findInventories:async()=>[{productId:'low',quantity:3,reservedStock:2,minThreshold:2},{productId:'ok',quantity:10,reservedStock:0,minThreshold:2}],createLog:async data=>{systemLogs.push(data);return data},findActiveProductIds:async()=>['p'],findRecommendationLog:async()=>({action:'RECOMMEND_REORDER',output:JSON.stringify({productId:'p',recommendedSupplierId:'s',recommendedQuantity:1})}),createPurchaseRequestFromRecommendation:async data=>{writes++;return data}};
+repoMock={findInventories:async()=>[{productId:'low',quantity:3,reservedStock:2,minThreshold:2},{productId:'ok',quantity:10,reservedStock:0,minThreshold:2}],createLog:async data=>{systemLogs.push(data);return data},findActiveProductIds:async()=>['p'],findRecommendationLog:async()=>({action:'RECOMMEND_REORDER',output:JSON.stringify({productId:'p',recommendedSupplierId:'s',recommendedQuantity:1})}),proposeFromRecommendation:async data=>{return {...data,proposalId:'proposal',version:1}}};
 const service=require('../src/services/agent.service.ts').agentService;
 test('worker scheduled/manual scans perform read-only analysis and system logs with zero purchase writes',async()=>{
  for(const trigger of ['SCHEDULED','MANUAL']){
@@ -34,12 +34,12 @@ test('direct service writes reject unauthorized identities before dependencies',
 });
 test('repository cannot fallback to ADMIN or write as customer',async()=>{
  for(const id of [undefined,'customer']){
- await assert.rejects(repository.createAiPurchaseRequest({}, {},1,'reason',id),/Forbidden/);
- await assert.rejects(repository.createPurchaseRequestFromRecommendation({userId:id}),/Forbidden/);
+ await assert.rejects(repository.proposeInventoryPurchase({}, {},1,'reason',id),/Forbidden/);
+ await assert.rejects(repository.proposeFromRecommendation({userId:id}),/Forbidden/);
  }
  assert.equal(writes,0);assert.equal(transactions,0);
 });
 test('authorized real service operations pass with mocked recommendation/persistence',async()=>{
  const result=await service.recommendReorder({},'admin');assert.equal(result.newRecommendationsCount,1);
- const purchase=await service.createPurchaseRequestFromRecommendation('rec','admin');assert.equal(purchase.userId,'admin');assert.equal(writes,1);
+ const purchase=await service.createPurchaseRequestFromRecommendation('rec','admin');assert.equal(purchase.userId,'admin');assert.equal(purchase.proposalId,'proposal');assert.equal(writes,0);
 });

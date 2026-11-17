@@ -137,6 +137,20 @@ const generateUniqueIngredientSku = async (name: string, ignoreId?: string): Pro
 };
 
 export const ingredientService = {
+    async calculateReorderQuantity(input: { ingredientId: string; supplierId?: string }, now = new Date()) {
+        const from = new Date(now.getTime() - 30 * 86400000);
+        const snapshot = await ingredientRepository.planningSnapshot(input.ingredientId, from, now);
+        if (!snapshot?.ingredient || !snapshot.ingredient.isActive || snapshot.ingredient.deletedAt) throw new HttpError(404, 'Active ingredient not found.');
+        const { supplierService } = await import('../supplier/supplier.service');
+        const { getReorderPlanningSettings } = await import('../system-setting/system-setting.service');
+        const { calculateIngredientReorder } = await import('../../common/ingredient-reorder');
+        const suppliers = await supplierService.findIngredientSuppliers(input.ingredientId);
+        const candidates = suppliers.filter(s => !input.supplierId || s.supplierId === input.supplierId)
+            .sort((a, b) => Number(b.isPreferred) - Number(a.isPreferred) || a.pricePerBaseUnit - b.pricePerBaseUnit ||
+                a.leadTimeDays - b.leadTimeDays || a.supplierId.localeCompare(b.supplierId));
+        if (!candidates.length) throw new HttpError(409, 'No eligible supplier.', 'BLOCKED');
+        return calculateIngredientReorder(snapshot.ingredient, snapshot.consumption, candidates[0]!, await getReorderPlanningSettings(), from, now);
+    },
     async list(filters: IngredientFiltersInput) {
         const records = await ingredientRepository.findMany({
             search: filters.search,

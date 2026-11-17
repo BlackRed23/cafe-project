@@ -2,32 +2,15 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
-import { type User, type UserRole } from '@cafe-project/database';
+import { type User } from '@cafe-project/database';
 import { env } from '../../common/env';
 import { HttpError } from '../../common/http-error';
 import { authRepository, type UserRecord } from './auth.repository';
 import { verifySignedToken } from './auth.tokens';
 import type { ForgotPasswordInput, GoogleAuthInput, LoginInput, RegisterInput, ResetPasswordInput } from './auth.validation';
 
-export type AuthUser = {
-    id: string;
-    email: string;
-    name: string;
-    phone?: string | null;
-    avatar?: string | null;
-    role: UserRole;
-};
-
-export type AuthResponse = {
-    accessToken: string;
-    user: AuthUser;
-};
-
-export type JwtUserPayload = {
-    id: string;
-    email: string;
-    role: UserRole;
-};
+import type { AuthUser, AuthResponse, JwtUserPayload } from './auth.types';
+export type { AuthUser, AuthResponse, JwtUserPayload } from './auth.types';
 
 const PASSWORD_SALT_ROUNDS = 10;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;

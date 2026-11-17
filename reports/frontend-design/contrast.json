@@ -1,0 +1,37 @@
+[
+  {
+    "token": "ink",
+    "ratio": 13.84,
+    "pass": true
+  },
+  {
+    "token": "muted",
+    "ratio": 6.07,
+    "pass": true
+  },
+  {
+    "token": "brand",
+    "ratio": 8.77,
+    "pass": true
+  },
+  {
+    "token": "danger",
+    "ratio": 6.68,
+    "pass": true
+  },
+  {
+    "token": "warning",
+    "ratio": 6.61,
+    "pass": true
+  },
+  {
+    "token": "success",
+    "ratio": 7.18,
+    "pass": true
+  },
+  {
+    "token": "info",
+    "ratio": 7.64,
+    "pass": true
+  }
+]

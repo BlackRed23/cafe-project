@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -7,7 +7,10 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, type = "text", className = "", ...props }, ref) => {
+  ({ label, error, type = "text", className = "", id, ...props }, ref) => {
+    const generatedId = useId();
+    const inputId = id ?? generatedId;
+    const errorId = `${inputId}-error`;
     const [showPassword, setShowPassword] = useState(false);
     const isPassword = type === "password";
     
@@ -17,7 +20,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className={`w-full ${className}`}>
         {label && (
-          <label className="block text-[15px] font-medium text-slate-700 mb-1.5">
+          <label htmlFor={inputId} className="ds-label">
             {label}
           </label>
         )}
@@ -29,10 +32,16 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
               ${error ? "border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500/20" : "border-slate-350 text-slate-900 placeholder-slate-400"}
               ${isPassword ? "pr-10" : ""}`}
             {...props}
+            id={inputId}
+            aria-invalid={error ? true : props['aria-invalid']}
+            aria-describedby={[props['aria-describedby'], error ? errorId : undefined].filter(Boolean).join(' ') || undefined}
+            data-ds="field"
           />
           {isPassword && (
             <button
               type="button"
+              aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+              aria-pressed={showPassword}
               onClick={() => setShowPassword(!showPassword)}
               className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-slate-600 transition-colors"
             >
@@ -41,7 +50,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           )}
         </div>
         {error && (
-          <p className="mt-1.5 text-[13px] text-red-600 font-medium">{error}</p>
+          <p id={errorId} className="ds-field-error">{error}</p>
         )}
       </div>
     );

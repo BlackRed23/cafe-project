@@ -1,0 +1,19 @@
+{
+  "phase": 1,
+  "status": "FAIL",
+  "scan_completed": true,
+  "scope": ["apps/agent/src/services/openai-planner.service.ts", "apps/agent/src/workflows/agent-workflow.ts", "apps/agent/tests/native-tool-planner.test.cjs", "apps/agent/tests/openai-planner.test.cjs", "apps/agent/tests/phase1-native-live.cjs"],
+  "existing_implementation": [
+    {"component":"Native provider, registry, contracts, permissions, DynamicToolPlan and createAgentRuntime connection", "status":"IMPLEMENTED_AND_CONNECTED"},
+    {"component":"Legacy JSON planner export", "status":"IMPLEMENTED_NOT_CONNECTED", "note":"Retained pre-existing compatibility export; native runtime never calls it."},
+    {"component":"Required error classification and capability filtering", "status":"PARTIAL", "note":"Scan gaps fixed; final Agent build and 55 planner tests pass."},
+    {"component":"Phase 1 provider-only live probe", "status":"MISSING", "note":"Added; existing API probe executes Backend and is outside scope."},
+    {"component":"Live acceptance", "status":"PARTIAL", "note":"After explicit user approval, FreeModel returned HTTP 200 but zero tool_calls; Gate 3 FAIL."}
+  ],
+  "langgraph": "No source/dependency match in current apps/agent; untouched.",
+  "verified": ["Final Agent build passed; API build passed", "Planner unit tests 55/55 passed", "git diff --check passed", "No Backend or PostgreSQL call in live probe", "Full regression showed process-restart timeout and Frontend browser failures; stale alias fixture fixed and verified separately"],
+  "live_llm": {"request_sent":true,"provider_http_status":200,"native_tool_calls_received":0,"arguments_validated":false,"backend_tools_executed":0,"error":"NO_TOOL_CALL_RETURNED"},
+  "checks": {"agent_build":"PASS","api_build":"PASS","diff_check":"PASS","planner_tests":{"passed":55,"failed":0},"full_regression":{"status":"FAIL","tests":321,"passed":316,"failed":2,"cancelled":3,"note":"Alias fixture fixed after suite loaded it; 55 planner tests then passed. Recovery/browser timeouts remain."}},
+  "next": ["Check FreeModel native tool-calling support without changing configured provider/model", "Fix or verify recovery/browser timeouts before regression acceptance", "Gate 3 requires real native tool_calls; next phase prohibited"],
+  "invalidation": "Recheck builds/tests if scoped code changes; live acceptance requires successful HTTP and validated real tool_calls."
+}

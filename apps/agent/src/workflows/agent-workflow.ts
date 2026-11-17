@@ -1,107 +1,33 @@
+import '../config/env';
+import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+import type { UnifiedToolRegistry } from './tool-registry';
+export * from './tool-contracts';
+export * from './tool-registry';
+export * from './tool-policies';
+export { SAFETY_BUFFER_DAYS } from '../utils/inventory.utils';
 import { replenishmentPlan, validateReplenishmentPlan } from './replenishment';
 import type { InventoryRow, PurchaseProposal, ReplenishmentInput, ReplenishmentOutputs, ReplenishmentPlan, SupplierQuote } from './replenishment';
 export type { PurchaseProposal, ReplenishmentInput, ReplenishmentOutputs, ReplenishmentPlan } from './replenishment';
 
-type LegacyTool = 'inventory.read' | 'inventory.recommend' | 'purchase.create';
-type LegacyStep = { tool: LegacyTool; input: PurchaseProposal | null };
-export type ToolName = LegacyTool | ReplenishmentPlan[number]['tool'];
-type PurchaseCommand = { actorId: string; key: string; scope: string; versions: Record<string, string> };
-type PurchaseResult = { status: number; body: unknown };
-type PurchaseReceiptProof = { key: string; requestHash: string };
-export type Plan = LegacyStep[] | ReplenishmentPlan;
-export interface BusinessPort {
-    authorize(actorId: string, permission: string): Promise<unknown>;
-    sourceVersions(actorId: string, proposals: PurchaseProposal[]): Promise<Record<string, string>>;
-    atomic<T>(work: (business: BusinessPort, onCommit: (publish: () => void) => void, onFinish: (finish: () => void) => void) => Promise<T>): Promise<T>;
-    inventory(actorId: string): Promise<InventoryRow[]>;
-    recommendInventory(actorId: string, snapshot?: InventoryRow[]): Promise<unknown[]>;
-    purchaseQuotes?(actorId: string, supplierId: string): Promise<(SupplierQuote | undefined)[]>;
-    createPurchase(command: PurchaseCommand, proposal: PurchaseProposal): Promise<PurchaseResult>;
-    purchaseReceipt(command: PurchaseCommand, proposal: PurchaseProposal): Promise<(PurchaseReceiptProof & { response: PurchaseResult }) | undefined>;
-}
-export type MemoryEvidence = { memoryId: string; executionIds: string[]; evaluationIds: string[]; tool: ToolName; relevance: number; confidence: number };
-export type PlanningContext = { trust: 'untrusted-evidence-only'; evidence: MemoryEvidence[]; maxTokens: 2048 };
-type InventoryTool = 'inventory.read' | 'inventory.recommend';
-type MemoryDecisionProof = {
-    kind: 'MOCK_INVENTORY_SELECTION'; stepIndex: 0; selectedTool: InventoryTool;
-    alternativeTool: InventoryTool; without: 'ALL_HINTS' | 'SELECTED_HINT';
-};
-type MemoryAttribution = { memoryId: string; presented?: boolean; status: 'USED' | 'UNUSED' | 'UNKNOWN'; proof?: MemoryDecisionProof };
-type PlanningEvidence = { evidence: MemoryEvidence[]; attribution?: MemoryAttribution[]; decision: Plan };
-export interface LLMProvider { plan(prompt: string, context?: PlanningContext): Promise<Plan> }
-const mockDecision = Symbol('mockDecision');
-const inventoryHint = (e: MemoryEvidence): e is MemoryEvidence & { tool: InventoryTool } =>
-    e.tool === 'inventory.read' || e.tool === 'inventory.recommend';
-export class MockLLMProvider implements LLMProvider {
-    constructor(private readonly steps?: Plan) {}
-    async plan(prompt: string, context?: PlanningContext): Promise<Plan> {
-        return this[mockDecision](prompt, context).plan;
-    }
-    [mockDecision](prompt: string, context?: PlanningContext): {
-        plan: Plan; influence?: { memoryId: string; proof: MemoryDecisionProof };
-    } {
-        if (this.steps) return { plan: structuredClone(this.steps) };
-        if (prompt.startsWith('purchase:')) return { plan: [{ tool: 'purchase.create', input: JSON.parse(prompt.slice(9)) }] };
-        if (prompt === 'recommend') return { plan: [{ tool: 'inventory.recommend', input: null }] };
-        const [hint, nextHint] = context?.evidence.filter(inventoryHint) ?? [];
-        const selectedTool = hint?.tool ?? 'inventory.read';
-        const plan: Plan = [{ tool: selectedTool, input: null }];
-        if (!hint) return { plan };
-        // The default without hints is read. A ranked read hint can also displace a recommendation.
-        const without = selectedTool === 'inventory.recommend' ? 'ALL_HINTS' : 'SELECTED_HINT';
-        const alternativeTool = without === 'ALL_HINTS' ? 'inventory.read' : nextHint?.tool ?? 'inventory.read';
-        if (selectedTool === alternativeTool) return { plan };
-        return { plan, influence: { memoryId: hint.memoryId, proof: { kind: 'MOCK_INVENTORY_SELECTION', stepIndex: 0, selectedTool, alternativeTool, without } } };
-    }
-}
-export type Execution = { id: string; actorId: string; status: 'PLANNED' | 'AWAITING_APPROVAL' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'UNKNOWN' | 'CANCELLED'; plan: Plan; hash: string; revision: string; revisions: { revision: string; hash: string; plan: Plan }[]; versions: Record<string, string>; spent: number; reserved: number; budget: number; result: unknown[]; planning?: PlanningEvidence; outcome?: { verified: boolean; evaluationIds: string[] } };
-export type Approval = { id: string; executionId: string; approverId: string; hash: string; expiresAt: string; revoked: boolean; consumed: boolean };
-export type Memory = { id: string; ownerId: string; text: string; learned: boolean; confidence?: number; expiresAt?: string; revoked?: boolean; forgotten?: boolean; provenance?: { executionId: string; evaluationIds: string[]; tool: ToolName }[]; sourceIds?: string[] };
-export type AgentState = { sequence: number; executions: Record<string, Execution>; approvals: Record<string, Approval>; audit: { executionId: string; tool: string; status: string; stepId?: string; attempt?: number }[]; memories: Record<string, Memory>; permissions: Record<string, string[]>;
-    operations: Record<string, { hash: string; actorId: string; response: { status: number; body: unknown } }>;
-    toolCalls: Record<string, {
-        id: string; executionId: string; index: number; tool: ToolName; input: unknown; status: string; result: unknown;
-        authorization?: { permission: string; approvalId?: string };
-        purchaseCommand?: PurchaseCommand;
-        receipt?: PurchaseReceiptProof;
-        verifiedAt?: string;
-        stepId?: string;
-        attempts?: number;
-    }>;
-    evaluations: { id: string; executionId: string; toolCallId: string; passed: boolean; code: string }[];
-};
-export interface AgentExecutionRepository { execution(id: string): Promise<Execution | undefined> }
-export interface AgentApprovalRepository { approve(id: string, approverId: string, expiresAt: string): Promise<Approval>; revoke(id: string, actorId: string): Promise<void> }
-export interface MemoryLearning { remember(ownerId: string, text: string): Promise<Memory>; retrieve(ownerId: string, query: string): Promise<Memory[]>; learn(ownerId: string, id: string): Promise<Memory>; consolidate(ownerId: string): Promise<Memory[]>; forget(ownerId: string, id: string): Promise<void> }
-export interface AgentRepository extends AgentExecutionRepository {
-    atomic<T>(work: (state: AgentState) => Promise<T> | T, onCommit?: (publish: () => void) => void, onFinish?: (finish: () => void) => void): Promise<T>;
-}
-export class MockAgentRepository implements AgentRepository {
-    private state: AgentState;
-    private tail = Promise.resolve();
-    private fault: 'beforeCommit' | 'afterCommit' | undefined;
-    private prepared: AgentState | undefined;
-    constructor(seed?: AgentState, private readonly persist?: (state: AgentState) => void) {
-        this.state = structuredClone(seed ?? { sequence: 0, executions: {}, approvals: {}, audit: [], memories: {}, operations: {}, toolCalls: {}, evaluations: [], permissions: { admin: ['agent.run', 'agent.approve', 'memory'], staff: ['agent.run', 'memory'], agent: ['agent.run', 'memory'] } });
-        this.state.operations ??= {}; this.state.toolCalls ??= {}; this.state.evaluations ??= [];
-    }
-    snapshot(): AgentState { return structuredClone(this.state); }
-    preparedSnapshot(): AgentState { return structuredClone(this.prepared ?? this.state); }
-    injectFault(point: 'beforeCommit' | 'afterCommit'): void { this.fault = point; }
-    private hit(point: 'beforeCommit' | 'afterCommit'): void { if (this.fault === point) { this.fault = undefined; throw new Error(`INJECTED_${point}`); } }
-    async atomic<T>(work: (state: AgentState) => Promise<T> | T, onCommit?: (publish: () => void) => void, onFinish?: (finish: () => void) => void): Promise<T> {
-        const prior = this.tail; let release!: () => void; this.tail = new Promise<void>(resolve => { release = resolve; }); await prior;
-        try {
-            const draft = structuredClone(this.state); const result = structuredClone(await work(draft)); this.hit('beforeCommit');
-            if (onCommit) { this.prepared = draft; onCommit(() => { this.state = draft; this.hit('afterCommit'); }); }
-            else { this.persist?.(draft); this.state = draft; this.hit('afterCommit'); }
-            return result;
-        } finally { const finish = () => { this.prepared = undefined; release(); }; if (onFinish) onFinish(finish); else finish(); }
-    }
-    async execution(id: string) { return this.atomic(s => s.executions[id]); }
-}
+
+import {
+    TOOL_CONTRACTS,
+    ToolError,
+} from './tool-contracts';
+
+import { validateDynamicPlan, type DynamicToolName, type DynamicToolPlan } from './dynamic-plan';
+export { validateDynamicPlan } from './dynamic-plan';
+export type { DynamicToolName, DynamicPlanStep, DynamicToolPlan } from './dynamic-plan';
+
+import type { BusinessPort, Plan, LegacyStep, ToolName, PurchaseCommand, PurchaseResult, MemoryEvidence, PlanningContext, LLMProvider, MemoryAttribution, Execution, Approval, Memory, AgentState, AgentRepository, AgentApprovalRepository, MemoryLearning } from './workflow-contracts';
+export type { BusinessPort, Plan, ToolName, MemoryEvidence, PlanningContext, LLMProvider, Execution, Approval, Memory, AgentState, AgentExecutionRepository, AgentApprovalRepository, MemoryLearning, AgentRepository } from './workflow-contracts';
+import { MockLLMProvider, mockDecision } from './testing/mock-llm-provider';
+export { MockLLMProvider } from './testing/mock-llm-provider';
+import { MockAgentRepository } from '../repositories/mock-agent.repository';
+export { MockAgentRepository } from '../repositories/mock-agent.repository';
+
 export const TOOL_REGISTRY = Object.freeze({
     'inventory.read': Object.freeze({ cost: 1, approval: false, permission: 'inventory.read', attempts: 2 }),
     'inventory.recommend': Object.freeze({ cost: 1, approval: false, permission: 'inventory.read', attempts: 1 }),
@@ -276,7 +202,150 @@ function validatePlan(plan: Plan, allowlist: readonly ToolName[]): void {
 /** Planner/Executor/Verifier; purchasing and stock rules belong exclusively to BusinessPort. */
 export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
     private readonly allowlist: readonly ToolName[];
-    constructor(private readonly store: AgentRepository, private readonly business: BusinessPort, private readonly llm: LLMProvider, allowlist: readonly ToolName[] = allowed, private readonly clock = () => new Date()) { this.allowlist = Object.freeze([...allowlist]); }
+    constructor(private readonly repository: AgentRepository | null, private readonly readBusiness: Pick<BusinessPort, 'authorize' | 'toolRegistry'> & Partial<BusinessPort>, private readonly llm: LLMProvider, allowlist: readonly ToolName[] = allowed, private readonly clock = () => new Date()) { this.allowlist = Object.freeze([...allowlist]); }
+    private get store(): AgentRepository {
+        if (!this.repository) throw new Error('READ_ONLY_WORKFLOW_REPOSITORY_DISABLED');
+        return this.repository;
+    }
+    private get business(): BusinessPort {
+        if (!this.repository) throw new Error('READ_ONLY_WORKFLOW_LEGACY_DISABLED');
+        return this.readBusiness as BusinessPort;
+    }
+    /** Explicit P1.5 entry; legacy Plan/execute and repository evidence unchanged. */
+    async dispatchTool(actorId: string, name: string, input: unknown, version = '1.0.0') {
+        if (!this.readBusiness.toolRegistry) throw new Error('TOOL_REGISTRY_NOT_BOUND');
+        return this.readBusiness.toolRegistry.dispatch(actorId, name, input, version, () => this.readBusiness.authorize(actorId, 'agent.run'));
+    }
+    async planDynamicTools(
+    actorId: string,
+    plan: DynamicToolPlan
+    ): Promise<DynamicToolPlan> {
+        await this.readBusiness.authorize(actorId, 'agent.run');
+
+        validateDynamicPlan(plan);
+
+        const registry = this.readBusiness.toolRegistry;
+
+        if (!registry) {
+            throw new Error('TOOL_REGISTRY_NOT_BOUND');
+        }
+
+        const capabilities = registry.capabilities();
+
+        for (const step of plan.steps) {
+            const capability = capabilities.find(
+                item => item.name === step.tool
+            );
+
+            if (!capability || !capability.bound) {
+                throw new Error('TOOL_NOT_AVAILABLE');
+            }
+        }
+
+        return structuredClone(plan);
+    }
+    async generateDynamicPlan(
+    actorId: string,
+    prompt: string,
+    context: { toolChoicePolicy: import('../services/openai-planner.service').ToolChoicePolicy } = { toolChoicePolicy: 'REQUIRES_TOOL' }
+    ): Promise<DynamicToolPlan> {
+        if (
+            typeof prompt !== 'string' ||
+            !prompt.trim() ||
+            prompt.length > 10000
+        ) {
+            throw new Error('INVALID_PROMPT');
+        }
+
+        await this.readBusiness.authorize(actorId, 'agent.run');
+
+        const registry = this.readBusiness.toolRegistry;
+        if (!registry) {
+            throw new Error('TOOL_REGISTRY_NOT_BOUND');
+        }
+
+        const candidates = registry.capabilities()
+            .filter(capability => capability.bound &&
+                capability.version === TOOL_CONTRACTS[capability.name].version &&
+                TOOL_CONTRACTS[capability.name].status === 'IMPLEMENTED' &&
+                TOOL_CONTRACTS[capability.name].category !== 'WRITE')
+            .map(capability => ({
+                name: capability.name as DynamicToolName,
+                purpose: TOOL_CONTRACTS[capability.name].purpose,
+                inputSchema: z.toJSONSchema(TOOL_CONTRACTS[capability.name].input)
+            }));
+
+        const tools: typeof candidates = [];
+        for (const candidate of candidates) {
+            try {
+                await this.readBusiness.authorize(actorId, TOOL_CONTRACTS[candidate.name].permission);
+                tools.push(candidate);
+            } catch (error) {
+                const status = (error as { statusCode?: number; status?: number } | null)?.statusCode ??
+                    (error as { status?: number } | null)?.status;
+                const denied = error instanceof ToolError && error.code === 'FORBIDDEN' ||
+                    status === 401 || status === 403;
+                if (!denied) throw error;
+            }
+        }
+        if (!tools.length) throw new Error('TOOL_NOT_AVAILABLE');
+
+        if (!this.llm.planDynamic) {
+            throw new Error('DYNAMIC_PLANNER_NOT_CONFIGURED');
+        }
+
+        const proposed = await this.llm.planDynamic(prompt, tools, context);
+
+        for (const step of proposed.steps) {
+            if (Object.prototype.hasOwnProperty.call(TOOL_CONTRACTS, step.tool)) {
+                await this.readBusiness.authorize(actorId, TOOL_CONTRACTS[step.tool].permission);
+            }
+        }
+
+        return this.planDynamicTools(actorId, proposed);
+    }
+
+    async executeDynamicTools(
+    actorId: string,
+    plan: DynamicToolPlan
+    ) {
+        // Kiểm tra quyền, Tool Contracts và handler trước khi chạy.
+        const validatedPlan = await this.planDynamicTools(actorId, plan);
+
+        const results: Record<string, unknown> = {};
+
+        for (const step of validatedPlan.steps) {
+            // Không chạy bước phụ thuộc nếu bước trước chưa thành công.
+            for (const dependency of step.dependsOn) {
+                if (!Object.prototype.hasOwnProperty.call(results, dependency)) {
+                    throw new Error('DEPENDENCY_NOT_COMPLETED');
+                }
+            }
+
+            const outcome = await this.dispatchTool(
+                actorId,
+                step.tool,
+                step.input
+            );
+
+            if (!outcome.ok) {
+                return {
+                    status: 'FAILED' as const,
+                    failedStep: step.id,
+                    error: outcome.error,
+                    results
+                };
+            }
+
+            results[step.id] = outcome.output;
+        }
+
+        return {
+            status: 'SUCCEEDED' as const,
+            results
+        };
+    }
+
     /** Agent-only HTTP command receipts; no manual backend records are placed in Agent tables. */
     command<P>(actorId: string, key: string, kind: 'plan' | 'revise' | 'approve' | 'revoke' | 'execute' | 'cancel' | 'remember' | 'learn' | 'consolidate' | 'forget', payload: P, work: (agent: AgentWorkflow, payload: P) => Promise<unknown>) {
         payload = structuredClone(payload);
@@ -718,10 +787,115 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
     async forget(ownerId: string, id: string): Promise<void> { await this.business.authorize(ownerId, 'memory'); return this.store.atomic(s => { permit(s, ownerId, 'memory'); const m = s.memories[id] ?? Object.values(s.memories).find(m => m.sourceIds?.includes(id)); if (!m || m.ownerId !== ownerId) throw new Error('FORBIDDEN'); m.forgotten = true; m.text = ''; m.provenance = []; m.confidence = 0; }); }
 }
 
+/** Backend-only READ entry point; legacy persistence, approval and memory are unavailable. */
+export function createReadOnlyAgentRuntime(
+    business: Pick<BusinessPort, 'authorize' | 'toolRegistry'>,
+    config: Record<string, string | undefined> = process.env
+): AgentWorkflow {
+    const capabilities = business.toolRegistry?.capabilities();
+    if (!capabilities || capabilities.some(item => item.bound && item.mode !== 'BACKEND')) throw new Error('REAL_BACKEND_REGISTRY_REQUIRED');
+    return new AgentWorkflow(null, business, {
+        plan: async () => { throw new Error('READ_ONLY_WORKFLOW_LEGACY_DISABLED'); },
+        planDynamic: async (prompt, tools, context) => {
+            const { generateNativeToolPlan } = await import('../services/openai-planner.service');
+            return generateNativeToolPlan(prompt, tools, config, { policy: context?.toolChoicePolicy });
+        },
+    });
+}
+
+export function createGeminiPlanner(
+    legacy: LLMProvider = new MockLLMProvider()
+): LLMProvider {
+    return {
+        plan: (prompt, context) =>
+            legacy.plan(prompt, context),
+
+        planDynamic: async (prompt, tools) => {
+            const { geminiService } = await import(
+                '../services/gemini.service'
+            );
+
+            return geminiService.generateDynamicPlan(prompt, tools);
+        }
+    };
+}
+
 /** Independent Agent composition boundary; no implicit production mock or Prisma import. */
-export function createAgentRuntime(business: BusinessPort, env: Record<string, string | undefined> = process.env, llm?: LLMProvider): AgentWorkflow {
-    if (env.NODE_ENV === 'production' && !env.DATA_PROVIDER) throw new Error('Production requires explicit DATA_PROVIDER');
-    if (env.DATA_PROVIDER === 'postgres') throw new Error('POSTGRES_NOT_VERIFIED: Agent approval/memory adapter unavailable');
-    if (env.NODE_ENV === 'production' || (env.DATA_PROVIDER !== undefined && env.DATA_PROVIDER !== 'mock')) throw new Error('Invalid Agent provider');
-    return new AgentWorkflow(new MockAgentRepository(), business, llm ?? new MockLLMProvider());
+
+export function createAgentRuntime(
+    business: BusinessPort,
+    runtimeEnv: Record<string, string | undefined> = process.env,
+    llm?: LLMProvider
+): AgentWorkflow {
+    const config = {
+        ...runtimeEnv
+    };
+
+    // Keep existing production and database safety gates.
+    if (config.NODE_ENV === 'production' && !config.DATA_PROVIDER) {
+        throw new Error('Production requires explicit DATA_PROVIDER');
+    }
+
+    if (config.DATA_PROVIDER === 'postgres') {
+        throw new Error(
+            'POSTGRES_NOT_VERIFIED: Agent approval/memory adapter unavailable'
+        );
+    }
+
+    if (
+        config.NODE_ENV === 'production' ||
+        (config.DATA_PROVIDER !== undefined &&
+         config.DATA_PROVIDER !== 'mock')
+    ) {
+        throw new Error('Invalid Agent provider');
+    }
+
+    const requestedProvider = (
+        config.AGENT_PLANNER_PROVIDER || 'mock'
+    ).trim().toLowerCase();
+
+    // "chatgpt" is an alias of the OpenAI API provider.
+    const providerName =
+        requestedProvider === 'chatgpt'
+            ? 'openai'
+            : requestedProvider;
+
+    if (!['mock', 'gemini', 'openai'].includes(providerName)) {
+        throw new Error('INVALID_LLM_PROVIDER');
+    }
+
+    const provider: LLMProvider = llm ?? {
+        // Preserve existing legacy planning behavior.
+        plan: (prompt, context) =>
+            new MockLLMProvider().plan(prompt, context),
+
+        planDynamic: async (prompt, tools, context) => {
+            if (providerName === 'mock') {
+                throw new Error('DYNAMIC_PLANNER_NOT_CONFIGURED');
+            }
+
+            if (providerName === 'gemini') {
+                const { geminiService } = await import(
+                    '../services/gemini.service'
+                );
+
+                return geminiService.generateDynamicPlan(
+                    prompt,
+                    tools
+                );
+            }
+
+            const { generateNativeToolPlan } = await import(
+                '../services/openai-planner.service'
+            );
+
+            return generateNativeToolPlan(prompt, tools, config, { policy: context?.toolChoicePolicy });
+        }
+    };
+
+    return new AgentWorkflow(
+        new MockAgentRepository(),
+        business,
+        provider
+    );
 }

@@ -1,0 +1,10 @@
+const fs=require('fs'),cp=require('child_process');require('dotenv').config({path:'../../apps/api/.env',quiet:true});
+const u=new URL(process.env.DATABASE_URL);if(u.pathname!=='/cafe-kltn')throw Error('WRONG_DATABASE');
+const target='D:/KLTN/git-backup-cafe/cafe-kltn-before-migration.dump';
+const previous=target+'.previous-'+new Date().toISOString().replace(/[:.]/g,'-');
+const next=target+'.new';
+const r=cp.spawnSync('C:/Program Files/PostgreSQL/18/bin/pg_dump.exe',['--format=custom','--file='+next],{env:{...process.env,PGHOST:u.hostname,PGPORT:u.port||'5432',PGUSER:decodeURIComponent(u.username),PGPASSWORD:decodeURIComponent(u.password),PGDATABASE:'cafe-kltn'},encoding:'utf8'});
+if(r.status!==0)throw Error('pg_dump failed '+r.status);
+const v=cp.spawnSync('C:/Program Files/PostgreSQL/18/bin/pg_restore.exe',['--file=NUL',next],{encoding:'utf8'});if(v.status!==0)throw Error('Archive decode failed');
+fs.copyFileSync(target,previous,fs.constants.COPYFILE_EXCL);fs.renameSync(next,target);
+console.log(JSON.stringify({backup:target,previous,bytes:fs.statSync(target).size,fullyDecoded:true}));

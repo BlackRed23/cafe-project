@@ -96,6 +96,7 @@ const LegacyAdminProductFormPage: React.FC = () => {
   const [imageUrl, setImageUrl] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [expectedUpdatedAt, setExpectedUpdatedAt] = useState<string>();
   const [nutritionFacts, setNutritionFacts] = useState("");
   const [usageInstructions, setUsageInstructions] = useState("");
   const [storageInstructions, setStorageInstructions] = useState("");
@@ -187,6 +188,7 @@ const LegacyAdminProductFormPage: React.FC = () => {
         setIsFetching(true);
         try {
           const product = await productsApi.getProductById(id);
+          setExpectedUpdatedAt(product.updatedAt);
           setName(product.name);
           setDescription(product.description || "");
           setPrice(product.price);
@@ -422,7 +424,7 @@ const LegacyAdminProductFormPage: React.FC = () => {
       const successMessage = isEdit ? "Cập nhật sản phẩm thành công." : "Tạo sản phẩm thành công.";
 
       if (isEdit && id) {
-        await productsApi.updateProduct(id, payload);
+        await productsApi.updateProduct(id, { ...payload, expectedUpdatedAt });
       } else {
         await productsApi.createProduct(payload);
       }

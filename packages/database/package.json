@@ -6,6 +6,7 @@
     "types": "./dist/index.d.ts",
     "scripts": {
         "build": "tsc",
+        "check-types": "tsc --noEmit",
         "generate": "prisma generate",
         "db:push": "prisma db push",
         "seed": "tsx prisma/seed_cafe.ts",

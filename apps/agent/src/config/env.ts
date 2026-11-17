@@ -1,8 +1,8 @@
-import dotenv from 'dotenv';
-import path from 'path';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
 
 // Ensure env files are loaded
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: false });
 
 export const env = {
     DATABASE_URL: process.env.DATABASE_URL as string,

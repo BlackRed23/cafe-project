@@ -1,5 +1,6 @@
 import type { Category, Inventory, Prisma, Product } from '@cafe-project/database';
 import { prisma } from '@cafe-project/database';
+import { HttpError } from '../../common/http-error';
 
 export type ProductRecord = Product & {
     category: Category;
@@ -98,11 +99,31 @@ export const productRepository = {
         });
     },
 
-    async update(id: string, data: Prisma.ProductUncheckedUpdateInput): Promise<ProductRecord> {
-        return prisma.product.update({
-            where: { id },
-            data,
-            include: productInclude
+    async update(id: string, data: Prisma.ProductUncheckedUpdateInput, expectedUpdatedAt?: Date): Promise<ProductRecord> {
+        return prisma.$transaction(async tx => {
+            const current = await tx.product.findUnique({ where: { id }, select: { updatedAt: true } });
+            if (!current) throw new HttpError(404, 'Product not found.');
+            const version = expectedUpdatedAt ?? current.updatedAt;
+            const result = await tx.product.updateMany({
+                where: { id, updatedAt: version },
+                data: { ...data, updatedAt: new Date(Math.max(Date.now(), version.getTime() + 1)) }
+            });
+            if (result.count !== 1) throw new HttpError(409, 'Product changed. Reload before updating.');
+            if (data.isActive === true) {
+                const recipes = await tx.recipe.findMany({
+                    where: { productId: id, isActive: true },
+                    include: { ingredients: { include: { ingredient: true } } }
+                });
+                const now = new Date();
+                if (recipes.length > 1 || recipes.some(recipe => !recipe.ingredients.length ||
+                    !recipe.yieldQuantity.gt(0) || recipe.effectiveFrom > now ||
+                    (recipe.effectiveTo !== null && recipe.effectiveTo <= now) ||
+                    recipe.ingredients.some(item => !item.quantityBase.gt(0) ||
+                        !item.ingredient.isActive || item.ingredient.deletedAt !== null))) {
+                    throw new HttpError(409, 'Product recipe is invalid or unavailable.');
+                }
+            }
+            return tx.product.findUniqueOrThrow({ where: { id }, include: productInclude });
         });
     },
 

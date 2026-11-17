@@ -13,6 +13,8 @@ import { Loading } from "../../components/common/Loading";
 import { Button } from "../../components/common/Button";
 import { Input } from "../../components/common/Input";
 import { Modal } from "../../components/common/Modal";
+import { EmptyState } from "../../components/common/EmptyState";
+import { ErrorState } from "../../components/common/ErrorState";
 import { getErrorMessage } from "../../api/client";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
@@ -43,6 +45,7 @@ export const AdminIngredientsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [onlyLowStock, setOnlyLowStock] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Create / Edit Modal
   const [formOpen, setFormOpen] = useState(false);
@@ -188,12 +191,14 @@ export const AdminIngredientsPage: React.FC = () => {
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
+      setLoadError(null);
       const data = await ingredientsApi.getIngredients({
         search: search.trim() || undefined,
         lowStock: onlyLowStock || undefined,
       });
       setIngredients(data);
     } catch (err) {
+      setLoadError(getErrorMessage(err) || "Không thể tải danh sách nguyên liệu.");
       toast.error(getErrorMessage(err) || "Không thể tải danh sách nguyên liệu.");
     } finally {
       setIsLoading(false);
@@ -350,30 +355,31 @@ export const AdminIngredientsPage: React.FC = () => {
   ).length;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="inventory-workspace ingredients-workspace flex flex-col gap-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="inventory-heading ingredients-heading flex flex-col gap-4">
         <div>
-          <h2 className="text-2xl font-black text-slate-800 font-serif">
+          <span className="ingredients-eyebrow">Quản lý kho</span>
+          <h1>
             Nguyên liệu & Giá vốn
-          </h2>
+          </h1>
           <p className="text-sm text-slate-500 mt-0.5">
             Quản lý tồn kho nguyên liệu pha chế, lô nhập FIFO và đơn giá vốn bình quân gia quyền
           </p>
         </div>
         {!isStaff && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="ingredients-actions flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               onClick={handleScanIngredients}
               isLoading={isScanningAgent}
-              className="border-amber-300 bg-amber-50/70 text-amber-900 hover:bg-amber-100 flex items-center gap-1.5"
+              className="ingredients-agent-action flex items-center gap-1.5"
             >
               <Bot size={16} /> Quét nguyên liệu bằng AI Agent
             </Button>
             <Button
               onClick={openCreateModal}
-              className="bg-amber-800 hover:bg-amber-900 text-white flex items-center gap-1.5"
+              className="ingredients-create-action flex items-center gap-1.5"
             >
               <Plus size={16} /> Thêm nguyên liệu
             </Button>
@@ -382,14 +388,14 @@ export const AdminIngredientsPage: React.FC = () => {
       </div>
 
       {/* Summary cards */}
-      <div className="grid sm:grid-cols-3 gap-4">
+      <div className="ingredient-summary ingredients-summary grid sm:grid-cols-3 gap-0" aria-label="Tóm tắt danh sách đang hiển thị">
         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex items-center gap-4">
           <div className="p-3 rounded-xl bg-amber-100 text-amber-800">
             <Boxes size={22} />
           </div>
           <div>
             <span className="text-xs font-bold uppercase text-slate-400">
-              Tổng số nguyên liệu
+              Nguyên liệu đang hiển thị
             </span>
             <p className="text-2xl font-black text-slate-800 font-serif">
               {ingredients.length}
@@ -402,7 +408,7 @@ export const AdminIngredientsPage: React.FC = () => {
           </div>
           <div>
             <span className="text-xs font-bold uppercase text-slate-400">
-              Tổng giá trị tồn nguyên liệu
+              Giá trị tồn đang hiển thị
             </span>
             <p className="text-2xl font-black text-emerald-700 font-serif">
               {formatCurrency(totalInventoryValue)}
@@ -424,55 +430,62 @@ export const AdminIngredientsPage: React.FC = () => {
         </div>
       </div>
 
+      <section className="ingredients-records" aria-labelledby="ingredients-records-title">
+        <div className="ingredients-records-heading">
+          <h2 id="ingredients-records-title">Danh sách nguyên liệu</h2>
+          <p>Theo dõi tồn kho, giá vốn và trạng thái nhập hàng.</p>
+        </div>
       {/* Filters */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
-        <div className="relative flex-1 min-w-[240px] max-w-md">
+      <div className="inventory-filters ingredients-toolbar flex flex-wrap items-end justify-between gap-4">
+        <div className="ingredients-search relative flex-1 min-w-0">
           <Search
             size={16}
-            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+            className="ingredients-search-icon"
           />
-          <input
+          <Input
             type="text"
+            label="Tìm nguyên liệu"
+            aria-label="Tìm nguyên liệu"
             placeholder="Tìm theo tên hoặc mã SKU nguyên liệu..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:border-amber-700"
           />
         </div>
-        <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
+        <label className="ingredients-low-stock inline-flex items-center gap-2 text-sm font-medium cursor-pointer">
           <input
             type="checkbox"
             checked={onlyLowStock}
             onChange={(e) => setOnlyLowStock(e.target.checked)}
-            className="rounded border-slate-300 text-amber-800 focus:ring-amber-700"
+            className="ingredients-stock-checkbox"
           />
           Chỉ hiện nguyên liệu chạm ngưỡng thấp
         </label>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+      <div className="ds-table ingredients-table overflow-hidden" aria-busy={isLoading}>
         {isLoading ? (
           <div className="py-16">
             <Loading message="Đang tải danh sách nguyên liệu..." />
           </div>
+        ) : loadError ? (
+          <ErrorState message={loadError} onRetry={() => void loadData()} />
         ) : ingredients.length === 0 ? (
-          <div className="py-16 text-center text-slate-400 text-sm">
-            Chưa có nguyên liệu nào phù hợp.
-          </div>
+          <EmptyState title="Chưa có nguyên liệu nào phù hợp." description="Thử đổi từ khóa hoặc bỏ bộ lọc ngưỡng thấp." />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="ingredients-table-scroll overflow-x-auto" role="region" aria-label="Tồn kho nguyên liệu" tabIndex={0}>
             <table className="w-full text-left text-sm">
+              <caption className="sr-only">Tồn kho, giá vốn và thao tác nguyên liệu</caption>
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-100 text-[11px] font-bold uppercase text-slate-400 tracking-wider">
-                  <th className="py-3.5 px-4">Nguyên liệu</th>
-                  <th className="py-3.5 px-4 text-right">Tồn thực tế</th>
-                  <th className="py-3.5 px-4 text-right">Đang giữ</th>
-                  <th className="py-3.5 px-4 text-right">Khả dụng</th>
-                  <th className="py-3.5 px-4 text-right">Giá vốn / ĐV chuẩn</th>
-                  <th className="py-3.5 px-4 text-right">Giá trị tồn</th>
-                  <th className="py-3.5 px-4 text-center">Trạng thái</th>
-                  <th className="py-3.5 px-4 text-right">Thao tác</th>
+                  <th scope="col" className="py-3.5 px-4">Nguyên liệu</th>
+                  <th scope="col" className="py-3.5 px-4 text-right">Tồn thực tế</th>
+                  <th scope="col" className="py-3.5 px-4 text-right">Đang giữ</th>
+                  <th scope="col" className="py-3.5 px-4 text-right">Khả dụng</th>
+                  <th scope="col" className="py-3.5 px-4 text-right">Giá vốn / ĐV chuẩn</th>
+                  <th scope="col" className="py-3.5 px-4 text-right">Giá trị tồn</th>
+                  <th scope="col" className="py-3.5 px-4 text-center">Trạng thái</th>
+                  <th scope="col" className="py-3.5 px-4 text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -490,7 +503,7 @@ export const AdminIngredientsPage: React.FC = () => {
                     <td className="py-3.5 px-4 text-right text-amber-700 font-medium">
                       {ing.reserved.toLocaleString("vi-VN")} {ing.baseUnit}
                     </td>
-                    <td className="py-3.5 px-4 text-right font-bold text-slate-900">
+                    <td className="ingredients-available py-3.5 px-4 text-right font-bold text-slate-900">
                       {ing.availableQuantity.toLocaleString("vi-VN")} {ing.baseUnit}
                     </td>
                     <td className="py-3.5 px-4 text-right font-semibold text-amber-800">
@@ -505,15 +518,15 @@ export const AdminIngredientsPage: React.FC = () => {
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       {ing.status === "OUT_OF_STOCK" ? (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
+                        <span className="ingredients-status ingredients-status-danger px-2.5 py-1 rounded-full text-xs font-bold">
                           Hết hàng
                         </span>
                       ) : ing.status === "LOW_STOCK" ? (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
+                        <span className="ingredients-status ingredients-status-warning px-2.5 py-1 rounded-full text-xs font-bold">
                           Sắp hết (&le; {ing.minThreshold})
                         </span>
                       ) : (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                        <span className="ingredients-status ingredients-status-success px-2.5 py-1 rounded-full text-xs font-bold">
                           Đủ hàng
                         </span>
                       )}
@@ -523,20 +536,21 @@ export const AdminIngredientsPage: React.FC = () => {
                         <button
                           onClick={() => openImportModal(ing)}
                           title="Nhập kho có giá vốn"
-                          className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-bold inline-flex items-center gap-1"
+                          className="ingredients-row-action ingredients-import px-2.5 py-1.5 text-xs inline-flex items-center gap-1"
                         >
                           <PackagePlus size={14} /> Nhập
                         </button>
                         <button
                           onClick={() => openWasteModal(ing)}
                           title="Ghi nhận hao hụt"
-                          className="px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-bold inline-flex items-center gap-1"
+                          className="ingredients-row-action ingredients-waste px-2.5 py-1.5 text-xs inline-flex items-center gap-1"
                         >
                           <Flame size={14} /> Hao hụt
                         </button>
                         {!isStaff && (
                           <button
                             onClick={() => openEditModal(ing)}
+                            aria-label={`Sửa nguyên liệu ${ing.name}`}
                             title="Sửa nguyên liệu"
                             className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                           >
@@ -545,6 +559,7 @@ export const AdminIngredientsPage: React.FC = () => {
                         )}
                         <Link
                           to={`/admin/ingredients/${ing.id}`}
+                          aria-label={`Chi tiết lô và lịch sử ${ing.name}`}
                           title="Chi tiết lô & lịch sử"
                           className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-amber-800"
                         >
@@ -559,6 +574,8 @@ export const AdminIngredientsPage: React.FC = () => {
           </div>
         )}
       </div>
+      <p className="ingredients-table-hint">Cuộn ngang để xem đầy đủ tồn kho và thao tác.</p>
+      </section>
 
       {/* Create / Edit Modal */}
       <Modal

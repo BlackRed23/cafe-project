@@ -44,6 +44,20 @@ const normalizeKey = (key: string): string => {
 
 export const getSupportedSystemSettingKeys = (): string[] => Object.keys(DEFAULT_SETTINGS);
 
+/** Existing store policy, including explicit application defaults; never model supplied. */
+export const getReorderPlanningSettings = async () => {
+    const period = await getSettingByKey('inventory.reorderPlanningPeriod');
+    if (period.value === 'WEEKLY' || period.value === 'MONTHLY') return {
+        days: period.value === 'WEEKLY' ? 7 : 30, source: period.updatedAt ? 'DATABASE' as const : 'DEFAULT_POLICY' as const,
+    };
+    if (period.value !== 'CUSTOM') throw new HttpError(409, 'Invalid reorder planning period.', 'BLOCKED');
+    const custom = await getSettingByKey('inventory.reorderPlanningCustomDays');
+    if (!/^\d+$/.test(custom.value) || Number(custom.value) < 1 || Number(custom.value) > 90) {
+        throw new HttpError(409, 'Invalid custom planning days.', 'BLOCKED');
+    }
+    return { days: Number(custom.value), source: period.updatedAt && custom.updatedAt ? 'DATABASE' as const : 'DEFAULT_POLICY' as const };
+};
+
 export const getAllSettings = async (): Promise<SystemSettingDto[]> => {
     const settings = await systemSettingRepository.findMany();
     const byKey = new Map(settings.map((setting) => [setting.key, toDto(setting)]));

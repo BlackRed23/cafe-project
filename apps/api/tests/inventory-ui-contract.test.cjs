@@ -90,6 +90,7 @@ for (const nextStatus of ['COMPLETED', 'CANCELLED']) test(`order ${nextStatus} u
   const result = await callback(tx); state = d; return result;
  } };
  const { orderRepository } = load('apps/api/src/modules/order/order.repository.ts', {
+  '../../common/http-error': load('apps/api/src/common/http-error.ts'),
   '@cafe-project/database': { prisma, InventoryTransactionType: { ORDER: 'ORDER', CANCEL: 'CANCEL' }, OrderStatus: { PENDING: 'PENDING', PROCESSING: 'PROCESSING', COMPLETED: 'COMPLETED', CANCELLED: 'CANCELLED' }, PaymentStatus: { PAID: 'PAID' }, TransactionStatus: { PAID: 'PAID' }, ConsumptionStatus: { COMMITTED: 'COMMITTED', VOIDED: 'VOIDED' } },
   '../../common/ingredient-cost.utils': { toDecimal: () => ({ mul: () => 0, abs: () => ({ lte: () => true }) }), roundCost4: v => v, roundMoney2: v => v, roundQty3: v => v, calculateOrderItemCostSnapshot: () => ({ ingredientCost: 0, toppingCost: 0, totalCost: 0, grossProfit: 0 }) },
   '../payment/payment.repository': { appendManualPaymentAudit: () => ({}) },

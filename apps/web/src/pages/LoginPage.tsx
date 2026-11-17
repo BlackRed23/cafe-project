@@ -6,7 +6,7 @@ import { useToast } from "../contexts/ToastContext";
 import { Input } from "../components/common/Input";
 import { Button } from "../components/common/Button";
 import { getErrorMessage } from "../api/client";
-import { Coffee } from "lucide-react";
+import { AuthEditorial } from "../features/auth/AuthEditorial";
 
 export const LoginPage: React.FC = () => {
   const { login, loginWithGoogle } = useAuth();
@@ -56,7 +56,7 @@ export const LoginPage: React.FC = () => {
           navigate("/");
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errorMessage = getErrorMessage(err);
       setApiError(errorMessage);
       toast.error("Đăng nhập thất bại", errorMessage || "Vui lòng kiểm tra email hoặc mật khẩu.");
@@ -72,7 +72,7 @@ export const LoginPage: React.FC = () => {
       try {
         await loginWithGoogle(access_token);
         toast.success("Đăng nhập Google thành công.");
-      } catch (err: any) {
+      } catch (err: unknown) {
         const errorMessage = getErrorMessage(err);
         setApiError(errorMessage);
         toast.error("Đăng nhập Google thất bại", errorMessage || "Vui lòng thử lại.");
@@ -87,28 +87,21 @@ export const LoginPage: React.FC = () => {
   });
 
   return (
-    <div className="max-w-md w-full mx-auto my-12 bg-white rounded-2xl border border-slate-200 p-8 shadow-xl">
-      {/* Title */}
-      <div className="flex flex-col items-center mb-8">
-        <div className="p-3 bg-amber-800 text-white rounded-2xl mb-3 shadow-md">
-          <Coffee size={28} />
-        </div>
-        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Đăng nhập tài khoản</h2>
-        <p className="text-sm text-slate-400 mt-1">Chào mừng bạn quay lại với Cafe INV</p>
-      </div>
-
+    <AuthEditorial mode="login">
       {apiError && (
-        <div className="mb-6 p-4 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium rounded-lg">
+        <div className="auth-error" role="alert">
           {apiError}
         </div>
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="auth-form" aria-busy={isLoading}>
         <Input
           label="Email"
           type="email"
           placeholder="name@domain.com"
+          name="email"
+          autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           error={errors.email}
@@ -118,50 +111,52 @@ export const LoginPage: React.FC = () => {
           label="Mật khẩu"
           type="password"
           placeholder="••••••"
+          name="password"
+          autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           error={errors.password}
         />
 
-        <Button type="submit" className="w-full py-3" isLoading={isLoading}>
-          Đăng nhập
+        <Button type="submit" className="auth-submit" isLoading={isLoading}>
+          {isLoading ? "Đang đăng nhập…" : "Đăng nhập"}
         </Button>
       </form>
 
-      <div className="my-6 flex items-center gap-3">
-        <div className="h-px flex-1 bg-slate-200" />
-        <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Hoặc</span>
-        <div className="h-px flex-1 bg-slate-200" />
+      <div className="auth-divider">
+        <div className="auth-divider-line" />
+        <span className="auth-muted">Hoặc</span>
+        <div className="auth-divider-line" />
       </div>
 
       <Button
         type="button"
         variant="secondary"
-        className="w-full py-3"
+        className="auth-google"
         isLoading={isGoogleLoading}
         onClick={() => handleGoogleLogin()}
       >
         <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-sm font-bold text-slate-700">
           G
         </span>
-        Đăng nhập với Google
+        {isGoogleLoading ? "Đang kết nối…" : "Đăng nhập với Google"}
       </Button>
 
-      <div className="mt-4 text-center">
-        <Link to="/forgot-password" className="text-sm font-semibold text-amber-800 hover:text-amber-950 hover:underline">
+      <div className="auth-recovery">
+        <Link to="/forgot-password" className="auth-link">
           Quên mật khẩu?
         </Link>
       </div>
 
       {/* Navigation to Register */}
-      <p className="text-center text-sm text-slate-500 mt-6">
+      <p className="auth-switch">
         Chưa có tài khoản?{" "}
-        <Link to="/register" className="font-semibold text-amber-800 hover:text-amber-950 hover:underline">
+        <Link to="/register" className="auth-link">
           Đăng ký ngay
         </Link>
       </p>
 
 
-    </div>
+    </AuthEditorial>
   );
 };

@@ -6,3 +6,10 @@ dist
 .env
 .env.*
 *.log
+
+# Local execution artifacts; migrations and recovery evidence remain included.
+.task-artifacts
+reports
+coverage
+**/coverage
+**/*.tsbuildinfo

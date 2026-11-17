@@ -41,8 +41,45 @@ model PurchaseRequest {
   items    PurchaseRequestItem[]
   receipts GoodsReceipt[]
 
+  agentProposalId      String?
+  agentProposalVersion Int?
+  agentProposal        AgentPurchaseProposalVersion? @relation(fields: [agentProposalId, agentProposalVersion], references: [proposalId, version], onDelete: Restrict, map: "PurchaseRequest_agentProposal_fkey")
+  agentCommandReceipts AgentPurchaseCommandReceipt[]
+
+  @@unique([agentProposalId, agentProposalVersion])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Agent proposals are not PurchaseRequests. Revisions retain their own approval evidence.
+model AgentPurchaseProposal {
+  id             String @id @default(cuid())
+  currentVersion Int    @default(1)
+  revisions      AgentPurchaseProposalVersion[]
+  createdAt      DateTime @default(now())
+}
+
+model AgentPurchaseProposalVersion {
+  proposalId   String
+  version      Int
+  proposal     AgentPurchaseProposal @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  snapshot     Json
+  contentHash  String
+  approvedById String?
+  approvedAt   DateTime?
+  createdAt    DateTime @default(now())
+  purchaseRequest PurchaseRequest?
+
+  @@id([proposalId, version])
+}
+
+model AgentPurchaseCommandReceipt {
+  key               String @id
+  requestHash       String
+  purchaseRequestId String
+  purchaseRequest   PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Restrict)
+  createdAt         DateTime @default(now())
 }
 
 model PurchaseRequestItem {

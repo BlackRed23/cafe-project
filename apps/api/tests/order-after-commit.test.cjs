@@ -5,6 +5,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
+const httpErrors = {};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../src/common/http-error.ts'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+}).outputText, { exports: httpErrors });
 
 function fixture({ failCommit = false, failLedger = false, failAgent = false } = {}) {
     let committed = false;
@@ -30,6 +34,7 @@ function fixture({ failCommit = false, failLedger = false, failAgent = false } =
     vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, {
         exports, Date, console: { error: (...args) => errors.push(args) },
         require(name) {
+            if (name === '../../common/http-error') return httpErrors;
             if (name === '@cafe-project/database') return { prisma, OrderStatus: { COMPLETED: 'COMPLETED', CANCELLED: 'CANCELLED', PROCESSING: 'PROCESSING', PENDING: 'PENDING' }, InventoryTransactionType: { ORDER: 'ORDER', CANCEL: 'CANCEL' }, PaymentStatus: { PAID: 'PAID' }, TransactionStatus: { PAID: 'PAID' }, ConsumptionStatus: { COMMITTED: 'COMMITTED', VOIDED: 'VOIDED' } };
             if (name === '../../common/ingredient-cost.utils') return {
                 toDecimal: () => ({ mul: () => 0, abs: () => ({ lte: () => true }) }),

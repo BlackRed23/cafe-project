@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import type { UserRole } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
 import { sendError } from '../../common/response';
-import type { JwtUserPayload } from './auth.service';
+import type { JwtUserPayload } from './auth.types';
 
 export type AuthenticatedRequest = Request & {
     user?: JwtUserPayload;

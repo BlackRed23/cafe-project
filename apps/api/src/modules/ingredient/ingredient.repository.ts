@@ -43,6 +43,19 @@ export type IngredientTransactionRecord = Prisma.InventoryTransactionGetPayload<
 }>;
 
 export const ingredientRepository = {
+    /** Consistent ingredient/batch/physical-demand snapshot; no reservation allocation guessed. */
+    async planningSnapshot(id: string, from: Date, to: Date) {
+        return prisma.$transaction(async tx => {
+            const ingredient = await tx.ingredient.findUnique({ where: { id }, include: { batches: true } });
+            if (!ingredient) return null;
+            const consumption = await tx.inventoryTransaction.findMany({
+                where: { ingredientId: id, type: 'CONSUME', referenceType: 'Order', orderItemId: { not: null },
+                    createdAt: { gte: from, lt: to } },
+                select: { quantity: true }, orderBy: { id: 'asc' }, take: 10001,
+            });
+            return { ingredient, consumption };
+        }, { isolationLevel: 'RepeatableRead', timeout: 4000 });
+    },
     async findMany(filters: {
         search?: string;
         categoryId?: string;

@@ -6,7 +6,7 @@ import { useToast } from "../contexts/ToastContext";
 import { Input } from "../components/common/Input";
 import { Button } from "../components/common/Button";
 import { getErrorMessage } from "../api/client";
-import { Coffee } from "lucide-react";
+import { AuthEditorial } from "../features/auth/AuthEditorial";
 
 export const RegisterPage: React.FC = () => {
   const { register, loginWithGoogle } = useAuth();
@@ -68,7 +68,7 @@ export const RegisterPage: React.FC = () => {
     try {
       await register({ name: name.trim(), email: email.trim(), password: trimmedPassword, phone: phone.trim() });
       toast.success("Đăng ký thành công.");
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errorMessage = getErrorMessage(err);
       setApiError(errorMessage);
       toast.error("Đăng ký thất bại", errorMessage || "Vui lòng kiểm tra lại thông tin.");
@@ -84,7 +84,7 @@ export const RegisterPage: React.FC = () => {
       try {
         await loginWithGoogle(access_token);
         toast.success("Đăng ký Google thành công.");
-      } catch (err: any) {
+      } catch (err: unknown) {
         const errorMessage = getErrorMessage(err);
         setApiError(errorMessage);
         toast.error("Đăng ký Google thất bại", errorMessage || "Vui lòng thử lại.");
@@ -99,28 +99,21 @@ export const RegisterPage: React.FC = () => {
   });
 
   return (
-    <div className="max-w-md w-full mx-auto my-12 bg-white rounded-2xl border border-slate-200 p-8 shadow-xl">
-      {/* Title */}
-      <div className="flex flex-col items-center mb-8">
-        <div className="p-3 bg-amber-800 text-white rounded-2xl mb-3 shadow-md">
-          <Coffee size={28} />
-        </div>
-        <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Đăng ký tài khoản</h2>
-        <p className="text-sm text-slate-400 mt-1">Trở thành thành viên và đặt hàng nhanh chóng</p>
-      </div>
-
+    <AuthEditorial mode="register">
       {apiError && (
-        <div className="mb-6 p-4 bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium rounded-lg">
+        <div className="auth-error" role="alert">
           {apiError}
         </div>
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="auth-form" aria-busy={isLoading}>
         <Input
           label="Họ và tên"
           type="text"
           placeholder="Nguyen Van A"
+          name="name"
+          autoComplete="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           error={errors.name}
@@ -130,6 +123,8 @@ export const RegisterPage: React.FC = () => {
           label="Email"
           type="email"
           placeholder="name@domain.com"
+          name="email"
+          autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           error={errors.email}
@@ -139,6 +134,8 @@ export const RegisterPage: React.FC = () => {
           label="Số điện thoại"
           type="tel"
           placeholder="0987654321"
+          name="phone"
+          autoComplete="tel"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           error={errors.phone}
@@ -148,51 +145,57 @@ export const RegisterPage: React.FC = () => {
           label="Mật khẩu"
           type="password"
           placeholder="••••••"
+          aria-describedby="auth-password-help"
+          name="password"
+          autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           error={errors.password}
         />
+        <p id="auth-password-help" className="auth-help">8–64 ký tự; gồm chữ hoa, chữ thường, số và ký tự @$!%*?&amp;#.</p>
 
         <Input
           label="Nhập lại mật khẩu"
           type="password"
           placeholder="••••••"
+          name="confirmPassword"
+          autoComplete="new-password"
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
           error={errors.confirmPassword}
         />
 
-        <Button type="submit" className="w-full py-3" isLoading={isLoading}>
-          Đăng ký
+        <Button type="submit" className="auth-submit" isLoading={isLoading}>
+          {isLoading ? "Đang đăng ký…" : "Đăng ký"}
         </Button>
       </form>
 
-      <div className="my-6 flex items-center gap-3">
-        <div className="h-px flex-1 bg-slate-200" />
-        <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Hoặc</span>
-        <div className="h-px flex-1 bg-slate-200" />
+      <div className="auth-divider">
+        <div className="auth-divider-line" />
+        <span className="auth-muted">Hoặc</span>
+        <div className="auth-divider-line" />
       </div>
 
       <Button
         type="button"
         variant="secondary"
-        className="w-full py-3"
+        className="auth-google"
         isLoading={isGoogleLoading}
         onClick={() => handleGoogleRegister()}
       >
         <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-sm font-bold text-slate-700">
           G
         </span>
-        Đăng ký với Google
+        {isGoogleLoading ? "Đang kết nối…" : "Đăng ký với Google"}
       </Button>
 
       {/* Navigation to Login */}
-      <p className="text-center text-sm text-slate-500 mt-6">
+      <p className="auth-switch">
         Đã có tài khoản?{" "}
-        <Link to="/login" className="font-semibold text-amber-800 hover:text-amber-950 hover:underline">
+        <Link to="/login" className="auth-link">
           Đăng nhập ngay
         </Link>
       </p>
-    </div>
+    </AuthEditorial>
   );
 };

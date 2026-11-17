@@ -29,6 +29,8 @@ export const normalizeUnitString = (unit: string | null | undefined): string => 
     return unit.trim().toLowerCase();
 };
 
+export const isKnownUnit = (unit: string): boolean => Object.prototype.hasOwnProperty.call(UNIT_MAP, normalizeUnitString(unit));
+
 export const getUnitConversionFactor = (fromUnit: string, toBaseUnit: string): Prisma.Decimal => {
     const fromNorm = normalizeUnitString(fromUnit);
     const toNorm = normalizeUnitString(toBaseUnit);

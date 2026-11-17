@@ -3,7 +3,7 @@ import { HttpError } from '../../common/http-error';
 import { calculateRecipeCost, roundCost4, roundMoney2, toDecimal } from '../../common/ingredient-cost.utils';
 import { convertToBaseQuantity } from '../../common/unit-conversion';
 import { recipeInclude, recipeRepository, toppingInclude, type RecipeRecord, type ToppingRecord } from './recipe.repository';
-import type { CreateRecipeInput, CreateToppingInput, PreviewRecipeCostInput, UpdateToppingInput } from './recipe.validator';
+import { createRecipeSchema, type CreateRecipeInput, type CreateToppingInput, type PreviewRecipeCostInput, type UpdateToppingInput } from './recipe.validator';
 
 export const toRecipeDto = (recipe: RecipeRecord) => {
     const costCalc = calculateRecipeCost({
@@ -245,6 +245,9 @@ export const recipeService = {
     },
 
     async createVersion(productId: string, input: CreateRecipeInput) {
+        const parsed = createRecipeSchema.safeParse(input);
+        if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid recipe.');
+        input = parsed.data;
         const product = await prisma.product.findUnique({ where: { id: productId } });
         if (!product) {
             throw new HttpError(404, 'Không tìm thấy sản phẩm.');
@@ -325,6 +328,12 @@ export const recipeService = {
             const recipe = await recipeRepository.findById(recipeId, tx);
             if (!recipe || recipe.productId !== productId) {
                 throw new HttpError(404, 'Không tìm thấy phiên bản công thức của sản phẩm này.');
+            }
+
+            if (!recipe.ingredients.length || !recipe.yieldQuantity.gt(0) ||
+                recipe.ingredients.some(item => !item.quantityBase.gt(0) ||
+                    !item.ingredient.isActive || item.ingredient.deletedAt !== null)) {
+                throw new HttpError(409, 'Recipe is invalid or contains unavailable ingredients.');
             }
 
             const now = new Date();

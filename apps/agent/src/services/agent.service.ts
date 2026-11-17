@@ -582,7 +582,8 @@ export const agentService = {
             const scope: ScanInventoryScope = input.scope || 'ALL';
             const inventories = scope === 'INGREDIENT' ? [] : await agentRepository.findInventories(input.productIds);
             const results = [];
-            const createdPurchaseRequests = [];
+            const createdPurchaseRequests: never[] = [];
+            const createdProposals = [];
 
             for (const inventory of inventories) {
                 const product = inventory.product;
@@ -999,32 +1000,15 @@ export const agentService = {
                             settings.slogan
                         ]
                     );
-                    const request = await agentRepository.createAiPurchaseRequest(inventory, supplierProduct, recommendedQty, reasoning, userId);
-                    createdPurchaseRequests.push({ id: request.id, requestNumber: request.requestNumber, supplierName: supplierProduct.supplier.name, status: request.status });
-                    const output = {
-                        ...baseOutput,
-                        reason: 'CREATED_PURCHASE_REQUEST',
-                        inventoryId: inventory.id,
-                        purchaseRequestId: request.id,
-                        purchaseRequestCode: request.requestNumber,
-                        recommendedSupplierId: supplierProduct.supplierId,
-                        supplierName: supplierProduct.supplier.name,
-                        recommendedQty,
-                        backupSuppliers,
-                        confidence: 0.82,
-                        message: `AI Agent tự động quét tồn kho sản phẩm ${product.name}. Khả dụng ${availableStock}, ngưỡng ${minThreshold}. Sản phẩm cần nhập hàng.\nAI Agent đã tạo yêu cầu nhập hàng ${request.requestNumber} cho sản phẩm ${product.name}.`,
-                        notification: notificationForCreatedPurchaseRequest(product.name, request.id)
-                    };
-                    logger.info(`[AgentScan] CREATE_PR | product="${product.name}" (${inventory.productId}) | qty=${recommendedQty} | supplier="${supplierProduct.supplier.name}"`, { input: baseInput, output });
+                    const proposal = await agentRepository.proposeInventoryPurchase(inventory, supplierProduct, recommendedQty, reasoning, userId);
+                    createdProposals.push(proposal);
                     const log = await agentRepository.createLog({
-                        action: 'SCAN_INVENTORY_CREATE_PURCHASE_REQUEST',
-                        input: JSON.stringify(baseInput),
-                        output: JSON.stringify(output),
-                        reasoning,
-                        result: 'CREATED_PURCHASE_REQUEST',
-                        fallback_used: true,
-                        reference_type: 'PurchaseRequest',
-                        reference_id: request.id,
+                        action: 'SCAN_INVENTORY_PROPOSE_PURCHASE', input: JSON.stringify(baseInput),
+                        output: JSON.stringify({ ...baseOutput, proposalId: proposal.proposalId, version: proposal.version,
+                            contentHash: proposal.contentHash, snapshot: proposal.snapshot, reason: 'PROPOSED',
+                            message: 'Đã tạo đề xuất nhập hàng; cần ADMIN duyệt đúng phiên bản tại Backend.' }),
+                        reasoning, result: 'RECOMMENDED', fallback_used: true,
+                        reference_type: 'AgentPurchaseProposal', reference_id: proposal.proposalId,
                         creator: userId ? { connect: { id: userId } } : undefined
                     });
                     results.push(toLogDto(log));
@@ -1090,7 +1074,7 @@ export const agentService = {
 
             let ingredientLowCount = 0;
             let ingredientExpiringCount = 0;
-            let ingredientPrCreatedCount = 0;
+            let ingredientProposalCreatedCount = 0;
 
             for (const ingredient of ingredients) {
                 try {
@@ -1408,48 +1392,17 @@ export const agentService = {
                         ]
                     );
 
-                    const request = await agentRepository.createAiIngredientPurchaseRequest(
-                        ingredient,
-                        activeSupplierLink,
-                        recommendedBaseQty,
-                        reasoning,
-                        userId
-                    );
-                    ingredientPrCreatedCount++;
-                    createdPurchaseRequests.push({
-                        id: request.id,
-                        requestNumber: request.requestNumber,
-                        supplierName: activeSupplierLink.supplier.name,
-                        status: request.status
-                    });
-
-                    const output = {
-                        ...baseOutput,
-                        reason: 'CREATED_PURCHASE_REQUEST',
-                        purchaseRequestId: request.id,
-                        purchaseRequestCode: request.requestNumber,
-                        recommendedSupplierId: activeSupplierLink.supplierId,
-                        supplierName: activeSupplierLink.supplier.name,
-                        recommendedQty: recommendedBaseQty,
-                        recommendedPacks: neededPacks,
-                        purchaseUnit: activeSupplierLink.purchaseUnit || unit,
-                        conversionQuantity: convQty,
-                        replenishmentPlanSteps: plan.map((s) => s.id),
-                        backupSuppliers,
-                        confidence: 0.85,
-                        message: `AI Agent tự động quét nguyên liệu ${ingredient.name}. Khả dụng ${availableStock} ${unit}, ngưỡng ${minThreshold} ${unit}. Đã tạo yêu cầu nhập hàng ${request.requestNumber} (${neededPacks} ${activeSupplierLink.purchaseUnit || unit}).`,
-                        notification: notificationForCreatedPurchaseRequest(ingredient.name, request.id)
-                    };
-
+                    const proposal = await agentRepository.proposeIngredientPurchase(
+                        ingredient, activeSupplierLink, recommendedBaseQty, reasoning, userId);
+                    createdProposals.push(proposal);
+                    ingredientProposalCreatedCount++;
                     const log = await agentRepository.createLog({
-                        action: 'SCAN_INGREDIENT_CREATE_PURCHASE_REQUEST',
-                        input: JSON.stringify(baseInput),
-                        output: JSON.stringify(output),
-                        reasoning,
-                        result: 'CREATED_PURCHASE_REQUEST',
-                        fallback_used: true,
-                        reference_type: 'PurchaseRequest',
-                        reference_id: request.id,
+                        action: 'SCAN_INGREDIENT_PROPOSE_PURCHASE', input: JSON.stringify(baseInput),
+                        output: JSON.stringify({ ...baseOutput, proposalId: proposal.proposalId, version: proposal.version,
+                            contentHash: proposal.contentHash, snapshot: proposal.snapshot, reason: 'PROPOSED',
+                            message: 'Đã tạo đề xuất nhập nguyên liệu; cần ADMIN duyệt đúng phiên bản tại Backend.' }),
+                        reasoning, result: 'RECOMMENDED', fallback_used: true,
+                        reference_type: 'AgentPurchaseProposal', reference_id: proposal.proposalId,
                         creator: userId ? { connect: { id: userId } } : undefined
                     });
                     results.push(toLogDto(log));
@@ -1497,7 +1450,7 @@ export const agentService = {
                 ingredientScanned: ingredients.length,
                 ingredientLowCount,
                 ingredientExpiringCount,
-                ingredientPrCreatedCount,
+                ingredientProposalCreatedCount,
                 stockOkCount: results.filter(r => r.result === 'STOCK_OK').length,
                 warningCount: results.filter(r => r.reason === 'THRESHOLD_REACHED' || r.result === 'WARNING').length,
                 atThresholdCount: results.filter(r => r.reason === 'THRESHOLD_REACHED').length,
@@ -1525,7 +1478,7 @@ export const agentService = {
             activeTriggerType = null;
             activeScanStartedAt = null;
 
-            return { results, createdPurchaseRequests, scanSessionId, sessionStatus: 'SUCCESS', summary };
+            return { results, createdPurchaseRequests, createdProposals, scanSessionId, sessionStatus: 'SUCCESS', summary };
         } catch (error) {
             activeScanSessionId = null;
             activeTriggerType = null;
@@ -1694,7 +1647,7 @@ export const agentService = {
         if (!recommendation) throw new AgentHttpError(400, 'Recommendation data is missing.');
 
         try {
-            return await agentRepository.createPurchaseRequestFromRecommendation({
+            return await agentRepository.proposeFromRecommendation({
                 logId,
                 productId: recommendation.productId,
                 ingredientId: recommendation.ingredientId,

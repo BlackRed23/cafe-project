@@ -45,7 +45,7 @@ export const Badge: React.FC<BadgeProps> = ({ status, className = "", context })
   const colorClasses = colorsMap[cleanStatus] || "bg-slate-50 text-slate-800 border-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-800";
 
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[13px] font-bold border transition-colors ${colorClasses} ${className}`}>
+    <span data-ds="badge" data-status={cleanStatus} className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[13px] font-bold border transition-colors ${colorClasses} ${className}`}>
       {label}
     </span>
   );

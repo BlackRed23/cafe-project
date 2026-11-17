@@ -1,0 +1,31 @@
+{
+  "status": "BLOCKED",
+  "phase_0": {
+    "scan_completed": true,
+    "existing_components": [
+      {"component":"Native Provider, contracts, registry, validator, dispatch, Backend bindings","status":"IMPLEMENTED_AND_CONNECTED"},
+      {"component":"createAgentRuntime live PostgreSQL persistence","status":"BLOCKED","evidence":"Existing mock repository and POSTGRES_NOT_VERIFIED guard; existing READ runtime reuses AgentWorkflow without persistence"},
+      {"component":"Actor permission filtering, no-call classification, independent Provider live gate","status":"PARTIALLY_IMPLEMENTED","action":"Fixed"}
+    ],
+    "root_causes": ["Live probe previously stopped before Provider when actor absent", "Catalog included tools before checking individual permissions", "Missing native calls shared one error; forced tool choice conflicted with missing-input clarification"],
+    "implementation_gaps": ["Real Provider response and native calls unverified", "No active ADMIN/STAFF or active Ingredient in local development database"],
+    "runtime": "generateDynamicPlan -> generateNativeToolPlan -> tools/schema -> validated DynamicToolPlan -> planDynamicTools -> executeDynamicTools -> registry.dispatch -> fresh authorization -> existing Backend service",
+    "protected_scope": "Gemini, recommendation, model/base URL/key, database/schema/migrations/seeds, LangGraph"
+  },
+  "phase_1": {"planner":"PASS","native_tool_calling":"BLOCKED","validated_tool_calls":0,"planner_pass_scope":"52 unit tests; live not accepted"},
+  "phase_1_5": {"tool_registry":"NOT_RUN","authorization":"BLOCKED","backend":"NOT_RUN","mock_used":false,"tool_executed":false},
+  "gates": {"A":"FAIL","B":"NOT_RUN","C":"NOT_RUN","A_reason":"LLM_REQUEST_FAILED before HTTP response; escalated retry denied"},
+  "langgraph": {"inspected":true,"modified":false,"finding":"No references found in current Agent source/runtime scan"},
+  "modified_files": ["apps/agent/src/services/openai-planner.service.ts","apps/agent/src/workflows/agent-workflow.ts","apps/agent/tests/native-tool-planner.test.cjs","apps/api/tests/native-tool-live.cjs"],
+  "tests": {
+    "focused":{"passed":52,"failed":0,"skipped":0},
+    "full_suite":{"status":"PASS","passed":318,"failed":0,"skipped":0,"exit_code":0,"command":"node --test --test-concurrency=1 apps/api/tests/*.test.cjs apps/agent/tests/*.test.cjs apps/web/tests/*.test.cjs"},
+    "initial_full_suite":"Failed: fixed planner alias regression and Web page.goto timeout; rerun sequentially",
+    "build":{"agent":"PASS","api":"PASS"},
+    "diff_check":"PASS",
+    "config":{"provider_matches":true,"base_url_matches":true,"model_matches":true},
+    "live":{"provider_requests":1,"provider_http_status":null,"tool_schema_count":1,"postgres_read_only":"PASS","actor_found":false,"ingredient_found":false,"write_operations":0,"mock_used":false}
+  },
+  "remaining_blockers": ["LLM_REQUEST_FAILED", "BLOCKED_NO_AUTHORIZED_ACTOR", "BLOCKED_NO_TEST_DATA", "Automatic approval review rejected external FreeModel payload egress; explicit approval required"],
+  "next": ["User approval required to send tool schemas and request business IDs to FreeModel; do not retry around rejection", "Provide existing authorized actor and real active Ingredient through normal application administration; no seed or privilege bypass"]
+}

@@ -1,0 +1,2747 @@
+{
+  "identity": [
+    {
+      "database": "cafe-kltn",
+      "schema": "public",
+      "version": "PostgreSQL 18.6 on x86_64-windows, compiled by msvc-19.44.35229, 64-bit"
+    }
+  ],
+  "tables": [
+    {
+      "table": "AgentLog",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "Category",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "Inventory",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "InventoryBatch",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "InventoryTransaction",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "Order",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "OrderItem",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "Payment",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "Product",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "PurchaseRequest",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "PurchaseRequestItem",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "Supplier",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "SupplierProduct",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "SystemSetting",
+      "count": "0",
+      "fingerprint": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    {
+      "table": "User",
+      "count": "1",
+      "fingerprint": "583ca7530a8629209889e526a04449d6"
+    },
+    {
+      "table": "_prisma_migrations",
+      "count": "2",
+      "fingerprint": "38efba3d1a590e6ac3606bef942e81b8"
+    }
+  ],
+  "columns": [
+    {
+      "table_name": "AgentLog",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "AgentLog",
+      "column_name": "action",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "AgentLog",
+      "column_name": "input",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "AgentLog",
+      "column_name": "output",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "AgentLog",
+      "column_name": "reasoning",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "AgentLog",
+      "column_name": "fallback_used",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "AgentLog",
+      "column_name": "error_message",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "AgentLog",
+      "column_name": "reference_type",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "AgentLog",
+      "column_name": "reference_id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "AgentLog",
+      "column_name": "result",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "AgentLog",
+      "column_name": "triggered_at",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "AgentLog",
+      "column_name": "createdBy",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Category",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Category",
+      "column_name": "name",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Category",
+      "column_name": "description",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Category",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Category",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Inventory",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Inventory",
+      "column_name": "productId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Inventory",
+      "column_name": "quantity",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 32,
+      "numeric_scale": 0
+    },
+    {
+      "table_name": "Inventory",
+      "column_name": "reservedStock",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 32,
+      "numeric_scale": 0
+    },
+    {
+      "table_name": "Inventory",
+      "column_name": "minThreshold",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "10",
+      "numeric_precision": 32,
+      "numeric_scale": 0
+    },
+    {
+      "table_name": "Inventory",
+      "column_name": "unit",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Inventory",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Inventory",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryBatch",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryBatch",
+      "column_name": "inventoryId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryBatch",
+      "column_name": "batchCode",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryBatch",
+      "column_name": "quantity",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 32,
+      "numeric_scale": 0
+    },
+    {
+      "table_name": "InventoryBatch",
+      "column_name": "expirationDate",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryBatch",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryBatch",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryTransaction",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryTransaction",
+      "column_name": "productId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryTransaction",
+      "column_name": "batchId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryTransaction",
+      "column_name": "userId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryTransaction",
+      "column_name": "type",
+      "data_type": "USER-DEFINED",
+      "udt_name": "InventoryTransactionType",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryTransaction",
+      "column_name": "quantity",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0
+    },
+    {
+      "table_name": "InventoryTransaction",
+      "column_name": "reason",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "InventoryTransaction",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Order",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Order",
+      "column_name": "userId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Order",
+      "column_name": "status",
+      "data_type": "USER-DEFINED",
+      "udt_name": "OrderStatus",
+      "is_nullable": "NO",
+      "column_default": "'PENDING'::\"OrderStatus\"",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Order",
+      "column_name": "totalAmount",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 12,
+      "numeric_scale": 2
+    },
+    {
+      "table_name": "Order",
+      "column_name": "shippingFee",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 12,
+      "numeric_scale": 2
+    },
+    {
+      "table_name": "Order",
+      "column_name": "shippingZone",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Order",
+      "column_name": "shippingName",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Order",
+      "column_name": "shippingPhone",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Order",
+      "column_name": "shippingAddress",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Order",
+      "column_name": "note",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Order",
+      "column_name": "stockDeductedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Order",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Order",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "OrderItem",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "OrderItem",
+      "column_name": "orderId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "OrderItem",
+      "column_name": "productId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "OrderItem",
+      "column_name": "quantity",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0
+    },
+    {
+      "table_name": "OrderItem",
+      "column_name": "price",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": 12,
+      "numeric_scale": 2
+    },
+    {
+      "table_name": "OrderItem",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "OrderItem",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Payment",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Payment",
+      "column_name": "orderId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Payment",
+      "column_name": "method",
+      "data_type": "USER-DEFINED",
+      "udt_name": "PaymentMethod",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Payment",
+      "column_name": "amount",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": 12,
+      "numeric_scale": 2
+    },
+    {
+      "table_name": "Payment",
+      "column_name": "status",
+      "data_type": "USER-DEFINED",
+      "udt_name": "PaymentStatus",
+      "is_nullable": "NO",
+      "column_default": "'PENDING'::\"PaymentStatus\"",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Payment",
+      "column_name": "paidAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Payment",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Payment",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "name",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "sku",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "description",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "price",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 12,
+      "numeric_scale": 2
+    },
+    {
+      "table_name": "Product",
+      "column_name": "costPrice",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 65,
+      "numeric_scale": 30
+    },
+    {
+      "table_name": "Product",
+      "column_name": "unit",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'Hộp'::text",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "imageUrl",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "isActive",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "true",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "deletedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "pendingDeleteUntil",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "categoryId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "nutritionFacts",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "usageInstructions",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "storageInstructions",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "origin",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "certifications",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Product",
+      "column_name": "expiryInfo",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "requestNumber",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "status",
+      "data_type": "USER-DEFINED",
+      "udt_name": "PurchaseRequestStatus",
+      "is_nullable": "NO",
+      "column_default": "'PENDING'::\"PurchaseRequestStatus\"",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "supplierId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "notes",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "aiGenerated",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "totalAmount",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 12,
+      "numeric_scale": 2
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "requestedBy",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "approvedBy",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "approvedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "emailSentAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "emailContent",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "retryCount",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 32,
+      "numeric_scale": 0
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "lastEmailError",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "receivedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "paymentStatus",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'UNPAID'::text",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "paidAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "paymentNote",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "receivedAmount",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 12,
+      "numeric_scale": 2
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "amountPaid",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 12,
+      "numeric_scale": 2
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequest",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequestItem",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequestItem",
+      "column_name": "requestId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequestItem",
+      "column_name": "inventoryId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequestItem",
+      "column_name": "productId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequestItem",
+      "column_name": "quantity",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": 32,
+      "numeric_scale": 0
+    },
+    {
+      "table_name": "PurchaseRequestItem",
+      "column_name": "quantityReceived",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 32,
+      "numeric_scale": 0
+    },
+    {
+      "table_name": "PurchaseRequestItem",
+      "column_name": "unitPrice",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": 12,
+      "numeric_scale": 2
+    },
+    {
+      "table_name": "PurchaseRequestItem",
+      "column_name": "notes",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequestItem",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "PurchaseRequestItem",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Supplier",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Supplier",
+      "column_name": "name",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Supplier",
+      "column_name": "email",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Supplier",
+      "column_name": "contact",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Supplier",
+      "column_name": "address",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Supplier",
+      "column_name": "status",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": "'ACTIVE'::text",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Supplier",
+      "column_name": "deletedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Supplier",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "Supplier",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "supplierId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "productId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "price",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": 12,
+      "numeric_scale": 2
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "supplierSku",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "minOrderQuantity",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "1",
+      "numeric_precision": 32,
+      "numeric_scale": 0
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "leadTimeDays",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "3",
+      "numeric_precision": 32,
+      "numeric_scale": 0
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "isPreferred",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "false",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "purchaseUnit",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "conversionQuantity",
+      "data_type": "double precision",
+      "udt_name": "float8",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": 53,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "conversionTargetUnit",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SupplierProduct",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SystemSetting",
+      "column_name": "key",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SystemSetting",
+      "column_name": "value",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "SystemSetting",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "id",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "email",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "password",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "name",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "phone",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "avatar",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "googleId",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "provider",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "resetToken",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "resetTokenExpiresAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "role",
+      "data_type": "USER-DEFINED",
+      "udt_name": "UserRole",
+      "is_nullable": "NO",
+      "column_default": "'CUSTOMER'::\"UserRole\"",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "isActive",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "is_nullable": "NO",
+      "column_default": "true",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "lastLoginAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "createdAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "User",
+      "column_name": "updatedAt",
+      "data_type": "timestamp without time zone",
+      "udt_name": "timestamp",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "checksum",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "finished_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "migration_name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "is_nullable": "NO",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "logs",
+      "data_type": "text",
+      "udt_name": "text",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "rolled_back_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null,
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "started_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "NO",
+      "column_default": "now()",
+      "numeric_precision": null,
+      "numeric_scale": null
+    },
+    {
+      "table_name": "_prisma_migrations",
+      "column_name": "applied_steps_count",
+      "data_type": "integer",
+      "udt_name": "int4",
+      "is_nullable": "NO",
+      "column_default": "0",
+      "numeric_precision": 32,
+      "numeric_scale": 0
+    }
+  ],
+  "enums": [
+    {
+      "typname": "InventoryTransactionType",
+      "enumlabel": "IMPORT"
+    },
+    {
+      "typname": "InventoryTransactionType",
+      "enumlabel": "ORDER"
+    },
+    {
+      "typname": "InventoryTransactionType",
+      "enumlabel": "CANCEL"
+    },
+    {
+      "typname": "InventoryTransactionType",
+      "enumlabel": "DAMAGE"
+    },
+    {
+      "typname": "InventoryTransactionType",
+      "enumlabel": "ADJUSTMENT"
+    },
+    {
+      "typname": "InventoryTransactionType",
+      "enumlabel": "SIMULATE_SALE"
+    },
+    {
+      "typname": "OrderStatus",
+      "enumlabel": "PENDING"
+    },
+    {
+      "typname": "OrderStatus",
+      "enumlabel": "PROCESSING"
+    },
+    {
+      "typname": "OrderStatus",
+      "enumlabel": "COMPLETED"
+    },
+    {
+      "typname": "OrderStatus",
+      "enumlabel": "CANCELLED"
+    },
+    {
+      "typname": "PaymentMethod",
+      "enumlabel": "CASH"
+    },
+    {
+      "typname": "PaymentMethod",
+      "enumlabel": "BANK_TRANSFER"
+    },
+    {
+      "typname": "PaymentMethod",
+      "enumlabel": "VIET_QR"
+    },
+    {
+      "typname": "PaymentStatus",
+      "enumlabel": "PENDING"
+    },
+    {
+      "typname": "PaymentStatus",
+      "enumlabel": "PAID"
+    },
+    {
+      "typname": "PaymentStatus",
+      "enumlabel": "FAILED"
+    },
+    {
+      "typname": "PaymentStatus",
+      "enumlabel": "REFUNDED"
+    },
+    {
+      "typname": "PurchaseRequestStatus",
+      "enumlabel": "PENDING"
+    },
+    {
+      "typname": "PurchaseRequestStatus",
+      "enumlabel": "APPROVED"
+    },
+    {
+      "typname": "PurchaseRequestStatus",
+      "enumlabel": "SENT"
+    },
+    {
+      "typname": "PurchaseRequestStatus",
+      "enumlabel": "RECEIVED"
+    },
+    {
+      "typname": "PurchaseRequestStatus",
+      "enumlabel": "COMPLETED"
+    },
+    {
+      "typname": "PurchaseRequestStatus",
+      "enumlabel": "REJECTED"
+    },
+    {
+      "typname": "UserRole",
+      "enumlabel": "ADMIN"
+    },
+    {
+      "typname": "UserRole",
+      "enumlabel": "STAFF"
+    },
+    {
+      "typname": "UserRole",
+      "enumlabel": "CUSTOMER"
+    }
+  ],
+  "constraints": [
+    {
+      "conname": "AgentLog_action_not_null",
+      "table_name": "\"AgentLog\"",
+      "definition": "NOT NULL action",
+      "convalidated": true
+    },
+    {
+      "conname": "AgentLog_createdBy_fkey",
+      "table_name": "\"AgentLog\"",
+      "definition": "FOREIGN KEY (\"createdBy\") REFERENCES \"User\"(id) ON UPDATE CASCADE ON DELETE SET NULL",
+      "convalidated": true
+    },
+    {
+      "conname": "AgentLog_fallback_used_not_null",
+      "table_name": "\"AgentLog\"",
+      "definition": "NOT NULL fallback_used",
+      "convalidated": true
+    },
+    {
+      "conname": "AgentLog_id_not_null",
+      "table_name": "\"AgentLog\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "AgentLog_pkey",
+      "table_name": "\"AgentLog\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "AgentLog_triggered_at_not_null",
+      "table_name": "\"AgentLog\"",
+      "definition": "NOT NULL triggered_at",
+      "convalidated": true
+    },
+    {
+      "conname": "Category_createdAt_not_null",
+      "table_name": "\"Category\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Category_id_not_null",
+      "table_name": "\"Category\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "Category_name_not_null",
+      "table_name": "\"Category\"",
+      "definition": "NOT NULL name",
+      "convalidated": true
+    },
+    {
+      "conname": "Category_pkey",
+      "table_name": "\"Category\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "Category_updatedAt_not_null",
+      "table_name": "\"Category\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryBatch_batchCode_not_null",
+      "table_name": "\"InventoryBatch\"",
+      "definition": "NOT NULL \"batchCode\"",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryBatch_createdAt_not_null",
+      "table_name": "\"InventoryBatch\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryBatch_expirationDate_not_null",
+      "table_name": "\"InventoryBatch\"",
+      "definition": "NOT NULL \"expirationDate\"",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryBatch_id_not_null",
+      "table_name": "\"InventoryBatch\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryBatch_inventoryId_fkey",
+      "table_name": "\"InventoryBatch\"",
+      "definition": "FOREIGN KEY (\"inventoryId\") REFERENCES \"Inventory\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryBatch_inventoryId_not_null",
+      "table_name": "\"InventoryBatch\"",
+      "definition": "NOT NULL \"inventoryId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryBatch_pkey",
+      "table_name": "\"InventoryBatch\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryBatch_quantity_not_null",
+      "table_name": "\"InventoryBatch\"",
+      "definition": "NOT NULL quantity",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryBatch_updatedAt_not_null",
+      "table_name": "\"InventoryBatch\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryTransaction_batchId_fkey",
+      "table_name": "\"InventoryTransaction\"",
+      "definition": "FOREIGN KEY (\"batchId\") REFERENCES \"InventoryBatch\"(id) ON UPDATE CASCADE ON DELETE SET NULL",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryTransaction_createdAt_not_null",
+      "table_name": "\"InventoryTransaction\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryTransaction_id_not_null",
+      "table_name": "\"InventoryTransaction\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryTransaction_pkey",
+      "table_name": "\"InventoryTransaction\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryTransaction_productId_fkey",
+      "table_name": "\"InventoryTransaction\"",
+      "definition": "FOREIGN KEY (\"productId\") REFERENCES \"Product\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryTransaction_productId_not_null",
+      "table_name": "\"InventoryTransaction\"",
+      "definition": "NOT NULL \"productId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryTransaction_quantity_not_null",
+      "table_name": "\"InventoryTransaction\"",
+      "definition": "NOT NULL quantity",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryTransaction_type_not_null",
+      "table_name": "\"InventoryTransaction\"",
+      "definition": "NOT NULL type",
+      "convalidated": true
+    },
+    {
+      "conname": "InventoryTransaction_userId_fkey",
+      "table_name": "\"InventoryTransaction\"",
+      "definition": "FOREIGN KEY (\"userId\") REFERENCES \"User\"(id) ON UPDATE CASCADE ON DELETE SET NULL",
+      "convalidated": true
+    },
+    {
+      "conname": "Inventory_createdAt_not_null",
+      "table_name": "\"Inventory\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Inventory_id_not_null",
+      "table_name": "\"Inventory\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "Inventory_minThreshold_not_null",
+      "table_name": "\"Inventory\"",
+      "definition": "NOT NULL \"minThreshold\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Inventory_pkey",
+      "table_name": "\"Inventory\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "Inventory_productId_fkey",
+      "table_name": "\"Inventory\"",
+      "definition": "FOREIGN KEY (\"productId\") REFERENCES \"Product\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "convalidated": true
+    },
+    {
+      "conname": "Inventory_productId_not_null",
+      "table_name": "\"Inventory\"",
+      "definition": "NOT NULL \"productId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Inventory_quantity_not_null",
+      "table_name": "\"Inventory\"",
+      "definition": "NOT NULL quantity",
+      "convalidated": true
+    },
+    {
+      "conname": "Inventory_reservedStock_not_null",
+      "table_name": "\"Inventory\"",
+      "definition": "NOT NULL \"reservedStock\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Inventory_unit_not_null",
+      "table_name": "\"Inventory\"",
+      "definition": "NOT NULL unit",
+      "convalidated": true
+    },
+    {
+      "conname": "Inventory_updatedAt_not_null",
+      "table_name": "\"Inventory\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "OrderItem_createdAt_not_null",
+      "table_name": "\"OrderItem\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "OrderItem_id_not_null",
+      "table_name": "\"OrderItem\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "OrderItem_orderId_fkey",
+      "table_name": "\"OrderItem\"",
+      "definition": "FOREIGN KEY (\"orderId\") REFERENCES \"Order\"(id) ON UPDATE CASCADE ON DELETE CASCADE",
+      "convalidated": true
+    },
+    {
+      "conname": "OrderItem_orderId_not_null",
+      "table_name": "\"OrderItem\"",
+      "definition": "NOT NULL \"orderId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "OrderItem_pkey",
+      "table_name": "\"OrderItem\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "OrderItem_price_not_null",
+      "table_name": "\"OrderItem\"",
+      "definition": "NOT NULL price",
+      "convalidated": true
+    },
+    {
+      "conname": "OrderItem_productId_fkey",
+      "table_name": "\"OrderItem\"",
+      "definition": "FOREIGN KEY (\"productId\") REFERENCES \"Product\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "convalidated": true
+    },
+    {
+      "conname": "OrderItem_productId_not_null",
+      "table_name": "\"OrderItem\"",
+      "definition": "NOT NULL \"productId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "OrderItem_quantity_not_null",
+      "table_name": "\"OrderItem\"",
+      "definition": "NOT NULL quantity",
+      "convalidated": true
+    },
+    {
+      "conname": "OrderItem_updatedAt_not_null",
+      "table_name": "\"OrderItem\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Order_createdAt_not_null",
+      "table_name": "\"Order\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Order_id_not_null",
+      "table_name": "\"Order\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "Order_pkey",
+      "table_name": "\"Order\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "Order_shippingFee_not_null",
+      "table_name": "\"Order\"",
+      "definition": "NOT NULL \"shippingFee\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Order_status_not_null",
+      "table_name": "\"Order\"",
+      "definition": "NOT NULL status",
+      "convalidated": true
+    },
+    {
+      "conname": "Order_totalAmount_not_null",
+      "table_name": "\"Order\"",
+      "definition": "NOT NULL \"totalAmount\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Order_updatedAt_not_null",
+      "table_name": "\"Order\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Order_userId_fkey",
+      "table_name": "\"Order\"",
+      "definition": "FOREIGN KEY (\"userId\") REFERENCES \"User\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "convalidated": true
+    },
+    {
+      "conname": "Order_userId_not_null",
+      "table_name": "\"Order\"",
+      "definition": "NOT NULL \"userId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Payment_amount_not_null",
+      "table_name": "\"Payment\"",
+      "definition": "NOT NULL amount",
+      "convalidated": true
+    },
+    {
+      "conname": "Payment_createdAt_not_null",
+      "table_name": "\"Payment\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Payment_id_not_null",
+      "table_name": "\"Payment\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "Payment_method_not_null",
+      "table_name": "\"Payment\"",
+      "definition": "NOT NULL method",
+      "convalidated": true
+    },
+    {
+      "conname": "Payment_orderId_fkey",
+      "table_name": "\"Payment\"",
+      "definition": "FOREIGN KEY (\"orderId\") REFERENCES \"Order\"(id) ON UPDATE CASCADE ON DELETE CASCADE",
+      "convalidated": true
+    },
+    {
+      "conname": "Payment_orderId_not_null",
+      "table_name": "\"Payment\"",
+      "definition": "NOT NULL \"orderId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Payment_pkey",
+      "table_name": "\"Payment\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "Payment_status_not_null",
+      "table_name": "\"Payment\"",
+      "definition": "NOT NULL status",
+      "convalidated": true
+    },
+    {
+      "conname": "Payment_updatedAt_not_null",
+      "table_name": "\"Payment\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Product_categoryId_fkey",
+      "table_name": "\"Product\"",
+      "definition": "FOREIGN KEY (\"categoryId\") REFERENCES \"Category\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "convalidated": true
+    },
+    {
+      "conname": "Product_categoryId_not_null",
+      "table_name": "\"Product\"",
+      "definition": "NOT NULL \"categoryId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Product_costPrice_not_null",
+      "table_name": "\"Product\"",
+      "definition": "NOT NULL \"costPrice\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Product_createdAt_not_null",
+      "table_name": "\"Product\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Product_id_not_null",
+      "table_name": "\"Product\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "Product_isActive_not_null",
+      "table_name": "\"Product\"",
+      "definition": "NOT NULL \"isActive\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Product_name_not_null",
+      "table_name": "\"Product\"",
+      "definition": "NOT NULL name",
+      "convalidated": true
+    },
+    {
+      "conname": "Product_pkey",
+      "table_name": "\"Product\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "Product_price_not_null",
+      "table_name": "\"Product\"",
+      "definition": "NOT NULL price",
+      "convalidated": true
+    },
+    {
+      "conname": "Product_sku_not_null",
+      "table_name": "\"Product\"",
+      "definition": "NOT NULL sku",
+      "convalidated": true
+    },
+    {
+      "conname": "Product_unit_not_null",
+      "table_name": "\"Product\"",
+      "definition": "NOT NULL unit",
+      "convalidated": true
+    },
+    {
+      "conname": "Product_updatedAt_not_null",
+      "table_name": "\"Product\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequestItem_createdAt_not_null",
+      "table_name": "\"PurchaseRequestItem\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequestItem_id_not_null",
+      "table_name": "\"PurchaseRequestItem\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequestItem_inventoryId_fkey",
+      "table_name": "\"PurchaseRequestItem\"",
+      "definition": "FOREIGN KEY (\"inventoryId\") REFERENCES \"Inventory\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequestItem_inventoryId_not_null",
+      "table_name": "\"PurchaseRequestItem\"",
+      "definition": "NOT NULL \"inventoryId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequestItem_pkey",
+      "table_name": "\"PurchaseRequestItem\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequestItem_productId_fkey",
+      "table_name": "\"PurchaseRequestItem\"",
+      "definition": "FOREIGN KEY (\"productId\") REFERENCES \"Product\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequestItem_productId_not_null",
+      "table_name": "\"PurchaseRequestItem\"",
+      "definition": "NOT NULL \"productId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequestItem_quantityReceived_not_null",
+      "table_name": "\"PurchaseRequestItem\"",
+      "definition": "NOT NULL \"quantityReceived\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequestItem_quantity_not_null",
+      "table_name": "\"PurchaseRequestItem\"",
+      "definition": "NOT NULL quantity",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequestItem_requestId_fkey",
+      "table_name": "\"PurchaseRequestItem\"",
+      "definition": "FOREIGN KEY (\"requestId\") REFERENCES \"PurchaseRequest\"(id) ON UPDATE CASCADE ON DELETE CASCADE",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequestItem_requestId_not_null",
+      "table_name": "\"PurchaseRequestItem\"",
+      "definition": "NOT NULL \"requestId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequestItem_updatedAt_not_null",
+      "table_name": "\"PurchaseRequestItem\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_aiGenerated_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL \"aiGenerated\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_amountPaid_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL \"amountPaid\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_approvedBy_fkey",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "FOREIGN KEY (\"approvedBy\") REFERENCES \"User\"(id) ON UPDATE CASCADE ON DELETE SET NULL",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_createdAt_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_id_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_paymentStatus_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL \"paymentStatus\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_pkey",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_receivedAmount_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL \"receivedAmount\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_requestNumber_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL \"requestNumber\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_requestedBy_fkey",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "FOREIGN KEY (\"requestedBy\") REFERENCES \"User\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_requestedBy_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL \"requestedBy\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_retryCount_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL \"retryCount\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_status_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL status",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_supplierId_fkey",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "FOREIGN KEY (\"supplierId\") REFERENCES \"Supplier\"(id) ON UPDATE CASCADE ON DELETE RESTRICT",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_supplierId_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL \"supplierId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_totalAmount_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL \"totalAmount\"",
+      "convalidated": true
+    },
+    {
+      "conname": "PurchaseRequest_updatedAt_not_null",
+      "table_name": "\"PurchaseRequest\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "SupplierProduct_createdAt_not_null",
+      "table_name": "\"SupplierProduct\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "SupplierProduct_id_not_null",
+      "table_name": "\"SupplierProduct\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "SupplierProduct_isPreferred_not_null",
+      "table_name": "\"SupplierProduct\"",
+      "definition": "NOT NULL \"isPreferred\"",
+      "convalidated": true
+    },
+    {
+      "conname": "SupplierProduct_leadTimeDays_not_null",
+      "table_name": "\"SupplierProduct\"",
+      "definition": "NOT NULL \"leadTimeDays\"",
+      "convalidated": true
+    },
+    {
+      "conname": "SupplierProduct_minOrderQuantity_not_null",
+      "table_name": "\"SupplierProduct\"",
+      "definition": "NOT NULL \"minOrderQuantity\"",
+      "convalidated": true
+    },
+    {
+      "conname": "SupplierProduct_pkey",
+      "table_name": "\"SupplierProduct\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "SupplierProduct_price_not_null",
+      "table_name": "\"SupplierProduct\"",
+      "definition": "NOT NULL price",
+      "convalidated": true
+    },
+    {
+      "conname": "SupplierProduct_productId_fkey",
+      "table_name": "\"SupplierProduct\"",
+      "definition": "FOREIGN KEY (\"productId\") REFERENCES \"Product\"(id) ON UPDATE CASCADE ON DELETE CASCADE",
+      "convalidated": true
+    },
+    {
+      "conname": "SupplierProduct_productId_not_null",
+      "table_name": "\"SupplierProduct\"",
+      "definition": "NOT NULL \"productId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "SupplierProduct_supplierId_fkey",
+      "table_name": "\"SupplierProduct\"",
+      "definition": "FOREIGN KEY (\"supplierId\") REFERENCES \"Supplier\"(id) ON UPDATE CASCADE ON DELETE CASCADE",
+      "convalidated": true
+    },
+    {
+      "conname": "SupplierProduct_supplierId_not_null",
+      "table_name": "\"SupplierProduct\"",
+      "definition": "NOT NULL \"supplierId\"",
+      "convalidated": true
+    },
+    {
+      "conname": "SupplierProduct_updatedAt_not_null",
+      "table_name": "\"SupplierProduct\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Supplier_createdAt_not_null",
+      "table_name": "\"Supplier\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "Supplier_id_not_null",
+      "table_name": "\"Supplier\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "Supplier_name_not_null",
+      "table_name": "\"Supplier\"",
+      "definition": "NOT NULL name",
+      "convalidated": true
+    },
+    {
+      "conname": "Supplier_pkey",
+      "table_name": "\"Supplier\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "Supplier_status_not_null",
+      "table_name": "\"Supplier\"",
+      "definition": "NOT NULL status",
+      "convalidated": true
+    },
+    {
+      "conname": "Supplier_updatedAt_not_null",
+      "table_name": "\"Supplier\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "SystemSetting_key_not_null",
+      "table_name": "\"SystemSetting\"",
+      "definition": "NOT NULL key",
+      "convalidated": true
+    },
+    {
+      "conname": "SystemSetting_pkey",
+      "table_name": "\"SystemSetting\"",
+      "definition": "PRIMARY KEY (key)",
+      "convalidated": true
+    },
+    {
+      "conname": "SystemSetting_updatedAt_not_null",
+      "table_name": "\"SystemSetting\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "SystemSetting_value_not_null",
+      "table_name": "\"SystemSetting\"",
+      "definition": "NOT NULL value",
+      "convalidated": true
+    },
+    {
+      "conname": "User_createdAt_not_null",
+      "table_name": "\"User\"",
+      "definition": "NOT NULL \"createdAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "User_email_not_null",
+      "table_name": "\"User\"",
+      "definition": "NOT NULL email",
+      "convalidated": true
+    },
+    {
+      "conname": "User_id_not_null",
+      "table_name": "\"User\"",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "User_isActive_not_null",
+      "table_name": "\"User\"",
+      "definition": "NOT NULL \"isActive\"",
+      "convalidated": true
+    },
+    {
+      "conname": "User_name_not_null",
+      "table_name": "\"User\"",
+      "definition": "NOT NULL name",
+      "convalidated": true
+    },
+    {
+      "conname": "User_pkey",
+      "table_name": "\"User\"",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "User_role_not_null",
+      "table_name": "\"User\"",
+      "definition": "NOT NULL role",
+      "convalidated": true
+    },
+    {
+      "conname": "User_updatedAt_not_null",
+      "table_name": "\"User\"",
+      "definition": "NOT NULL \"updatedAt\"",
+      "convalidated": true
+    },
+    {
+      "conname": "_prisma_migrations_applied_steps_count_not_null",
+      "table_name": "_prisma_migrations",
+      "definition": "NOT NULL applied_steps_count",
+      "convalidated": true
+    },
+    {
+      "conname": "_prisma_migrations_checksum_not_null",
+      "table_name": "_prisma_migrations",
+      "definition": "NOT NULL checksum",
+      "convalidated": true
+    },
+    {
+      "conname": "_prisma_migrations_id_not_null",
+      "table_name": "_prisma_migrations",
+      "definition": "NOT NULL id",
+      "convalidated": true
+    },
+    {
+      "conname": "_prisma_migrations_migration_name_not_null",
+      "table_name": "_prisma_migrations",
+      "definition": "NOT NULL migration_name",
+      "convalidated": true
+    },
+    {
+      "conname": "_prisma_migrations_pkey",
+      "table_name": "_prisma_migrations",
+      "definition": "PRIMARY KEY (id)",
+      "convalidated": true
+    },
+    {
+      "conname": "_prisma_migrations_started_at_not_null",
+      "table_name": "_prisma_migrations",
+      "definition": "NOT NULL started_at",
+      "convalidated": true
+    }
+  ],
+  "Payment": [],
+  "InventoryTransaction": []
+}

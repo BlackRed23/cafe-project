@@ -54,7 +54,8 @@ export const createPurchaseRequestFromRecommendation = async (req: Authenticated
     if (!req.user) return sendError(res, 401, 'Authentication is required.');
     try {
         const result = await createPurchaseRequestFromRecommendationViaAgentService(req.params.id, req.user.id);
-        sendSuccess(res, 201, 'Purchase request created from AI recommendation successfully.', { purchaseRequest: result });
+        // Legacy URL now prepares a proposal only. It grants no approval/create authority.
+        sendSuccess(res, 202, 'Proposal saved. Review version/hash and approve through Backend.', { proposal: result });
     } catch (error: any) {
         sendError(res, statusFromError(error), messageFromError(error, 'Failed to create purchase request.'));
     }

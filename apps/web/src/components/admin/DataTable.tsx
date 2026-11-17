@@ -15,6 +15,7 @@ interface DataTableProps<T> {
   onSearchChange?: (val: string) => void;
   isLoading?: boolean;
   pageSize?: number;
+  caption?: string;
 }
 
 export function DataTable<T extends { id: string | number }>({
@@ -25,6 +26,7 @@ export function DataTable<T extends { id: string | number }>({
   onSearchChange,
   isLoading = false,
   pageSize = 6, // 6 items per page by default
+  caption = "Danh sách dữ liệu",
 }: DataTableProps<T>) {
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -72,7 +74,7 @@ export function DataTable<T extends { id: string | number }>({
   };
 
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white shadow-sm dark:border-strokedark dark:bg-boxdark overflow-hidden flex flex-col">
+    <div className="ds-table rounded-lg border border-slate-200 bg-white overflow-hidden flex flex-col" aria-busy={isLoading}>
       {/* Table search toolbar */}
       {onSearchChange !== undefined && (
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
@@ -82,6 +84,7 @@ export function DataTable<T extends { id: string | number }>({
             </span>
             <input
               type="text"
+              aria-label={searchPlaceholder}
               placeholder={searchPlaceholder}
               value={searchValue || ""}
               onChange={(e) => onSearchChange(e.target.value)}
@@ -92,12 +95,14 @@ export function DataTable<T extends { id: string | number }>({
       )}
 
       {/* Table wrapper */}
-      <div className="max-w-full overflow-x-auto flex-1">
+      <div className="max-w-full overflow-x-auto flex-1" role="region" aria-label={caption} tabIndex={0}>
         <table className="w-full table-auto">
+          <caption className="sr-only">{caption}</caption>
           <thead>
             <tr className="bg-slate-50 text-left border-b border-slate-100 dark:bg-meta-4">
               {columns.map((col, idx) => (
                 <th
+                  scope="col"
                   key={idx}
                   className={`py-4 px-6 font-bold text-sm uppercase text-slate-500 tracking-wide ${
                     col.className || ""
@@ -147,7 +152,7 @@ export function DataTable<T extends { id: string | number }>({
       {/* Pagination Footer */}
       {!isLoading && totalItems > 0 && (
         <div className="px-6 py-4 border-t border-slate-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-slate-50/30 overflow-hidden">
-          <div className="whitespace-nowrap text-sm text-slate-600">
+          <div role="status" className="text-sm text-slate-600">
             Hiển thị từ <span className="font-semibold text-slate-800">{totalItems === 0 ? 0 : startIndex + 1}</span> đến{" "}
             <span className="font-semibold text-slate-800">{endIndex}</span> trong tổng số{" "}
             <span className="font-semibold text-slate-800">{totalItems}</span> kết quả
@@ -178,6 +183,9 @@ export function DataTable<T extends { id: string | number }>({
                   }
                   return (
                     <button
+                      type="button"
+                      aria-label={`Trang ${page}`}
+                      aria-current={isCurrent ? 'page' : undefined}
                       key={page}
                       onClick={() => setCurrentPage(page as number)}
                       className={`min-w-8 h-8 px-2 rounded-lg text-[14px] font-semibold transition-all ${

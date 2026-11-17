@@ -10,8 +10,9 @@ export const Loading: React.FC<LoadingProps> = ({
   fullPage = false,
 }) => {
   const content = (
-    <div className="flex flex-col items-center justify-center p-6 text-center">
+    <div role="status" aria-live="polite" className="ds-loading flex flex-col items-center justify-center p-6 text-center">
       <svg
+        aria-hidden="true"
         className="animate-spin h-10 w-10 text-amber-700 mb-3"
         xmlns="http://www.w3.org/2000/svg"
         fill="none"

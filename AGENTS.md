@@ -22,12 +22,6 @@
 - Dùng git diff --check và git diff --stat, sau đó xem git diff -- <các file đã sửa>. Với file mới chưa tracked, dùng git diff --no-index -- /dev/null <file> (Windows dùng NUL); exit code 1 nghĩa là có diff.
 - Không stage, commit hoặc push nếu chưa được yêu cầu.
 
-## MQL5 + ML
-- MQL5: compile EA/indicator/library bị ảnh hưởng bằng công cụ dự án hiện có; kiểm tra symbol, timeframe, point/digits, lot step, spread, stop levels và mã trả về giao dịch khi có liên quan.
-- Kiểm thử trading bằng Strategy Tester/demo; không tự gửi lệnh tài khoản thật hoặc thay cấu hình live.
-- ML: chia dữ liệu theo thời gian; fit scaler/feature selection chỉ trên tập train. Ngăn leakage và look-ahead; kiểm tra sự thống nhất feature giữa train và inference.
-- Ghi seed, phiên bản dữ liệu/model/config và khoảng thời gian đánh giá. Tính phí, spread và slippage trong đánh giá chiến lược khi có liên quan.
-- Không gửi dataset, checkpoint hoặc lịch sử từng tick vào hội thoại. Trả metrics tổng hợp, số mẫu và đường dẫn artifact.
 
 ## Ngữ cảnh và đầu ra
 - Dùng docs/token-workflow.md cho quy trình; docs/task-state.example.json là mẫu checkpoint, không phải trạng thái tác vụ thực tế.

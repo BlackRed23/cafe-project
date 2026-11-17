@@ -1,0 +1,110 @@
+{
+  "database": "cafe-kltn",
+  "queries": {
+    "product": 0,
+    "ingredient": 0,
+    "recipe": 0,
+    "inventory": 0,
+    "payment": 0,
+    "history": 0,
+    "purchase": 0,
+    "orderItem": 0
+  },
+  "constraints": [
+    {
+      "invalid": 0
+    }
+  ],
+  "preservation": [
+    {
+      "table": "AgentLog",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "Category",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "Inventory",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "InventoryBatch",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "InventoryTransaction",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "Order",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "OrderItem",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "Payment",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "Product",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "PurchaseRequest",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "PurchaseRequestItem",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "Supplier",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "SupplierProduct",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "SystemSetting",
+      "countBefore": "0",
+      "countAfter": "0",
+      "preserved": true
+    },
+    {
+      "table": "User",
+      "countBefore": "1",
+      "countAfter": "1",
+      "preserved": true
+    }
+  ]
+}

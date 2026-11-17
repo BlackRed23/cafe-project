@@ -11,8 +11,9 @@ RUN npm install
 
 COPY . .
 
-RUN npm run build -w @cafe-project/database
 RUN npm run generate -w @cafe-project/database
+RUN npm run build -w @cafe-project/database
+RUN npm run build -w @cafe-project/agent
 RUN npm run build -w @cafe-project/api
 
 FROM node:20-alpine AS runner

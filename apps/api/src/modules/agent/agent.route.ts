@@ -10,8 +10,10 @@ import {
     scanInventory
 } from './agent.controller';
 import { recommendReorderSchema, scanInventorySchema } from './agent.validator';
+import { createPurchaseProposalRouter } from './purchase-proposal.route';
 
 const router = Router();
+router.use(createPurchaseProposalRouter());
 const canView = [authenticate, requireRole(['ADMIN', 'STAFF'])];
 const adminOnly = [authenticate, requireRole(['ADMIN'])];
 

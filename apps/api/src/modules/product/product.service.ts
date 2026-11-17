@@ -2,7 +2,7 @@ import { Prisma } from '@cafe-project/database';
 import { deleteCloudinaryImage, extractCloudinaryPublicId } from '../../common/cloudinary';
 import { HttpError } from '../../common/http-error';
 import { productRepository, type ProductRecord } from './product.repository';
-import type { CreateProductInput, UpdateProductInput } from './product.validator';
+import { createProductSchema, updateProductSchema, type CreateProductInput, type UpdateProductInput } from './product.validator';
 
 export type ProductDto = {
     id: string;
@@ -241,6 +241,9 @@ export const getProductById = async (id: string): Promise<ProductDto> => {
 };
 
 export const createProduct = async (input: CreateProductInput): Promise<ProductDto> => {
+    const parsed = createProductSchema.safeParse(input);
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid product.');
+    input = parsed.data;
     await ensureCategoryExists(input.categoryId);
     const sku = normalizeSkuInput(input.sku) ?? (await generateUniqueSku(input.name));
 
@@ -276,17 +279,21 @@ export const createProduct = async (input: CreateProductInput): Promise<ProductD
 };
 
 export const updateProduct = async (id: string, input: UpdateProductInput): Promise<ProductDto> => {
+    const parsed = updateProductSchema.safeParse(input);
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid product.');
+    input = parsed.data;
     const product = await ensureProductExists(id, true);
+    const expectedUpdatedAt = new Date(input.expectedUpdatedAt);
+    if (product.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        throw new HttpError(409, 'Product changed. Reload before updating.');
+    }
 
     if (input.categoryId) {
         await ensureCategoryExists(input.categoryId);
     }
 
-    if (input.sku) {
-        await ensureUniqueSku(input.sku, product.id);
-    }
-
     const sku = input.sku !== undefined ? normalizeSkuInput(input.sku) ?? (await generateUniqueSku(input.name ?? product.name, product.id)) : undefined;
+    if (sku !== undefined) await ensureUniqueSku(sku, product.id);
 
     try {
         const updatedProduct = await productRepository.update(id, {
@@ -305,7 +312,7 @@ export const updateProduct = async (id: string, input: UpdateProductInput): Prom
             ...(input.origin !== undefined ? { origin: normalizeOptionalString(input.origin) } : {}),
             ...(input.certifications !== undefined ? { certifications: normalizeOptionalString(input.certifications) } : {}),
             ...(input.expiryInfo !== undefined || input.expiry_info !== undefined ? { expiryInfo: normalizeOptionalString(input.expiryInfo ?? input.expiry_info) } : {})
-        });
+        }, expectedUpdatedAt);
 
         return toProductDto(updatedProduct);
     } catch (error) {

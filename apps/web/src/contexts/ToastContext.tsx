@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from "lucide-react";
 
 export type ToastType = "success" | "error" | "warning" | "info";
@@ -121,6 +122,18 @@ const LOCAL_STORAGE_KEY = "admin_local_toasts";
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
+  const [toastTarget, setToastTarget] = useState<HTMLElement>(() => document.body);
+  React.useEffect(() => {
+    // Native modal dialogs occupy the top layer; feedback must live inside them.
+    const updateTarget = () => {
+      const dialogs = document.querySelectorAll<HTMLDialogElement>('dialog[open]');
+      setToastTarget(dialogs[dialogs.length - 1] ?? document.body);
+    };
+    const observer = new MutationObserver(updateTarget);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
+    updateTarget();
+    return () => observer.disconnect();
+  }, []);
   const [toasts, setToasts] = useState<Toast[]>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -173,12 +186,12 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
     []
   );
 
-  const toast = {
+  const toast = useMemo(() => ({
     success: (title: string, message?: string, link?: string) => addToast("success", title, message, link),
     error: (title: string, message?: string, link?: string) => addToast("error", title, message, link),
     warning: (title: string, message?: string, link?: string) => addToast("warning", title, message, link),
     info: (title: string, message?: string, link?: string) => addToast("info", title, message, link),
-  };
+  }), [addToast]);
 
   return (
     <ToastContext.Provider value={{ toasts, toast, dismiss }}>
@@ -202,7 +215,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
       {children}
 
       {/* Toast portal (Top Right near the Bell) */}
-      <div
+      {createPortal(<div
         className="fixed top-20 right-5 z-[9999] flex flex-col gap-2.5 items-end pointer-events-none"
         aria-live="polite"
       >
@@ -211,7 +224,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
             <ToastItem toast={t} onDismiss={dismissFloating} />
           </div>
         ))}
-      </div>
+      </div>, toastTarget)}
     </ToastContext.Provider>
   );
 };

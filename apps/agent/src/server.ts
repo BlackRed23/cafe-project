@@ -3,6 +3,7 @@ import { URL } from 'node:url';
 import dotenv from 'dotenv';
 import { requireInternalSecret, validInternalToken, requireAgentUser } from './internal-auth';
 import { agentService } from './services/agent.service';
+import { executeApprovedPurchaseProposal } from './services/purchase-proposal.client';
 
 dotenv.config();
 
@@ -94,6 +95,15 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse) =
             return sendJson(res, 200, { data });
         }
 
+        const executeMatch = url.pathname.match(/^\/internal\/agent\/purchase-proposals\/([^/]+)\/execute$/);
+        if (method === 'POST' && executeMatch) {
+            const body = await readJsonBody(req);
+            if (Object.keys(body).some(key => !['version', 'contentHash', 'idempotencyKey'].includes(key))) {
+                return sendJson(res, 400, { message: 'Only approved proposal reference allowed.' });
+            }
+            const data = await executeApprovedPurchaseProposal(executeMatch[1], { version: body.version, contentHash: body.contentHash }, body.idempotencyKey);
+            return sendJson(res, 200, { data });
+        }
         const createPrMatch = url.pathname.match(/^\/internal\/agent\/recommendations\/([^/]+)\/create-purchase-request$/);
         if (method === 'POST' && createPrMatch) {
             await readJsonBody(req);

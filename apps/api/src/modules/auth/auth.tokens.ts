@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { HttpError } from '../../common/http-error';
-import type { JwtUserPayload } from './auth.service';
+import type { JwtUserPayload } from './auth.types';
 
 /** Shared verifier; no account repository, environment loader or database import. */
 export function verifySignedToken(token: string, secret: string): JwtUserPayload {

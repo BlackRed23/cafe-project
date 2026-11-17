@@ -25,7 +25,8 @@
         "@google/generative-ai": "^0.24.1",
         "dotenv": "^16.4.5",
         "node-cron": "^4.4.1",
-        "nodemailer": "9.0.1"
+        "nodemailer": "9.0.1",
+        "zod": "4.4.3"
     },
     "devDependencies": {
         "@types/node": "^20.12.11",

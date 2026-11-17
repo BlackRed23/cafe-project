@@ -1,0 +1,92 @@
+{
+  "date": "2026-11-17",
+  "scope": "Frontend design foundation and active ingredient inventory screen",
+  "filesChanged": [
+    "apps/web/src/design-system.css",
+    "apps/web/src/index.css",
+    "apps/web/src/components/common/Button.tsx",
+    "apps/web/src/components/common/Input.tsx",
+    "apps/web/src/components/common/Select.tsx",
+    "apps/web/src/components/common/Modal.tsx",
+    "apps/web/src/components/common/Badge.tsx",
+    "apps/web/src/components/common/Loading.tsx",
+    "apps/web/src/components/common/EmptyState.tsx",
+    "apps/web/src/components/common/Alert.tsx",
+    "apps/web/src/components/common/ErrorState.tsx",
+    "apps/web/src/components/admin/DataTable.tsx",
+    "apps/web/src/contexts/ToastContext.tsx",
+    "apps/web/src/pages/admin/AdminIngredientsPage.tsx",
+    "apps/web/tests/design-system.test.cjs",
+    "apps/web/tests/fixtures/design-system.tsx",
+    "docs/design/DESIGN.md",
+    "docs/design/MOTION.md",
+    "docs/design/components.md",
+    "docs/design/ux-patterns.md",
+    "docs/design/accessibility.md",
+    "apps/web/tests/fixtures/design-system.html"
+  ],
+  "foundation": "Espresso/paper semantic tokens, 6px controls, 8px panels, restrained elevation, operational density, 120/180ms CSS motion, reduced-motion override. Preserve current React/Tailwind architecture and public component props. Native dialog provides focus containment, Escape and focus restoration. No new dependencies.",
+  "versionsInstalled": {
+    "react": "19.2.6",
+    "vite": "8.0.16",
+    "tailwindcss": "4.3.0",
+    "reactRouterDom": "7.18.1",
+    "lucideReact": "1.17.0"
+  },
+  "behavior": "Existing /admin/inventory redirect to /admin/ingredients retained. Ingredient search/lowStock parameters, stock/cost calculations, imports, waste, Agent scan and ADMIN/STAFF gates unchanged. Read failure gains persistent ErrorState and explicit GET retry. No backend, route, auth or schema edits. Existing mock provider remains opt-in.",
+  "baseline": {
+    "build": "Sandbox failed with Node OOM; retry outside sandbox passed TypeScript and Vite. Baseline JS 779.39 kB / 202.99 kB gzip, CSS 98.44 kB / 16.07 kB gzip. Existing 500 kB chunk and stale Browserslist warnings.",
+    "lint": "FAILED before edits: ESLint 10.4.0 cannot resolve module eslint from @typescript-eslint/utils. Same error outside sandbox; dependencies and quality gates not changed.",
+    "frontendTests": "Initial sandbox run: 6 pass, browser test process OOM. Later full run outside sandbox passed all 327 existing tests; only new test targeting inactive screen failed.",
+    "git": "Many staged/unstaged Agent, API, migration and lockfile changes predated task and preserved. apps/web/package.json check-types addition appeared during task; not authored or reverted by this work. No staging/commits/push."
+  },
+  "checks": {
+    "build": {
+      "command": "npm.cmd run build --workspace @cafe-project/web",
+      "status": "PASS",
+      "exitCode": 0,
+      "includes": "tsc -b and vite build",
+      "output": "JS 781.29 kB / 203.77 kB gzip; CSS 104.55 kB / 17.55 kB gzip"
+    },
+    "lint": {
+      "command": "npm.cmd run lint --workspace @cafe-project/web",
+      "status": "NOT VERIFIED",
+      "exitCode": 2,
+      "reason": "Pre-existing missing eslint module",
+      "log": "lint-final.log"
+    },
+    "focused": {
+      "command": "node --test --test-concurrency=1 apps/web/tests/design-system.test.cjs",
+      "status": "PASS",
+      "passed": 2,
+      "failed": 0,
+      "log": "design-modal-feedback-final.log"
+    },
+    "fullSuite": {
+      "command": "npm.cmd test -- --test-concurrency=1",
+      "status": "PASS",
+      "log": "full-test-final-verified.log",
+      "passed": 329,
+      "failed": 0,
+      "cancelled": 0,
+      "exitCode": 0
+    },
+    "responsiveAndVisual": "PASS executed 375/768/1440px component and ADMIN/STAFF ingredient screenshots. Reviewed mobile and desktop ADMIN images. Workspace overflow asserted; table scroll remains local.",
+    "accessibility": "PASS scoped browser assertions: field labels/errors/descriptions, password name/state, loading disablement, dialog focus containment/Escape/return/scroll restoration, table caption/scopes/pagination, keyboard-scrollable region, reduced motion. Seven semantic text/background pairs pass WCAG 4.5 contrast; contrast.json. Full assistive-technology and app-wide audit NOT VERIFIED.",
+    "diff": "git diff --check, git diff --stat and tracked diffs reviewed. New files reviewed with git diff --no-index -- NUL; exit 1 expected for additions."
+  },
+  "defects": {
+    "existingFixed": "Toast API object identity changed on toast renders, recreating ingredient loadData callback and repeatedly fetching after errors. Memoized existing toast API without changing notification behavior. Shared labels, password toggle naming and modal focus semantics improved.; Native modal top layer moved floating toasts outside dialog, hiding feedback. Toast portal now tracks open dialogs and restores feedback to body on close; browser assertions pass.",
+    "introducedAndFixed": "Initial new test targeted redirected screen, then duplicate accessible cell locator. Mobile search flex basis corrected. Replaced Vite dev-server lifecycle after cleanup timeouts with isolated production build plus static HTTP server; focused 2/2 pass with clean teardown. Updated saved confirmation test to use exact accessible text after toast addition.",
+    "newUnresolved": "No known new defects in executed browser/build/full-suite checks."
+  },
+  "risks": [
+    "Lint remains blocked by current dependency installation.",
+    "Shared styles and native dialog affect existing consumers; Firefox/WebKit, nested dialogs and full screen-reader audit not verified.",
+    "Legacy dark utility fragments remain; no complete dark mode shipped.",
+    "Existing large bundle remains; no chunk threshold weakened. CSS increased about 6.1 kB raw / 1.48 kB gzip; JS about 1.58 kB raw / 0.63 kB gzip.",
+    "Only active ingredient screen adopted; other screens retain legacy local patterns.",
+    "Antigravity archived GPL-3.0 excluded. Requested unslop URL 404, license/maintenance not verified. Source review links in docs/design/DESIGN.md."
+  ],
+  "nextSlice": "Purchase-request list/detail visual adoption with approval-role, confirmation and keyboard regression tests. Repair existing ESLint installation separately before claiming complete quality-gate verification."
+}

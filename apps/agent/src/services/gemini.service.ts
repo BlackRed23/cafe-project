@@ -1,5 +1,10 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { env } from '../config/env';
+import type {
+    DynamicToolName,
+    DynamicToolPlan
+} from '../workflows/agent-workflow';
+
 
 export type GeminiRecommendation = {
     recommendedQuantity: number;
@@ -125,6 +130,134 @@ export const geminiService = {
         const { recommendation } = await this.getRecommendationWithMetrics(prompt);
         return recommendation;
     },
+
+    async generateDynamicPlan(
+        prompt: string,
+        tools: {
+            name: DynamicToolName;
+            purpose: string;
+        }[]
+    ): Promise<DynamicToolPlan> {
+        if (
+            !prompt.trim() ||
+            prompt.length > 10000 ||
+            tools.length === 0
+        ) {
+            throw new Error('INVALID_PLANNING_REQUEST');
+        }
+
+        const apiKey =
+            env.GEMINI_API_KEY ||
+            process.env.GEMINI_API_KEY1 ||
+            process.env.GEMINI_API_KEY2 ||
+            process.env.GEMINI_API_KEY3;
+
+        if (!apiKey) {
+            throw new Error('GEMINI_NOT_CONFIGURED');
+        }
+
+        const modelName = env.GEMINI_MODEL || 'gemini-1.5-flash';
+
+        const systemPrompt = `
+    You are a planning assistant for cafe inventory management.
+
+    Create a READ-ONLY tool execution plan.
+
+    Available tools:
+    ${JSON.stringify(tools)}
+
+    Rules:
+    - Use only the available tools.
+    - Maximum 10 steps.
+    - Never create purchase requests.
+    - Never perform database writes.
+    - Never invent ingredient IDs, product IDs or supplier IDs.
+    - Use only identifiers explicitly provided in the request.
+    - If essential identifiers are missing, reject planning.
+    - Do not calculate stock or purchase quantities yourself.
+    - Backend tools are responsible for business calculations.
+    - Dependencies must reference earlier step IDs.
+    - Return only valid JSON.
+
+    Required output:
+    {
+    "goal": "string",
+    "steps": [
+        {
+        "id": "step_1",
+        "tool": "available_tool_name",
+        "input": {},
+        "dependsOn": []
+        }
+    ]
+    }
+
+    If planning is impossible, return:
+    {"error":"INSUFFICIENT_CONTEXT"}
+    `;
+
+        let responseText: string;
+
+        try {
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({
+                model: modelName
+            });
+
+            const result = await model.generateContent(
+                `${systemPrompt}\n\nUser request:\n${JSON.stringify(prompt)}`
+            );
+
+            responseText = result.response.text();
+
+        } catch {
+            throw new Error('GEMINI_PLANNING_FAILED');
+        }
+
+        try {
+            if (responseText.length > 20000) {
+                throw new Error('INVALID_DYNAMIC_PLAN');
+            }
+
+            const parsed: unknown = JSON.parse(
+                this.cleanJsonText(responseText)
+            );
+
+            if (
+                !parsed ||
+                typeof parsed !== 'object' ||
+                Array.isArray(parsed)
+            ) {
+                throw new Error('INVALID_DYNAMIC_PLAN');
+            }
+
+            const data = parsed as Record<string, unknown>;
+
+            if (data.error === 'INSUFFICIENT_CONTEXT') {
+                throw new Error('INSUFFICIENT_CONTEXT');
+            }
+
+            if (
+                typeof data.goal !== 'string' ||
+                !Array.isArray(data.steps)
+            ) {
+                throw new Error('INVALID_DYNAMIC_PLAN');
+            }
+
+            return data as DynamicToolPlan;
+
+        } catch (error) {
+            if (
+                error instanceof Error &&
+                error.message === 'INSUFFICIENT_CONTEXT'
+            ) {
+                throw error;
+            }
+
+            throw new Error('INVALID_DYNAMIC_PLAN');
+        }
+    },
+
 
     cleanJsonText(text: string): string {
         let cleaned = text.trim();

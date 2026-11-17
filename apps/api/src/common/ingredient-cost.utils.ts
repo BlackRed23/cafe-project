@@ -18,6 +18,16 @@ export const roundMoney2 = (val: Prisma.Decimal): Prisma.Decimal =>
 export const roundQty3 = (val: Prisma.Decimal): Prisma.Decimal =>
     val.toDecimalPlaces(3, Prisma.Decimal.ROUND_HALF_UP);
 
+/** Base-unit estimate only. No pack rounding, taxes, delivery fees or purchase mutation. */
+export const estimateBasePurchaseCost = (quantityBase: string, pricePerBaseUnit: number): string => {
+    const quantity = toDecimal(quantityBase);
+    const price = toDecimal(pricePerBaseUnit);
+    if (!quantity.isFinite() || quantity.lt(0) || !price.isFinite() || price.lt(0)) {
+        throw new HttpError(400, 'Invalid purchase estimate.');
+    }
+    return roundMoney2(quantity.mul(price)).toFixed(2);
+};
+
 /**
  * Mục 2.3: Bình quân gia quyền di động (Moving Weighted Average)
  * newCost = (qtyTồn * costCũ + qtyNhập * unitCostNhập) / (qtyTồn + qtyNhập)

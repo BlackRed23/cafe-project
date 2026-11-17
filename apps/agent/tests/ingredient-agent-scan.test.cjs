@@ -26,7 +26,7 @@ const users = {
 
 let logs = [];
 let openPrIngredientIds = new Set();
-let createdPrs = [];
+let proposals = [];
 let dedupeKeysToday = new Set();
 let mockIngredients = [];
 let mockInventories = [];
@@ -103,31 +103,18 @@ const repoMock = {
                   supplier: { id: 'sup-1', name: 'NCC Nguyên Liệu A', status: 'ACTIVE', deletedAt: null }
               }
             : null,
-    createAiIngredientPurchaseRequest: async (ingredient, supplierLink, neededBaseQty, reason, userId) => {
+    proposeIngredientPurchase: async (ingredient, supplierLink, neededBaseQty, reason, userId) => {
         if (!userId || users[userId]?.role !== 'ADMIN') {
             throw new Error('Forbidden');
         }
         const conv = Number(supplierLink.conversionQuantity || 1000);
         const minPacks = Math.max(1, Number(supplierLink.minOrderQuantity || 1));
         const packs = Math.max(minPacks, Math.ceil(neededBaseQty / conv));
-        const pr = {
-            id: `pr-${createdPrs.length + 1}`,
-            requestNumber: `AI-ING-${createdPrs.length + 1}`,
-            supplierId: supplierLink.supplierId,
-            status: 'PENDING',
-            reason,
-            items: [
-                {
-                    ingredientId: ingredient.id,
-                    quantity: packs,
-                    recommendedBaseQty: neededBaseQty
-                }
-            ],
-            supplier: supplierLink.supplier
-        };
-        createdPrs.push(pr);
-        openPrIngredientIds.add(ingredient.id);
-        return pr;
+        const proposal = { proposalId: 'proposal-' + (proposals.length + 1), version: 1, contentHash: 'a'.repeat(64),
+            snapshot: { ingredientId: ingredient.id, quantity: packs, unit: supplierLink.purchaseUnit,
+                supplierId: supplierLink.supplierId, unitPrice: '1.00' } };
+        proposals.push(proposal);
+        return proposal;
     },
     createLog: async (data) => {
         const entry = {
@@ -239,7 +226,7 @@ const makeIngredient = (overrides = {}) => ({
 const resetState = () => {
     logs = [];
     openPrIngredientIds = new Set();
-    createdPrs = [];
+    proposals = [];
     dedupeKeysToday = new Set();
     mockIngredients = [];
     mockInventories = [];
@@ -248,7 +235,7 @@ const resetState = () => {
     // Reset scan cooldown inside agentService by advancing Date.now if needed
 };
 
-test('Case 1: Low ingredient stock with active supplier creates PENDING PurchaseRequest with ingredientId, and second scan skips duplicate', async () => {
+test('Case 1: Low ingredient stock creates proposal only; existing PR suppresses another proposal', async () => {
     resetState();
     mockIngredients = [makeIngredient()];
 
@@ -261,22 +248,24 @@ test('Case 1: Low ingredient stock with active supplier creates PENDING Purchase
         'admin'
     );
 
-    assert.equal(firstScan.createdPurchaseRequests.length, 1);
-    assert.equal(createdPrs.length, 1);
-    assert.equal(createdPrs[0].status, 'PENDING');
-    assert.equal(createdPrs[0].items[0].ingredientId, 'ing-arabica');
-    assert.ok(createdPrs[0].items[0].quantity >= 2);
+    assert.equal(firstScan.createdPurchaseRequests.length, 0);
+    assert.equal(firstScan.createdProposals.length, 1);
+    assert.equal(proposals.length, 1);
+    assert.equal(openPrIngredientIds.size, 0);
+    assert.equal(proposals[0].snapshot.ingredientId, 'ing-arabica');
+    assert.ok(proposals[0].snapshot.quantity >= 2);
 
     const createLog = firstScan.results.find(
-        (r) => r.action === 'SCAN_INGREDIENT_CREATE_PURCHASE_REQUEST'
+        (r) => r.action === 'SCAN_INGREDIENT_PROPOSE_PURCHASE'
     );
-    assert.ok(createLog, 'Expected SCAN_INGREDIENT_CREATE_PURCHASE_REQUEST log');
+    assert.ok(createLog, 'Expected SCAN_INGREDIENT_PROPOSE_PURCHASE log');
     assert.equal(createLog.itemType, 'INGREDIENT');
     assert.equal(createLog.ingredientId, 'ing-arabica');
     assert.ok(createLog.reasoning.includes('Hạt Cà Phê Arabica Cầu Đất'));
     assert.ok(createLog.reasoning.includes('Espresso Đơn'));
 
-    // Second scan on the same ingredient should skip duplicate PR creation
+    // An independently existing PR still suppresses new proposals. Proposal itself is not a PR.
+    openPrIngredientIds.add('ing-arabica');
     const secondScan = await agentService.scanInventory(
         {
             ingredientIds: ['ing-arabica'],
@@ -287,7 +276,7 @@ test('Case 1: Low ingredient stock with active supplier creates PENDING Purchase
     );
 
     assert.equal(secondScan.createdPurchaseRequests.length, 0);
-    assert.equal(createdPrs.length, 1);
+    assert.equal(proposals.length, 1);
     const dupLog = secondScan.results.find((r) => r.action === 'SCAN_INGREDIENT_SKIP_DUPLICATE');
     assert.ok(dupLog, 'Expected SCAN_INGREDIENT_SKIP_DUPLICATE on second scan');
     assert.equal(dupLog.reason, 'ACTIVE_PR_EXISTS');
@@ -391,7 +380,7 @@ test('Case 3: Low ingredient stock with no supplier or inactive supplier logs NO
     );
 
     assert.equal(res.createdPurchaseRequests.length, 0);
-    assert.equal(createdPrs.length, 0);
+    assert.equal(proposals.length, 0);
 
     const noSupLog = res.results.find((r) => r.ingredientId === 'ing-no-sup');
     const inactiveSupLog = res.results.find((r) => r.ingredientId === 'ing-inactive-sup');
@@ -442,9 +431,10 @@ test('Case 5: scanInventory with productIds resolves ingredientIds from active R
         'admin'
     );
 
-    assert.equal(res.createdPurchaseRequests.length, 1);
+    assert.equal(res.createdPurchaseRequests.length, 0);
+    assert.equal(res.createdProposals.length, 1);
     assert.equal(res.results[0].ingredientId, 'ing-arabica');
-    assert.equal(createdPrs[0].items[0].ingredientId, 'ing-arabica');
+    assert.equal(proposals[0].snapshot.ingredientId, 'ing-arabica');
 });
 
 test('Case 6: ingredientService.recordWaste triggers scanInventoryViaAgentService ONLY after $transaction commits, and 0 times on rollback', async () => {

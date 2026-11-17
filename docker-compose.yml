@@ -21,7 +21,7 @@ services:
       dockerfile: apps/agent/Dockerfile
     container_name: cafe_agent
     environment:
-      - DATABASE_URL=postgresql://cafedb:cafedb_password@postgres:5432/cafedb
+      - DATABASE_URL=${DATABASE_URL}
       - PORT=5055
       - AGENT_INTERNAL_TOKEN=dev-agent-secret
       - GEMINI_API_KEY=dummy_key_for_local_demo
@@ -39,9 +39,10 @@ services:
       dockerfile: apps/api/Dockerfile
     container_name: cafe_api
     environment:
-      - DATABASE_URL=postgresql://cafedb:cafedb_password@postgres:5432/cafedb
+      - DATABASE_URL=${DATABASE_URL}
       - PORT=5000
       - AGENT_BASE_URL=http://agent:5055
+      - AGENT_INTERNAL_TOKEN=dev-agent-secret
       - FRONTEND_URL=http://localhost:8080
       - CORS_ORIGIN=http://localhost:8080,http://localhost:5173
       - JWT_SECRET=local_demo_jwt_secret

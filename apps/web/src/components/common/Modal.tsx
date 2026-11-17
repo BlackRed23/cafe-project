@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
 
 interface ModalProps {
@@ -16,14 +16,19 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   size = "md",
 }) => {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "unset";
-    }
+    const dialog = dialogRef.current;
+    if (!isOpen || !dialog) return;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = "unset";
+      dialog.close();
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
     };
   }, [isOpen]);
 
@@ -37,19 +42,16 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity" 
-        onClick={onClose} 
-      />
+    <dialog ref={dialogRef} aria-labelledby={titleId} className="ds-dialog" onCancel={(event) => { event.preventDefault(); onClose(); }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
 
       {/* Modal Content Wrapper */}
-      <div className={`relative w-full ${sizeClasses[size]} bg-white rounded-xl shadow-2xl border border-slate-100 overflow-hidden transform transition-all duration-300 z-10 max-h-[90vh] flex flex-col`}>
+      <div className={`ds-dialog-panel relative w-full ${sizeClasses[size]} bg-white rounded-lg shadow-2xl border border-slate-100 overflow-hidden z-10 max-h-[90dvh] flex flex-col`}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h3 className="text-lg font-semibold text-slate-800">{title}</h3>
+          <h2 id={titleId} className="text-lg font-semibold text-slate-800">{title}</h2>
           <button
+            type="button"
+            aria-label="Đóng hộp thoại"
             onClick={onClose}
             className="text-slate-400 hover:text-slate-600 transition-colors p-1.5 rounded-lg hover:bg-slate-100"
           >
@@ -62,6 +64,6 @@ export const Modal: React.FC<ModalProps> = ({
           {children}
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

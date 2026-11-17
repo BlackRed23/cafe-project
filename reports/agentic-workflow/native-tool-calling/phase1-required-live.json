@@ -1,0 +1,30 @@
+{
+  "request_sent": true,
+  "provider_http_status": 200,
+  "native_tool_calls_received": 1,
+  "arguments_validated": true,
+  "backend_tools_executed": 0,
+  "input_source": "NON_SENSITIVE_SELECTION_PROBE",
+  "diagnostic": {
+    "requestId": "f0410bce-180f-4712-bc5a-eccec8f3b4da",
+    "model": "gpt-5.5",
+    "toolsCount": 1,
+    "toolChoice": "required",
+    "requestSent": true,
+    "httpStatus": 200,
+    "finishReason": "tool_calls",
+    "messageKeys": [
+      "role",
+      "content",
+      "tool_calls",
+      "refusal"
+    ],
+    "toolCallsCount": 1,
+    "contentType": "null",
+    "refusalPresent": false,
+    "validationStatus": "PASS",
+    "errorCode": null
+  },
+  "error": null,
+  "selected_tool": "getIngredientAvailability"
+}

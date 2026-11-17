@@ -20,6 +20,20 @@ import type { CreateOrderInput, OrderFiltersInput } from './order.validator';
 import { detectShippingZone, calculateShippingFee } from './shipping.service';
 import { scanInventoryViaAgentService } from '../agent/agent.client';
 import { appendManualPaymentAudit } from '../payment/payment.repository';
+import { HttpError } from '../../common/http-error';
+
+// Share locks serialize acceptance with product deactivation/price updates.
+// Stable order prevents deadlocks for carts listing products in different orders.
+const lockActiveProducts = async (tx: Prisma.TransactionClient, ids: string[]): Promise<void> => {
+    const uniqueIds = Array.from(new Set(ids)).sort();
+    const products = await tx.$queryRaw<Array<{ id: string; isActive: boolean; deletedAt: Date | null }>>(
+        Prisma.sql`SELECT id, "isActive", "deletedAt" FROM "Product"
+            WHERE id IN (${Prisma.join(uniqueIds)}) ORDER BY id FOR SHARE`
+    );
+    if (products.length !== uniqueIds.length || products.some(p => !p.isActive || p.deletedAt)) {
+        throw new HttpError(409, 'Product inactive or unavailable. Refresh your cart.');
+    }
+};
 
 const orderInclude = {
     user: { select: { id: true, name: true, email: true } },
@@ -40,6 +54,19 @@ const orderInclude = {
 export type OrderRecord = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
 
 export const orderRepository = {
+    /** Bounded read-only history projection. No mutable updatedAt used as sale timestamp. */
+    async findSalesHistory(productId: string, from: Date, to: Date) {
+        return prisma.$transaction(async tx => {
+            if (!await tx.product.findUnique({ where: { id: productId }, select: { id: true } })) return null;
+            return tx.orderItem.findMany({
+                where: { productId, OR: [{ committedAt: { gte: from, lt: to } },
+                    { committedAt: null, order: { createdAt: { lt: to } } }] },
+                select: { quantity: true, committedAt: true, consumptionStatus: true,
+                    order: { select: { status: true, paymentStatus: true, payments: { select: { status: true } } } } },
+                orderBy: { id: 'asc' }, take: 10001,
+            });
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 4000 });
+    },
     async findMany(filters: OrderFiltersInput = {}): Promise<OrderRecord[]> {
         return prisma.order.findMany({
             where: {
@@ -86,6 +113,7 @@ export const orderRepository = {
     async create(userId: string, input: CreateOrderInput): Promise<OrderRecord> {
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const productIds = Array.from(new Set(input.items.map((item) => item.productId)));
+            await lockActiveProducts(tx, productIds);
             const products = await tx.product.findMany({
                 where: { id: { in: productIds }, isActive: true },
                 include: { inventory: true }
@@ -100,6 +128,18 @@ export const orderRepository = {
                     }
                 }
             });
+            const recipeProducts = new Set<string>();
+            const now = new Date();
+            for (const recipe of activeRecipes) {
+                if (recipeProducts.has(recipe.productId) || !recipe.ingredients.length ||
+                    !recipe.yieldQuantity.gt(0) || recipe.effectiveFrom > now ||
+                    (recipe.effectiveTo !== null && recipe.effectiveTo <= now) ||
+                    recipe.ingredients.some(item => !item.quantityBase.gt(0) ||
+                        !item.ingredient.isActive || item.ingredient.deletedAt !== null)) {
+                    throw new HttpError(409, 'Product recipe is invalid or unavailable.');
+                }
+                recipeProducts.add(recipe.productId);
+            }
             const activeRecipeByProductId = new Map(activeRecipes.map((r) => [r.productId, r]));
 
             const allToppingIds = Array.from(
@@ -406,6 +446,10 @@ export const orderRepository = {
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);
         const updatedOrder = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            if (order.status === OrderStatus.PENDING && nextStatus === OrderStatus.PROCESSING) {
+                const items = await tx.orderItem.findMany({ where: { orderId: order.id }, select: { productId: true } });
+                await lockActiveProducts(tx, items.map(item => item.productId));
+            }
             const isStatusSame = order.status === nextStatus;
             const shouldFinalizeStock = !order.stockDeductedAt && nextStatus === OrderStatus.COMPLETED;
             const shouldReleaseReserved =

@@ -1,0 +1,9 @@
+# Workflow patterns
+
+The active production stock route is `/admin/ingredients`; `/admin/inventory` redirects there. Preserve that redirect. Heading identifies ingredient stock and cost workflow. Existing summary values derive from the currently returned list, so name the summary region accordingly; do not imply whole-store totals. Search and low-stock checkbox retain existing server query parameters. Keep manual Agent scan and ingredient authoring behind existing !isStaff gate; preserve cooldown, results and notifications. Never auto-run scanning on load.
+
+Search remains controlled by page. The ingredient table keeps its existing domain-specific columns and actions rather than changing its data/pagination behavior to fit DataTable. Shared DataTable elsewhere paginates visible filtered data and resets on search/length changes. Preserve row links, imports, waste forms, batch selection, unit conversion, expiry validation and request navigation exactly. Horizontal overflow belongs to table region; controls wrap rather than truncate key actions.
+
+Forms use visible labels, units and inline errors. Preserve user-entered values on failure. Errors are distinct from empty results; destructive and approval actions retain existing confirmation and server authorization. Do not imply save success before response. Loading prevents repeated action; text provides feedback even with reduced motion. Existing toast context remains source of mutation feedback.
+
+First slice restyles ingredient presentation and shared primitives. Read failure now has persistent inline ErrorState and explicit retry; it does not display a false empty result. Existing toast feedback remains. No new summary business calculations, production mock data, altered endpoints or approval behavior. Next slice should migrate purchase-request list/detail presentation while retaining approval controls and testing each role.
