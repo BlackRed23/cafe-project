@@ -5,9 +5,10 @@ import type { Ingredient, IngredientTransaction } from "../../types/ingredient.t
 import { formatCurrency } from "../../utils/formatCurrency";
 import { formatDate } from "../../utils/formatDate";
 import { Loading } from "../../components/common/Loading";
-import { ArrowLeft, Layers, History } from "lucide-react";
+import { ArrowLeft, Layers } from "lucide-react";
 import { ingredientError } from "./ingredientFeedback";
 import { IngredientOperations } from "./IngredientOperations";
+import { InventoryVerification } from "./InventoryVerification";
 import "./ingredients.css";
 
 export const AdminIngredientDetailPage: React.FC = () => {
@@ -120,6 +121,10 @@ export const AdminIngredientDetailPage: React.FC = () => {
         const [latest, history] = await Promise.all([ingredientsApi.getIngredientById(ingredient.id), ingredientsApi.getTransactions(ingredient.id)]);
         setIngredient(latest); setTransactions(history);
       }} />
+      <InventoryVerification key={ingredient.id} ingredient={ingredient} transactions={transactions} onRefresh={async () => {
+        const [latest, history] = await Promise.all([ingredientsApi.getIngredientById(ingredient.id), ingredientsApi.getTransactions(ingredient.id)]);
+        setIngredient(latest); setTransactions(history);
+      }} />
       {/* Batches */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
         <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
@@ -170,59 +175,6 @@ export const AdminIngredientDetailPage: React.FC = () => {
         )}
       </div>
 
-      {/* Transactions */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
-        <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
-          <History size={16} className="text-amber-800" />
-          Lịch sử biến động & Chi phí nguyên liệu
-        </h3>
-        {transactions.length === 0 ? (
-          <p className="text-sm text-slate-400 py-6 text-center">Chưa có giao dịch nào.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 text-slate-400 uppercase font-bold">
-                  <th className="py-2.5 px-3">Thời gian</th>
-                  <th className="py-2.5 px-3">Loại GD</th>
-                  <th className="py-2.5 px-3">Người thực hiện</th>
-                  <th className="py-2.5 px-3">Mã lô</th>
-                  <th className="py-2.5 px-3 text-right">Số lượng ({ingredient.baseUnit})</th>
-                  <th className="py-2.5 px-3 text-right">Đơn giá vốn</th>
-                  <th className="py-2.5 px-3 text-right">Thành tiền vốn</th>
-                  <th className="py-2.5 px-3">Lý do / Tham chiếu</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {transactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-slate-50/50">
-                    <td className="py-2.5 px-3 text-slate-500">{formatDate(tx.createdAt)}</td>
-                    <td className="py-2.5 px-3 font-bold text-slate-700">{tx.type}</td>
-                    <td className="py-2.5 px-3">{tx.performedBy || tx.performedByEmail || '—'}</td>
-                    <td className="py-2.5 px-3 font-mono text-slate-500">{tx.batchCode || "-"}</td>
-                    <td
-                      className={`py-2.5 px-3 text-right font-bold ${
-                        tx.quantity > 0 ? "text-emerald-700" : "text-rose-600"
-                      }`}
-                    >
-                      {tx.quantity > 0 ? `+${tx.quantity}` : tx.quantity}
-                    </td>
-                    <td className="py-2.5 px-3 text-right text-slate-600">
-                      {tx.unitCost > 0
-                        ? `${tx.unitCost.toLocaleString("vi-VN", { maximumFractionDigits: 4 })}đ`
-                        : "-"}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-amber-800">
-                      {tx.totalCost > 0 ? formatCurrency(tx.totalCost) : "-"}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-600">{tx.reason || "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </div>
   );
 };

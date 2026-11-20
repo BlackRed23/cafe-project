@@ -16,7 +16,10 @@ function load(file, deps, timers = {}) {
         require(name) { if (!(name in deps)) throw Error(`Unexpected dependency: ${name}`); return deps[name]; } });
     return exports;
 }
-const contracts = load('../../agent/src/workflows/tool-contracts.ts', { zod: { z } });
+const businessRead = load('../../agent/src/services/tool-selection/tool-business-read.ts', { zod: { z } });
+const contracts = load('../../agent/src/workflows/tool-contracts.ts', {
+    zod: { z }, '../services/tool-selection/tool-business-read': businessRead,
+});
 const { TOOL_CONTRACTS, ToolError } = contracts;
 const adapterDeps = { './tool-contracts': contracts };
 const { createReadToolAdapter } = load('../../agent/src/workflows/tool-registry.ts', adapterDeps);
@@ -34,8 +37,8 @@ function fixture(overrides = {}, create = createReadToolAdapter) {
 }
 const rejects = (promise, code) => assert.rejects(promise, e => e.code === code && e.message === code);
 
-test('P1 catalog: eight strict input/output contracts; five bound tools; writes absent', () => {
-    assert.equal(Object.keys(TOOL_CONTRACTS).length, 8);
+test('P1 catalog: ten strict input/output contracts; five bound facade tools; writes absent', () => {
+    assert.equal(Object.keys(TOOL_CONTRACTS).length, 10);
     assert.equal(Object.keys(fixture().tools).length, 5);
     for (const c of Object.values(TOOL_CONTRACTS)) {
         assert.ok(c.input && c.output && c.permission && c.service && c.purpose);

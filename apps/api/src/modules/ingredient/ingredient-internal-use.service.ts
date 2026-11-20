@@ -31,7 +31,7 @@ export const ingredientInternalUseService = {
             }
             if (!ingredient.isActive) throw new HttpError(409, 'Inactive ingredient cannot be used internally.');
             if (new Prisma.Decimal(toIngredientDto(ingredient).availableQuantity).lt(quantity)) {
-                throw new HttpError(400, 'Internal usage exceeds available stock.');
+                throw new HttpError(400, 'Số lượng xuất dùng vượt quá tồn kho khả dụng.');
             }
             const now = new Date();
             const eligibleBatches = ingredient.batches.filter(batch => isIngredientBatchUsable(batch, now));
@@ -52,6 +52,6 @@ export const ingredientInternalUseService = {
             const updated = await ingredientRepository.findById(ingredientId, tx);
             return { ingredient: toIngredientDto(updated!), consumedQuantityBase: Number(quantity),
                 totalCost: Number(totalCost), transactionIds, replayed: false };
-        });
+        }, { timeout: 15000 });
     }
 };

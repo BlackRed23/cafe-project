@@ -4,7 +4,7 @@ assert.equal(process.env.SALES_CAFEDB_CONFIRMED, 'YES');
 require('dotenv').config({ path: 'apps/api/.env', quiet: true });
 require('dotenv').config({ quiet: true });
 const url = new URL(process.env.DATABASE_URL); assert.equal(url.pathname, '/cafedb');
-url.hostname = '127.0.0.1'; url.port = '55432'; process.env.DATABASE_URL = url.toString();
+url.hostname = '127.0.0.1'; url.port = process.env.SALES_DB_PORT || '55432'; process.env.DATABASE_URL = url.toString();
 require('ts-node').register({ project: 'apps/api/tsconfig.json', transpileOnly: true });
 const app = require('express')(); app.use(require('express').json());
 const port = Number(process.env.SALES_API_PORT || 5002);

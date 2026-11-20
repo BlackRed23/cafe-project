@@ -12,6 +12,8 @@ export type ToolServices = ToolAuthorization & {
     estimate?(input: { ingredientId: string; supplierId: string; quantityBase: string }): Promise<unknown>;
     sales?(input: { productId: string; from: string; to: string }): Promise<unknown>;
     reorder?(input: { ingredientId: string; supplierId?: string }): Promise<unknown>;
+    stocktake?(input: { stocktakeId: string; ingredientId: string }): Promise<unknown>;
+    inbound?(input: { purchaseOrderId: string; ingredientId: string }): Promise<unknown>;
 };
 export type ToolEvidence = {
     tool: string; version: string; actorId: string; mode: 'MOCK' | 'BACKEND';
@@ -54,7 +56,9 @@ export function createToolRegistry(services: ToolServices, mode: 'MOCK' | 'BACKE
                         if (expired) throw new ToolError('TIMEOUT');
                         evidence.attempts = 1;
                         const input = parsed.data as Record<string, string>;
-                        const result = contract.binding === 'sales' ? await services.sales!({ productId: input.productId!, from: input.from!, to: input.to! })
+                        const result = contract.binding === 'stocktake' ? await services.stocktake!({ stocktakeId: input.stocktakeId!, ingredientId: input.ingredientId! })
+                            : contract.binding === 'inbound' ? await services.inbound!({ purchaseOrderId: input.purchaseOrderId!, ingredientId: input.ingredientId! })
+                            : contract.binding === 'sales' ? await services.sales!({ productId: input.productId!, from: input.from!, to: input.to! })
                             : contract.binding === 'reorder' ? await services.reorder!({ ingredientId: input.ingredientId!, ...(input.supplierId ? { supplierId: input.supplierId } : {}) })
                             : contract.binding === 'estimate'
                             ? await services.estimate!({ ingredientId: input.ingredientId!, supplierId: input.supplierId!, quantityBase: input.quantityBase! })

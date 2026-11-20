@@ -7,9 +7,39 @@ import type {
   WasteIngredientPayload,
   InternalUsagePayload,
   IngredientIncident,
+  StockCountRequest,
+  ReconciliationResult,
 } from "../types/ingredient.types";
 
+const ingredientPath = (id: string) => `/ingredients/${encodeURIComponent(id)}`;
+const adjustmentPath = (id: string, requestId: string) =>
+  `${ingredientPath(id)}/adjustments/${encodeURIComponent(requestId)}`;
+
 export const ingredientsApi = {
+  createAdjustment: async (id: string, payload: { requestId: string; batchId: string; measuredQuantity: number; reason: string }) => {
+    const res = await apiClient.post(`${ingredientPath(id)}/adjustments`, payload);
+    return unwrapApiData<{ request: StockCountRequest; replayed: boolean }>(res.data);
+  },
+  getAdjustment: async (id: string, requestId: string) => {
+    const res = await apiClient.get(adjustmentPath(id, requestId));
+    return unwrapApiData<StockCountRequest>(res.data);
+  },
+  approveAdjustment: async (id: string, requestId: string) => {
+    const res = await apiClient.post(`${adjustmentPath(id, requestId)}/approve`, {});
+    return unwrapApiData<{ request: StockCountRequest; replayed: boolean }>(res.data);
+  },
+  rejectAdjustment: async (id: string, requestId: string) => {
+    const res = await apiClient.post(`${adjustmentPath(id, requestId)}/reject`, {});
+    return unwrapApiData<StockCountRequest>(res.data);
+  },
+  getReconciliation: async (id: string) => {
+    const res = await apiClient.get(`${ingredientPath(id)}/reconciliation`);
+    return unwrapApiData<ReconciliationResult>(res.data);
+  },
+  correctTransaction: async (id: string, transactionId: string, payload: { requestId: string; reason: string }) => {
+    const res = await apiClient.post(`${ingredientPath(id)}/transactions/${encodeURIComponent(transactionId)}/corrections`, payload);
+    return unwrapApiData<{ transaction: IngredientTransaction; originalTransactionId: string; replayed: boolean; approvedBy: string; approvedAt: string }>(res.data);
+  },
   internalUse: async (id: string, payload: InternalUsagePayload) => {
     const response = await apiClient.post(`/ingredients/${id}/internal-use`, payload);
     return unwrapApiData<{ ingredient: Ingredient; consumedQuantityBase: number; totalCost: number; transactionIds: string[]; replayed: boolean }>(response.data);
@@ -82,6 +112,7 @@ export const ingredientsApi = {
         totalCost: number;
       };
       recalculatedProductCount: number;
+      replayed?: boolean;
     }>(response.data);
   },
 

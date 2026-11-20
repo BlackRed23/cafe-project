@@ -40,6 +40,15 @@ const rethrowSecurityError = (error: unknown) => {
     if (error instanceof AgentServiceError && [401, 403, 503].includes(error.statusCode || 0)) throw error;
 };
 const AGENT_SERVICE_TIMEOUT_MS = Number.parseInt(process.env.AGENT_SERVICE_TIMEOUT_MS || '5000', 10);
+// The explicitly enabled ACT READ-only Graph may spend up to two independent
+// 5s Registry deadlines plus durable PostgreSQL checkpoints and verification.
+// Do not let the default outer 5s transport return a misleading HTTP 200
+// fallback before Graph's bounded TIMEOUT/HOLD has been persisted.
+const scanDeadline = (method: string, path: string) =>
+    method === 'POST' && path === '/internal/agent/scan-inventory' &&
+    process.env.AGENT_ACT_READ_EXECUTION === 'YES' &&
+    process.env.AGENT_GRAPH_PG_READONLY === 'YES'
+        ? Math.max(AGENT_SERVICE_TIMEOUT_MS, 30000) : AGENT_SERVICE_TIMEOUT_MS;
 
 class AgentServiceError extends Error {
     constructor(message: string, readonly statusCode?: number) {
@@ -60,6 +69,7 @@ const buildUrl = (path: string, query?: Record<string, unknown>) => {
 const requestJson = async <T>(method: 'GET' | 'POST', path: string, body?: unknown, query?: Record<string, unknown>, userId?: string): Promise<T> => {
     const token = internalSecret();
     await authorize(method, path, userId);
+    const deadline = scanDeadline(method, path);
     return new Promise<T>((resolve, reject) => {
         const url = buildUrl(path, query);
         const payload = body === undefined ? undefined : JSON.stringify(body);
@@ -68,7 +78,7 @@ const requestJson = async <T>(method: 'GET' | 'POST', path: string, body?: unkno
             url,
             {
                 method,
-                timeout: AGENT_SERVICE_TIMEOUT_MS,
+                timeout: deadline,
                 headers: {
                     'x-agent-internal-token': token,
                     'x-agent-principal': userId ? 'user' : 'system',
@@ -101,7 +111,7 @@ const requestJson = async <T>(method: 'GET' | 'POST', path: string, body?: unkno
         );
 
         req.on('timeout', () => {
-            req.destroy(new AgentServiceError(`Agent service timeout after ${AGENT_SERVICE_TIMEOUT_MS}ms.`));
+            req.destroy(new AgentServiceError(`Agent service timeout after ${deadline}ms.`));
         });
         req.on('error', (error) => reject(error instanceof AgentServiceError
             ? error : new AgentServiceError('Agent service unavailable.')));

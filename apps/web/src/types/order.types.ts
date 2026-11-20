@@ -1,7 +1,17 @@
 import type { Product } from "./product.types";
 
-export type PaymentMethod = "CASH" | "BANK_TRANSFER" | "VIET_QR" | "MOMO" | "VNPAY";
-export type PaymentStatus = "PENDING" | "SUCCESS" | "PAID" | "FAILED" | "REFUNDED";
+export type PaymentMethod =
+  | "CASH"
+  | "BANK_TRANSFER"
+  | "VIET_QR"
+  | "MOMO"
+  | "VNPAY";
+export type PaymentStatus =
+  | "PENDING"
+  | "SUCCESS"
+  | "PAID"
+  | "FAILED"
+  | "REFUNDED";
 export type TransactionStatus =
   | "INITIATED"
   | "PENDING"
@@ -16,6 +26,7 @@ export type OrderStatus =
   | "PENDING"
   | "CONFIRMED"
   | "PROCESSING"
+  | "PREPARING"
   | "COMPLETED"
   | "CANCELLED";
 
@@ -46,6 +57,7 @@ export interface OrderItemPayload {
 }
 
 export interface CreateOrderPayload {
+  requestId?: string;
   items: OrderItemPayload[];
   paymentMethod: PaymentMethod;
   shippingName: string;
@@ -86,6 +98,14 @@ export interface OrderItem {
 }
 
 export interface Order {
+  version?: number;
+  displayStatus?: OrderStatus;
+  adjustmentTotal?: number;
+  adjustedPayable?: number;
+  additionalAmountDue?: number;
+  refundDue?: number;
+  operations?: OrderOperation[];
+  itemHistory?: OrderItemHistory[];
   id: string;
   userId: string;
   customer?: {
@@ -110,4 +130,47 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
   items?: OrderItem[];
+}
+
+export interface OrderItemHistory {
+  id: string;
+  productId: string;
+  recipeId?: string | null;
+  recipeVersion?: number | null;
+  price: number;
+  quantity: number;
+  originalItemId?: string | null;
+  attemptType?: string;
+  replacedAt?: string | null;
+  consumptionStatus?: "PENDING" | "COMMITTED" | "VOIDED";
+}
+
+export interface OrderOperation {
+  id: string;
+  kind: string;
+  status: string;
+  reason: string;
+  actorId?: string;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  createdAt?: string;
+  originalItemId?: string | null;
+  replacementItemId?: string | null;
+  amountDelta?: number | string;
+}
+
+export interface OrderOperationInput {
+  requestId: string;
+  expectedVersion: number;
+  kind: "CANCEL" | "REMAKE" | "CORRECTION";
+  reason: string;
+  originalItemId?: string;
+  replacement?: { productId: string; quantity: number };
+}
+
+export interface EditOrderItemsInput {
+  requestId: string;
+  expectedVersion: number;
+  reason: string;
+  items: Array<{ productId: string; quantity: number }>;
 }

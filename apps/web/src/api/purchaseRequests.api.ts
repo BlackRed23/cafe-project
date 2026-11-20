@@ -95,8 +95,9 @@ export const purchaseRequestsApi = {
 
   createPurchaseRequest: async (payload: {
     supplierId: string;
+    demandSourceKey?: string;
     notes?: string;
-    items: Array<{ inventoryId?: string; ingredientId?: string; quantity: number }>;
+    items: Array<{ inventoryId?: string; ingredientId?: string; quantity: number; unitPrice?: number }>;
   }): Promise<PurchaseRequest> => {
     const response = await apiClient.post("/purchase-requests", payload);
     return normalizePurchaseRequest(unwrapApiField<any>(response.data, "purchaseRequest"));

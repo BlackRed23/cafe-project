@@ -15,7 +15,7 @@ import {
     verifyMoMoSignature,
     type MoMoIpnPayload
 } from './momo.gateway';
-import { getMoMoConfig } from './payment-gateway.config';
+import { getMoMoConfig, getVNPayConfig } from './payment-gateway.config';
 import { createVNPayUrl, verifyVNPaySignature, type VNPayIpnQuery } from './vnpay.gateway';
 import { paymentRepository, type PaymentRecord } from './payment.repository';
 import type {
@@ -166,6 +166,9 @@ export const updatePaymentStatus = async (
     const role = user?.role ?? 'ADMIN';
 
     assertManualPaymentTransition(payment.status, nextStatus, payment.method, role);
+    if (nextStatus === TransactionStatus.REFUNDED) {
+        return markPaymentRefunded(id, { note: input.note }, user!);
+    }
 
     const updated = await paymentRepository.updateStatus(id, nextStatus, {
         by: user?.id ?? 'system',
@@ -301,7 +304,7 @@ export const createPaymentUrl = async (
         };
         await paymentRepository.markAttemptGatewayError(
             attempt.id,
-            errObj.gatewayCode || 'GATEWAY_INIT_FAILED',
+            errObj.gatewayCode || (error instanceof HttpError && error.code === 'PAYMENT_CONFIG_ERROR' ? 'PAYMENT_CONFIG_ERROR' : 'GATEWAY_OUTCOME_UNKNOWN'),
             errObj.message || 'Failed to create payment URL',
             errObj.requestPayload,
             errObj.responsePayload
@@ -320,7 +323,7 @@ export const processMoMoWebhook = async (
     // 1. Verify HMAC-SHA256 signature first
     let signatureValid = false;
     try {
-        signatureValid = verifyMoMoSignature(payload);
+        signatureValid = verifyMoMoSignature(payload) && payload.partnerCode === getMoMoConfig().partnerCode;
     } catch {
         signatureValid = false;
     }
@@ -348,7 +351,7 @@ export const processMoMoWebhook = async (
             ? String(payload.transId).trim()
             : null;
     const providerEventId = transIdStr
-        ? `MOMO:${transIdStr}`
+        ? `MOMO:${merchantRef}:${transIdStr}:${resultCode}`
         : `MOMO:${merchantRef}:${String(payload.resultCode ?? 'UNKNOWN')}`;
 
     // 2. Idempotency check via atomic create on PaymentCallback.providerEventId @unique
@@ -366,19 +369,21 @@ export const processMoMoWebhook = async (
     } catch (error) {
         if (isPrismaUniqueError(error)) {
             await paymentRepository.incrementCallbackRetryByEventId(providerEventId);
-            return { status: 'ALREADY_PROCESSED' };
+            const previous = await paymentRepository.findCallbackByEventId(providerEventId);
+            if (!previous || (previous.status !== CallbackStatus.VERIFIED && !previous.errorMessage?.startsWith('PROCESSING_ERROR:'))) {
+                return { status: 'ALREADY_PROCESSED' };
+            }
+            callbackLog = previous;
+        } else {
+            throw error;
         }
-        throw error;
     }
 
     try {
-        // 3. Find Payment by merchantRef (fallback to latest by orderId if merchantRef equals orderId)
+        // Exact attempt identity only; legacy order IDs must not select a newer attempt.
         let payment = await paymentRepository.findByMerchantRef(merchantRef);
-        if (!payment && merchantRef) {
-            payment = await paymentRepository.findLatestByOrderId(merchantRef);
-        }
 
-        if (!payment) {
+        if (!payment || (isSuccess && !transIdStr)) {
             await paymentRepository.updateCallbackLog(callbackLog.id, {
                 status: CallbackStatus.FAILED,
                 errorMessage: `Payment not found for merchantRef=${merchantRef}`
@@ -387,9 +392,9 @@ export const processMoMoWebhook = async (
         }
 
         // 4. Verify amount against DB Payment.amount
-        const expectedAmount = Math.round(Number(payment.amount));
-        const receivedAmount = Math.round(Number(payload.amount));
-        if (!Number.isFinite(receivedAmount) || receivedAmount !== expectedAmount) {
+        const expectedAmount = new Prisma.Decimal(payment.amount);
+        const receivedAmount = String(payload.amount ?? '');
+        if (payment.method !== PaymentMethod.MOMO || payment.currency !== 'VND' || !/^\d+$/.test(receivedAmount) || !expectedAmount.eq(receivedAmount)) {
             console.warn(
                 `[PAYMENT][MOMO] Amount mismatch for payment ${payment.id}: expected=${expectedAmount}, received=${payload.amount}`
             );
@@ -462,7 +467,7 @@ export const processMoMoWebhook = async (
         }
         await paymentRepository.updateCallbackLog(callbackLog.id, {
             status: CallbackStatus.FAILED,
-            errorMessage: error instanceof Error ? error.message : 'Unexpected webhook processing error'
+            errorMessage: 'PROCESSING_ERROR: ' + (error instanceof Error ? error.message : 'Unexpected webhook processing error')
         });
         throw error;
     }
@@ -478,7 +483,7 @@ export const processVNPayIpn = async (
     // 1. Verify HMAC-SHA512 signature first
     let signatureValid = false;
     try {
-        signatureValid = verifyVNPaySignature(query);
+        signatureValid = verifyVNPaySignature(query) && query.vnp_TmnCode === getVNPayConfig().tmnCode;
     } catch {
         signatureValid = false;
     }
@@ -509,11 +514,8 @@ export const processVNPayIpn = async (
 
     // 2. Find Payment first so we can return VNPay standard codes (01 = Order not found, 04 = Invalid amount, 02 = Already confirmed)
     let payment = await paymentRepository.findByMerchantRef(merchantRef);
-    if (!payment && merchantRef) {
-        payment = await paymentRepository.findLatestByOrderId(merchantRef);
-    }
 
-    if (!payment) {
+    if (!payment || (isSuccess && !vnpTxnNo)) {
         await paymentRepository.createCallbackLog({
             method: PaymentMethod.VNPAY,
             providerEventId: null,
@@ -529,10 +531,10 @@ export const processVNPayIpn = async (
     }
 
     // 3. Check amount (vnp_Amount is multiplied by 100)
-    const expectedAmount = Math.round(Number(payment.amount));
-    const receivedAmountRaw = Number(query.vnp_Amount);
-    const receivedAmount = Math.round(receivedAmountRaw / 100);
-    if (!Number.isFinite(receivedAmountRaw) || receivedAmount !== expectedAmount) {
+    const expectedAmount = new Prisma.Decimal(payment.amount).mul(100);
+    const receivedAmount = String(query.vnp_Amount ?? '');
+    if (payment.method !== PaymentMethod.VNPAY || payment.currency !== 'VND' ||
+        (query.vnp_CurrCode !== undefined && query.vnp_CurrCode !== 'VND') || !/^\d+$/.test(receivedAmount) || !expectedAmount.eq(receivedAmount)) {
         await paymentRepository.createCallbackLog({
             method: PaymentMethod.VNPAY,
             providerEventId: null,
@@ -549,7 +551,7 @@ export const processVNPayIpn = async (
 
     // 4. Idempotency check via providerEventId @unique
     const providerEventId = vnpTxnNo
-        ? `VNPAY:${vnpTxnNo}`
+        ? `VNPAY:${merchantRef}:${vnpTxnNo}:${responseCode}:${transactionStatus}`
         : `VNPAY:${merchantRef}:${responseCode}:${transactionStatus}`;
 
     let callbackLog: { id: string };
@@ -567,19 +569,14 @@ export const processVNPayIpn = async (
     } catch (error) {
         if (isPrismaUniqueError(error)) {
             await paymentRepository.incrementCallbackRetryByEventId(providerEventId);
-            return { RspCode: '02', Message: 'Order already confirmed' };
+            const previous = await paymentRepository.findCallbackByEventId(providerEventId);
+            if (!previous || (previous.status !== CallbackStatus.VERIFIED && !previous.errorMessage?.startsWith('PROCESSING_ERROR:'))) {
+                return { RspCode: '02', Message: 'Order already confirmed' };
+            }
+            callbackLog = previous;
+        } else {
+            return { RspCode: '99', Message: 'Unknown error' };
         }
-        return { RspCode: '99', Message: 'Unknown error' };
-    }
-
-    // If payment was already PAID before this event
-    if (payment.status === TransactionStatus.PAID) {
-        await paymentRepository.updateCallbackLog(callbackLog.id, {
-            paymentId: payment.id,
-            status: CallbackStatus.DUPLICATED,
-            errorMessage: 'Order already confirmed'
-        });
-        return { RspCode: '02', Message: 'Order already confirmed' };
     }
 
     try {
@@ -642,7 +639,7 @@ export const processVNPayIpn = async (
         await paymentRepository.updateCallbackLog(callbackLog.id, {
             paymentId: payment.id,
             status: CallbackStatus.FAILED,
-            errorMessage: error instanceof Error ? error.message : 'Unexpected VNPay IPN error'
+            errorMessage: 'PROCESSING_ERROR: ' + (error instanceof Error ? error.message : 'Unexpected VNPay IPN error')
         });
         return { RspCode: '99', Message: 'Unknown error' };
     }
@@ -654,7 +651,7 @@ export const processVNPayIpn = async (
 export const simulateDevMoMoIpn = async (
     input: SimulateMoMoIpnInput
 ): Promise<{ status: 'APPLIED' | 'ALREADY_PROCESSED' | 'FAILED'; payment: PaymentDto }> => {
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === 'production' || process.env.PAYMENT_DEV_SIMULATOR_ENABLED !== 'true') {
         throw new HttpError(404, 'Not found.');
     }
 

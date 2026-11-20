@@ -9,7 +9,7 @@ const jwt = require('jsonwebtoken');
 async function main() {
   assert.equal(process.env.SALES_CAFEDB_CONFIRMED, 'YES');
   const url = new URL(process.env.DATABASE_URL); assert.equal(url.pathname, '/cafedb');
-  url.hostname = '127.0.0.1'; url.port = '55432';
+  url.hostname = '127.0.0.1'; url.port = process.env.SALES_DB_PORT || '55432';
   const db = new PrismaClient({ datasources: { db: { url: url.toString() } } });
   const dir = 'D:/KLTN/cafe-project-artifacts/reports/sales'; fs.mkdirSync(dir, { recursive: true });
   const evidenceLabel = process.env.SALES_EVIDENCE_LABEL || 'sales-evidence';
@@ -17,12 +17,13 @@ async function main() {
   const file = dir + '/' + evidenceLabel + '.json'; const ledger = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : { runs: [] };
   const out = { run: 'bh-' + randomUUID(), phase: process.env.SALES_PHASE || 'baseline', base: process.env.SALES_API_URL || 'http://127.0.0.1:5002/api', time: new Date().toISOString(), requests: [], scenarios: [] }; ledger.runs.push(out);
   fs.mkdirSync(dir + '/runs', { recursive: true });
+  const stringifyEvidence = value => JSON.stringify(value, (_key, item) => typeof item === 'bigint' ? item.toString() : item, 2);
   const save = () => {
     // Per-run evidence remains durable even if another acceptance process updates shared index.
-    fs.writeFileSync(dir + '/runs/' + out.run + '.json', JSON.stringify(out, null, 2));
+    fs.writeFileSync(dir + '/runs/' + out.run + '.json', stringifyEvidence(out));
     const current = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : { runs: [] };
     current.runs = [...current.runs.filter(r => r.run !== out.run), out];
-    fs.writeFileSync(file, JSON.stringify(current, null, 2));
+    fs.writeFileSync(file, stringifyEvidence(current));
   };
   let token, staff, category, seq = 0;
   const api = async (method, route, body, access = token) => {

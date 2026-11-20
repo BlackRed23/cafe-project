@@ -5,8 +5,9 @@ import {
     PaymentStatus,
     TransactionStatus,
     prisma,
-    type Prisma
+    Prisma
 } from '@cafe-project/database';
+import { HttpError } from '../../common/http-error';
 
 const paymentInclude = {
     order: { include: { user: { select: { id: true, name: true, email: true } } } }
@@ -98,18 +99,43 @@ export const paymentRepository = {
         expiresAt: Date;
     }): Promise<PaymentRecord> {
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            // Supersede any existing INITIATED or PENDING attempts for this order
-            await tx.payment.updateMany({
-                where: {
-                    orderId: input.orderId,
-                    status: { in: [TransactionStatus.INITIATED, TransactionStatus.PENDING] }
-                },
-                data: {
-                    status: TransactionStatus.CANCELLED,
-                    failureCode: 'SUPERSEDED',
-                    failureMessage: 'Attempt superseded by a newer payment attempt'
+            await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${input.orderId} FOR UPDATE`;
+            const order = await tx.order.findUniqueOrThrow({ where: { id: input.orderId } });
+            if (order.status === OrderStatus.CANCELLED || order.paymentStatus === PaymentStatus.PAID) {
+                throw new HttpError(409, 'Đơn đã hủy hoặc đã thanh toán.');
+            }
+            if (await tx.payment.findFirst({ where: { orderId: input.orderId, status: TransactionStatus.PAID } })) {
+                throw new HttpError(409, 'Đã nhận tiền; cần đối soát trước khi tạo thanh toán mới.');
+            }
+            const unknown = await tx.payment.findFirst({ where: { orderId: input.orderId, failureCode: 'GATEWAY_OUTCOME_UNKNOWN' } });
+            if (unknown) throw new HttpError(409, 'Giao dịch chưa rõ kết quả; cần đối soát trước khi tạo lần thanh toán mới.');
+            const unresolved = await tx.payment.findMany({ where: {
+                orderId: input.orderId,
+                status: { in: [TransactionStatus.INITIATED, TransactionStatus.PENDING, TransactionStatus.EXPIRED] }
+            } });
+            // Online Order creation stores one undispatched INITIATED placeholder in the same
+            // transaction as its items and stock reservation. Adopt that exact row under
+            // the Order lock; a fresh gateway attempt would otherwise 409 every new order.
+            // Once merchantRef/requestPayload exists, outcome is potentially unknown and
+            // must never be reissued without authoritative reconciliation.
+            if (unresolved.length === 1) {
+                const initial = unresolved[0];
+                const anyOtherAttempt = await tx.payment.count({ where: { orderId: input.orderId, id: { not: initial.id } } });
+                if (anyOtherAttempt === 0 && initial.status === TransactionStatus.INITIATED &&
+                    initial.method === input.method && order.paymentMethod === input.method &&
+                    initial.amount.eq(input.amount) && initial.attemptNo === 1 &&
+                    !initial.merchantRef && !initial.requestPayload && !initial.responsePayload &&
+                    !initial.expiresAt && !initial.failureCode) {
+                    return tx.payment.update({
+                        where: { id: initial.id },
+                        data: { merchantRef: `${input.orderId}_1`, expiresAt: input.expiresAt },
+                        include: paymentInclude
+                    });
                 }
-            });
+            }
+            if (unresolved.length > 0) {
+                throw new HttpError(409, 'Đã có giao dịch chưa xác minh kết quả; cần tra cứu cổng thanh toán trước khi thử lại.');
+            }
 
             const maxAttemptAgg = await tx.payment.aggregate({
                 where: { orderId: input.orderId },
@@ -145,14 +171,19 @@ export const paymentRepository = {
         requestPayload: Prisma.InputJsonValue,
         responsePayload: Prisma.InputJsonValue
     ): Promise<PaymentRecord> {
-        return prisma.payment.update({
+        return prisma.$transaction(async tx => {
+            const identity = await tx.payment.findUniqueOrThrow({ where: { id }, select: { orderId: true } });
+            await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${identity.orderId} FOR UPDATE`;
+            await tx.payment.updateMany({ where: { id, status: TransactionStatus.INITIATED }, data: { status: TransactionStatus.PENDING } });
+            return tx.payment.update({
             where: { id },
             data: {
-                status: TransactionStatus.PENDING,
+                // Callback may arrive before create-url response. Never regress settlement.
                 requestPayload,
                 responsePayload
             },
             include: paymentInclude
+        });
         });
     },
 
@@ -163,10 +194,10 @@ export const paymentRepository = {
         requestPayload?: Prisma.InputJsonValue,
         responsePayload?: Prisma.InputJsonValue
     ): Promise<void> {
-        await prisma.payment.update({
-            where: { id },
+        await prisma.payment.updateMany({
+            where: { id, status: { in: [TransactionStatus.INITIATED, TransactionStatus.PENDING] } },
             data: {
-                status: TransactionStatus.FAILED,
+                status: failureCode === 'GATEWAY_OUTCOME_UNKNOWN' ? TransactionStatus.PENDING : TransactionStatus.FAILED,
                 failureCode,
                 failureMessage,
                 ...(requestPayload !== undefined ? { requestPayload } : {}),
@@ -214,6 +245,10 @@ export const paymentRepository = {
         });
     },
 
+    async findCallbackByEventId(providerEventId: string) {
+        return prisma.paymentCallback.findUnique({ where: { providerEventId } });
+    },
+
     async updateCallbackLog(
         id: string,
         data: {
@@ -246,6 +281,7 @@ export const paymentRepository = {
             | 'PAID_AFTER_CANCEL';
     }> {
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${input.payment.orderId} FOR UPDATE`;
             const freshOrder = await tx.order.findUnique({
                 where: { id: input.payment.orderId }
             });
@@ -262,15 +298,30 @@ export const paymentRepository = {
                     where: { id: input.callbackId },
                     data: {
                         paymentId: freshPayment.id,
-                        status: CallbackStatus.DUPLICATED,
+                        status: input.providerTxnId !== freshPayment.providerTxnId ? CallbackStatus.FAILED : CallbackStatus.DUPLICATED,
+                        errorMessage: input.providerTxnId !== freshPayment.providerTxnId ? 'DUPLICATE_SETTLEMENT_SAME_ATTEMPT' : null,
                         processedAt: new Date()
                     }
                 });
                 return { outcome: 'ALREADY_PAID_SAME_ATTEMPT' as const };
             }
 
-            // Late webhook for a cancelled/expired attempt while Order was ALREADY paid by another attempt
-            if (freshOrder.paymentStatus === PaymentStatus.PAID) {
+            // Never revive a refunded payment from a stale settlement event.
+            if (freshPayment.status === TransactionStatus.REFUNDED) {
+                await tx.paymentCallback.update({ where: { id: input.callbackId }, data: {
+                    status: CallbackStatus.DUPLICATED, paymentId: freshPayment.id, processedAt: new Date(), errorMessage: 'STALE_AFTER_REFUND'
+                } });
+                return { outcome: 'ALREADY_PAID_SAME_ATTEMPT' as const };
+            }
+            const otherSettlement = await tx.payment.findFirst({ where: {
+                orderId: freshOrder.id, id: { not: freshPayment.id }, status: { in: [TransactionStatus.PAID, TransactionStatus.REFUNDED] }
+            } });
+            if (freshOrder.paymentStatus === PaymentStatus.PAID || (otherSettlement && otherSettlement.failureCode !== 'LATE_SETTLEMENT')) {
+                await tx.payment.update({ where: { id: freshPayment.id }, data: {
+                    status: TransactionStatus.PAID, paidAt: freshPayment.paidAt ?? new Date(),
+                    providerTxnId: input.providerTxnId,
+                    failureCode: 'DUPLICATE_PAYMENT', failureMessage: 'Đã nhận thêm tiền; cần đối soát, không tự động hoàn tiền.'
+                } });
                 await tx.paymentCallback.update({
                     where: { id: input.callbackId },
                     data: {
@@ -284,6 +335,17 @@ export const paymentRepository = {
             }
 
             const paidAt = new Date();
+            const newer = await tx.payment.findFirst({ where: { orderId: freshPayment.orderId, attemptNo: { gt: freshPayment.attemptNo } } });
+            if (newer && freshOrder.status !== OrderStatus.CANCELLED) {
+                await tx.payment.update({ where: { id: freshPayment.id }, data: {
+                    status: TransactionStatus.PAID, paidAt, providerTxnId: input.providerTxnId,
+                    failureCode: 'LATE_SETTLEMENT', failureMessage: 'Tiền về lần thanh toán cũ; cần đối soát.'
+                } });
+                await tx.paymentCallback.update({ where: { id: input.callbackId }, data: {
+                    paymentId: freshPayment.id, status: CallbackStatus.APPLIED, processedAt: new Date(), errorMessage: 'LATE_SETTLEMENT'
+                } });
+                return { outcome: 'APPLIED' as const };
+            }
 
             // BUG-3: Order was already CANCELLED before IPN arrived -> record PAID + flag REFUND_REQUIRED
             if (freshOrder.status === OrderStatus.CANCELLED) {
@@ -327,6 +389,7 @@ export const paymentRepository = {
                         in: [
                             TransactionStatus.INITIATED,
                             TransactionStatus.PENDING,
+                            TransactionStatus.FAILED,
                             TransactionStatus.CANCELLED,
                             TransactionStatus.EXPIRED
                         ]
@@ -373,6 +436,7 @@ export const paymentRepository = {
         failureMessage: string;
     }): Promise<void> {
         await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${input.payment.orderId} FOR UPDATE`;
             const freshPayment = await tx.payment.findUnique({ where: { id: input.payment.id } });
             if (!freshPayment) return;
 
@@ -384,7 +448,7 @@ export const paymentRepository = {
                         status: { in: [TransactionStatus.INITIATED, TransactionStatus.PENDING] }
                     },
                     data: {
-                        status: TransactionStatus.FAILED,
+                        status: ['1006', '24_02'].includes(input.failureCode) ? TransactionStatus.CANCELLED : TransactionStatus.FAILED,
                         failureCode: input.failureCode,
                         failureMessage: input.failureMessage
                     }
@@ -410,9 +474,18 @@ export const paymentRepository = {
         audit?: { by: string; note?: string }
     ): Promise<PaymentRecord> {
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const identity = await tx.payment.findUniqueOrThrow({ where: { id }, select: { orderId: true } });
+            await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${identity.orderId} FOR UPDATE`;
             const existing = await tx.payment.findUnique({ where: { id } });
             if (!existing) {
                 throw new Error('Payment not found.');
+            }
+            if (![TransactionStatus.INITIATED, TransactionStatus.PENDING].includes(existing.status as 'INITIATED' | 'PENDING') || status === TransactionStatus.REFUNDED) {
+                throw new HttpError(409, 'Trạng thái đã thay đổi hoặc cần dùng luồng hoàn tiền riêng.');
+            }
+            if (status === TransactionStatus.PAID) {
+                const order = await tx.order.findUniqueOrThrow({ where: { id: existing.orderId } });
+                if (order.status === OrderStatus.CANCELLED || order.paymentStatus === PaymentStatus.PAID) throw new HttpError(409, 'Đơn đã hủy hoặc đã thanh toán.');
             }
 
             // Never clear paidAt once a payment was PAID
@@ -476,9 +549,14 @@ export const paymentRepository = {
         note?: string
     ): Promise<PaymentRecord> {
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const identity = await tx.payment.findUniqueOrThrow({ where: { id }, select: { orderId: true } });
+            await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${identity.orderId} FOR UPDATE`;
             const existing = await tx.payment.findUnique({ where: { id } });
             if (!existing) {
                 throw new Error('Payment not found.');
+            }
+            if (existing.method !== PaymentMethod.CASH || existing.status !== TransactionStatus.PAID || existing.failureCode !== 'REFUND_REQUIRED') {
+                throw new HttpError(409, 'Chỉ xác nhận hoàn tiền CASH đã thanh toán và cần hoàn tiền; online cần bằng chứng từ cổng.');
             }
 
             const nextResponsePayload = appendManualPaymentAudit(existing.responsePayload, {
@@ -514,9 +592,12 @@ export const paymentRepository = {
     async expireStaleOnlinePayments(now = new Date()): Promise<number> {
         const res = await prisma.payment.updateMany({
             where: {
-                status: { in: [TransactionStatus.INITIATED, TransactionStatus.PENDING] },
+                // Expired pay URL does not prove the provider did not charge.
+                // Only attempts never dispatched to a provider can expire automatically.
+                status: TransactionStatus.INITIATED,
                 method: { in: [PaymentMethod.MOMO, PaymentMethod.VNPAY] },
-                expiresAt: { lt: now }
+                expiresAt: { lt: now },
+                requestPayload: { equals: Prisma.DbNull }
             },
             data: {
                 status: TransactionStatus.EXPIRED,

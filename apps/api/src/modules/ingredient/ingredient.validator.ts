@@ -31,6 +31,21 @@ export const ingredientIncidentSchema = z.object({
     reason: z.string().trim().min(1).max(1000)
 }).strict();
 
+/** Per-lot physical stock count. This creates a request, never edits official stock. */
+export const ingredientAdjustmentSchema = z.object({
+    requestId: z.string().uuid(),
+    batchId: z.string().trim().min(1),
+    measuredQuantity: z.number().finite().nonnegative().max(99999999999.999)
+        .refine(value => Math.abs(value * 1000 - Math.round(value * 1000)) < 0.0001,
+            'Số lượng đo được có tối đa 3 chữ số thập phân.'),
+    reason: z.string().trim().min(1).max(1000)
+}).strict();
+
+export const ingredientCorrectionSchema = z.object({
+    requestId: z.string().uuid(),
+    reason: z.string().trim().min(1).max(1000)
+}).strict();
+
 export const lotTransitionSchema = z.object({
     requestId: z.string().uuid(),
     reason: z.string().trim().min(1).max(1000)
@@ -53,7 +68,11 @@ export const ingredientInternalUseSchema = z.object({
 }).strict();
 
 export const importIngredientSchema = z.object({
-    quantity: z.coerce.number().positive('Số lượng nhập phải lớn hơn 0.'),
+    requestId: z.string().uuid('requestId phải là UUID hợp lệ.').optional(),
+    // Ingredient/IngredientBatch/InventoryTransaction store physical quantities as
+    // DECIMAL(14,3). Reject unrepresentable client input before opening a DB write.
+    quantity: z.coerce.number().finite().positive('Số lượng nhập phải lớn hơn 0.')
+        .max(99999999999.999, 'Số lượng nhập vượt giới hạn lưu trữ.'),
     unit: z.string().trim().optional(),
     unitCost: z.coerce.number().min(0, 'Đơn giá nhập không được âm.').optional(),
     totalCost: z.coerce.number().min(0, 'Tổng chi phí nhập không được âm.').optional(),

@@ -4,6 +4,8 @@ import { sendError, sendSuccess } from '../../common/response';
 import type { AuthenticatedRequest } from '../auth/auth.middleware';
 import type { MoMoIpnPayload } from './momo.gateway';
 import type { VNPayIpnQuery } from './vnpay.gateway';
+import { reconcileProviderPayment } from './payment-reconciliation.service';
+import { attestCashPaymentRefund, executePaymentRefund, getPaymentRefund, reconcilePaymentRefund, requestPaymentRefund } from './payment-refund.service';
 import {
     createPaymentUrl,
     getPaymentByOrderId,
@@ -19,6 +21,7 @@ import type {
     PaymentStatusInput,
     SimulateMoMoIpnInput
 } from './payment.validator';
+import type { AttestCashRefundInput, RequestRefundInput } from './payment.validator';
 
 const resolveClientIp = (req: Request): string => {
     const forwarded = req.headers['x-forwarded-for'];
@@ -75,4 +78,41 @@ export const vnpayIpnHandler = async (req: Request, res: Response): Promise<void
     const query = req.query as unknown as VNPayIpnQuery;
     const result = await processVNPayIpn(query, req.headers as Record<string, unknown>);
     res.status(200).json(result);
+};
+
+export const reconcilePaymentHandler = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    if (!req.user) return sendError(res, 401, 'Authentication is required.');
+    const result = await reconcileProviderPayment(req.params.id, req.user);
+    sendSuccess(res, 200, 'Provider reconciliation recorded.', result);
+};
+
+export const requestRefundHandler = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    if (!req.user) return sendError(res, 401, 'Authentication is required.');
+    const refund = await requestPaymentRefund(req.params.id, req.body as RequestRefundInput, req.user);
+    sendSuccess(res, 200, 'Refund request recorded; no funds moved.', { refund });
+};
+
+export const getRefundHandler = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    if (!req.user) return sendError(res, 401, 'Authentication is required.');
+    const refund = await getPaymentRefund(req.params.id, req.params.refundId, req.user);
+    sendSuccess(res, 200, 'Refund ledger.', { refund });
+};
+
+export const executeRefundHandler = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    if (!req.user) return sendError(res, 401, 'Authentication is required.');
+    const refund = await executePaymentRefund(req.params.id, req.params.refundId, req.user);
+    sendSuccess(res, 200, 'Provider refund response recorded.', { refund });
+};
+
+export const reconcileRefundHandler = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    if (!req.user) return sendError(res, 401, 'Authentication is required.');
+    const refund = await reconcilePaymentRefund(req.params.id, req.params.refundId, req.user);
+    sendSuccess(res, 200, 'Refund provider reconciliation recorded.', { refund });
+};
+
+export const attestCashRefundHandler = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    if (!req.user) return sendError(res, 401, 'Authentication is required.');
+    const refund = await attestCashPaymentRefund(req.params.id, req.params.refundId,
+        req.body as AttestCashRefundInput, req.user);
+    sendSuccess(res, 200, 'Admin đã xác nhận biên nhận hoàn tiền CASH.', { refund });
 };

@@ -1,0 +1,35 @@
+.purchasing-workspace{display:grid;gap:1rem;min-width:0;color:var(--admin-ink,#29251f);font:400 .89rem/1.6 "Be Vietnam Pro",sans-serif}
+.purchasing-workspace *{box-sizing:border-box;min-width:0}
+.pur-header{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}
+.pur-header small{font-weight:700;letter-spacing:.13em;color:var(--admin-accent,#956630)}
+.pur-header h1{font:600 clamp(1.7rem,3vw,2.5rem) "Playfair Display",Georgia,serif;margin:0}
+.pur-header p,.pur-panel p{color:var(--admin-muted,#746a60)}
+.pur-panel{padding:clamp(.85rem,2vw,1.35rem);background:var(--admin-panel,#fffdf9);border:1px solid var(--admin-line,#ded7cd);border-radius:.7rem;min-width:0}
+.pur-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:1rem}
+.pur-panel h2{font:600 1.28rem "Playfair Display",Georgia,serif;margin:.1rem 0 .8rem}
+.pur-form,.pur-panel>label{display:grid;gap:.7rem}
+.pur-panel label{display:grid;gap:.3rem;font-weight:600;margin-bottom:.6rem}
+.pur-panel input,.pur-panel select{width:100%;border:1px solid var(--admin-line,#cbbfae);border-radius:.4rem;padding:.55rem .65rem;min-height:42px;background:var(--admin-paper,#fff);color:var(--admin-ink,#29251f);font:inherit}
+.purchasing-workspace button,.pur-header a{display:inline-flex;justify-content:center;align-items:center;min-height:40px;padding:.5rem .85rem;margin:.25rem;border-radius:.4rem;border:1px solid var(--admin-line,#cbbfae);background:var(--admin-primary,#245440);color:var(--admin-on-primary,#fff);cursor:pointer;text-decoration:none;font:600 .83rem "Be Vietnam Pro",sans-serif}
+.purchasing-workspace button:disabled{opacity:.52;cursor:not-allowed}
+.purchasing-workspace :is(a,button,input,select):focus-visible{outline:3px solid var(--admin-accent,#a57942);outline-offset:2px}
+.pur-header a{background:transparent;color:inherit}
+.pur-warning{border-left:4px solid #ba8442;background:var(--admin-soft,#fbf2e3);padding:.8rem;color:var(--admin-ink,#29251f);border-radius:.35rem;overflow-wrap:anywhere}
+.pur-success{border-left:4px solid #427a59;background:var(--admin-soft,#eef6ed);padding:.8rem}
+.pur-confirm{display:flex;gap:.6rem;align-items:center;font-weight:600}.pur-confirm input{width:18px;height:18px}
+.pur-scroll{overflow-x:auto;width:100%}.pur-scroll table{min-width:640px;width:100%;border-collapse:collapse}
+.pur-scroll th,.pur-scroll td{text-align:left;border-bottom:1px solid var(--admin-line,#ddd);padding:.7rem .55rem}
+.pur-tabs{display:flex;gap:.2rem;overflow-x:auto;border-bottom:1px solid var(--admin-line,#ddd);padding-bottom:.7rem;margin-bottom:1rem}
+.pur-tabs button{background:transparent;color:var(--admin-ink,#29251f);white-space:nowrap}
+.pur-tabs button.active{background:var(--admin-primary,#245440);color:var(--admin-on-primary,#fff)}
+.pur-actions{display:flex;flex-wrap:wrap;gap:.5rem}
+.pur-form fieldset{border:1px solid var(--admin-line,#ddd);border-radius:.5rem;padding:.8rem;min-width:0}
+.pur-form legend{font-weight:700;padding:0 .35rem}
+.pur-batch{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;align-items:end;gap:.55rem;margin:.5rem 0}
+.pur-audit{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}
+.pur-summary{margin-top:1rem}.pur-summary>strong{font-size:1.15rem}
+.purchasing-workspace details{border-bottom:1px solid var(--admin-line,#ddd);padding:.45rem 0}
+.purchasing-workspace summary{cursor:pointer;overflow-wrap:anywhere}
+.purchasing-workspace pre{white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:900px){.pur-grid{grid-template-columns:1fr}}
+@media(max-width:620px){.pur-batch,.pur-audit{grid-template-columns:1fr}.pur-panel{padding:.8rem}.pur-actions button{flex:1 1 100%}}

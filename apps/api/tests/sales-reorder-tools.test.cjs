@@ -26,6 +26,7 @@ function load(file, deps) {
     return exports;
 }
 const { HttpError } = load('common/http-error.ts', {});
+const transactionRetry = load('common/pg-transaction-retry.ts', {});
 const units = load('common/unit-conversion.ts', { '@cafe-project/database': { Prisma }, './http-error': { HttpError } });
 const costs = load('common/ingredient-cost.utils.ts', { '@cafe-project/database': { Prisma }, './http-error': { HttpError }, './unit-conversion': units });
 const policy = load('common/ingredient-policy.ts', {});
@@ -81,6 +82,7 @@ function fixture() {
         './system-setting.repository': { systemSettingRepository: { findByKey: async key => state.settings[key] ?? null } },
         './system-setting.validator': { systemSettingKeySchema: { safeParse: key => ({ success: true, data: key }) } } });
     const ingredientService = load('modules/ingredient/ingredient.service.ts', { '@cafe-project/database': db, '../../common/http-error': { HttpError },
+        '../../common/pg-transaction-retry': transactionRetry,
         '../../common/ingredient-batch-availability': load('common/ingredient-batch-availability.ts', {}),
         '../../common/ingredient-cost.utils': costs, '../../common/unit-conversion': units, '../agent/agent.client': {}, '../recipe/recipe.service': {},
         './ingredient.repository': ingredients, '../supplier/supplier.service': suppliers, '../system-setting/system-setting.service': settings,

@@ -9,6 +9,7 @@ model Supplier {
 
   ingredients      SupplierIngredient[]
   purchaseRequests PurchaseRequest[]
+  purchaseOrders PurchaseOrder[]
 
   // Chuyển tiếp (Transitional)
   products SupplierProduct[]

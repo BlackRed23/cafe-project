@@ -1,5 +1,6 @@
 import { InventoryTransactionType, prisma, Prisma } from '@cafe-project/database';
 import { HttpError } from '../../common/http-error';
+import { retryAbortedPgTransaction } from '../../common/pg-transaction-retry';
 import { isIngredientBatchUsable } from '../../common/ingredient-batch-availability';
 import {
     allocateFifoBatches,
@@ -310,7 +311,7 @@ export const ingredientService = {
     },
 
     async importStock(id: string, input: ImportIngredientInput, userId: string) {
-        const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const result = await retryAbortedPgTransaction(() => prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.$queryRaw`SELECT "id" FROM "Ingredient" WHERE "id" = ${id} FOR UPDATE`;
             const ingredient = await ingredientRepository.findById(id, tx);
             if (!ingredient) {
@@ -319,6 +320,12 @@ export const ingredientService = {
 
             const inputUnit = input.unit?.trim() || ingredient.baseUnit;
             const importQtyBase = convertToBaseQuantity(input.quantity, inputUnit, ingredient.baseUnit);
+            // A valid input unit can still overflow DECIMAL(14,3) after kg/l to g/ml
+            // conversion, or when added to the existing physical balance.
+            const physicalLimit = new Prisma.Decimal('99999999999.999');
+            if (importQtyBase.gt(physicalLimit) || ingredient.quantity.add(importQtyBase).gt(physicalLimit)) {
+                throw new HttpError(400, 'Số lượng sau quy đổi vượt giới hạn lưu trữ tồn kho.');
+            }
 
             if (!ingredient.expiryClassification && ingredient.expiryClassificationRequired) {
                 throw new HttpError(409, 'Classify new ingredient expiry policy before receipt.');
@@ -341,13 +348,6 @@ export const ingredientService = {
                 unitCostPerBase = roundCost4(totalRaw.div(importQtyBase));
             }
 
-            const newMovingAvgCost = calculateMovingAverageCost(
-                ingredient.quantity,
-                ingredient.costPerBaseUnit,
-                importQtyBase,
-                unitCostPerBase
-            );
-
             let expirationDate: Date | null = null;
             if (input.expirationDate) {
                 expirationDate = new Date(input.expirationDate);
@@ -362,6 +362,53 @@ export const ingredientService = {
                 expirationDate = new Date();
                 expirationDate.setDate(expirationDate.getDate() + ingredient.shelfLifeDays);
             }
+
+            // Idempotency is enforced by the persisted unique ledger key under the
+            // Ingredient row lock. Existing clients can continue without requestId;
+            // new callers should send one stable UUID per physical receipt.
+            const requestKey = input.requestId ? `ingredient-import:${input.requestId}` : null;
+            if (requestKey) {
+                const previous = await tx.inventoryTransaction.findUnique({
+                    where: { idempotencyKey: requestKey },
+                    include: { batch: true }
+                });
+                if (previous) {
+                    const original = previous.batch;
+                    const samePayload = previous.type === InventoryTransactionType.IMPORT &&
+                        previous.ingredientId === ingredient.id && previous.performedBy === userId &&
+                        previous.referenceType === 'ManualImport' && previous.referenceId === original?.id &&
+                        previous.quantity.equals(importQtyBase) && previous.unitCost.equals(unitCostPerBase) &&
+                        previous.totalCost.equals(totalCostMoney) &&
+                        original?.receivedQty?.equals(roundQty3(toDecimal(input.quantity))) &&
+                        original.receivedUnit === inputUnit &&
+                        original.supplierId === (input.supplierId || null) &&
+                        original.note === (input.note?.trim() || null) &&
+                        (!input.batchCode || original.batchCode === input.batchCode.trim()) &&
+                        (!input.expirationDate || original.expirationDate?.getTime() === expirationDate?.getTime());
+                    if (!samePayload) {
+                        throw new HttpError(409, 'Mã yêu cầu nhập kho đã được sử dụng với nội dung hoặc người thực hiện khác.');
+                    }
+                    return {
+                        ingredient: toIngredientDto(ingredient),
+                        batch: {
+                            id: original.id,
+                            batchCode: original.batchCode,
+                            importedQuantityBase: Number(importQtyBase),
+                            unitCostPerBase: Number(unitCostPerBase),
+                            totalCost: Number(totalCostMoney)
+                        },
+                        recalculatedProductCount: 0,
+                        replayed: true
+                    };
+                }
+            }
+
+            const newMovingAvgCost = calculateMovingAverageCost(
+                ingredient.quantity,
+                ingredient.costPerBaseUnit,
+                importQtyBase,
+                unitCostPerBase
+            );
 
             const batchCode =
                 input.batchCode?.trim() ||
@@ -392,6 +439,7 @@ export const ingredientService = {
                     totalCost: totalCostMoney,
                     referenceType: 'ManualImport',
                     referenceId: batch.id,
+                    idempotencyKey: requestKey,
                     performedBy: userId,
                     reason:
                         input.note?.trim() ||
@@ -420,11 +468,12 @@ export const ingredientService = {
                     unitCostPerBase: Number(unitCostPerBase),
                     totalCost: Number(totalCostMoney)
                 },
-                recalculatedProductCount: recalculatedProducts.length
+                recalculatedProductCount: recalculatedProducts.length,
+                replayed: false
             };
-        });
+        }, { timeout: 15000 }));
 
-        scanInventoryViaAgentService(
+        if (!result.replayed) scanInventoryViaAgentService(
             {
                 ingredientIds: [id],
                 scope: 'INGREDIENT',

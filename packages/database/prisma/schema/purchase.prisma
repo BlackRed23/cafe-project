@@ -17,8 +17,8 @@ model PurchaseRequest {
   id             String                @id @default(cuid())
   requestNumber  String                @unique
   status         PurchaseRequestStatus @default(PENDING)
-  supplierId     String
-  supplier       Supplier              @relation(fields: [supplierId], references: [id])
+  supplierId     String?
+  supplier       Supplier?             @relation(fields: [supplierId], references: [id])
   notes          String?
   aiGenerated    Boolean               @default(false)
   totalAmount    Decimal               @default(0) @db.Decimal(12, 2)
@@ -37,14 +37,26 @@ model PurchaseRequest {
   paymentNote    String?
   receivedAmount Decimal               @default(0) @db.Decimal(12, 2)
   amountPaid     Decimal               @default(0) @db.Decimal(12, 2)
+  demandSourceKey String? @unique
+  demandHash String?
+  rejectedById String?
+  rejectedAt DateTime?
+  rejectionReason String?
+  supplierHoldReason String?
+  supplierAssignedById String?
+  supplierAssignedAt DateTime?
+  supplierAssignmentRequestId String? @unique
+  supplierAssignmentHash String?
 
   items    PurchaseRequestItem[]
   receipts GoodsReceipt[]
+  purchaseOrders PurchaseOrder[]
 
   agentProposalId      String?
   agentProposalVersion Int?
   agentProposal        AgentPurchaseProposalVersion? @relation(fields: [agentProposalId, agentProposalVersion], references: [proposalId, version], onDelete: Restrict, map: "PurchaseRequest_agentProposal_fkey")
   agentCommandReceipts AgentPurchaseCommandReceipt[]
+  aggregationMember PurchaseDemandAggregationMember?
 
   @@unique([agentProposalId, agentProposalVersion])
 
@@ -68,6 +80,11 @@ model AgentPurchaseProposalVersion {
   contentHash  String
   approvedById String?
   approvedAt   DateTime?
+  // Explicit ADMIN veto is separate from approval. It is irreversible for this
+  // exact version/hash; a later revision must pass a fresh ADMIN approval gate.
+  rejectedById String?
+  rejectedAt DateTime?
+  rejectionReason String?
   createdAt    DateTime @default(now())
   purchaseRequest PurchaseRequest?
 
@@ -94,6 +111,7 @@ model PurchaseRequestItem {
   notes            String?
 
   receivedBatches IngredientBatch[]
+  purchaseOrderItems PurchaseOrderItem[]
 
   // Chuyển tiếp (Transitional)
   inventoryId String?
@@ -116,6 +134,9 @@ model GoodsReceipt {
   supplierInvoiceNo String?
   note              String?
   idempotencyKey    String?            @unique
+  requestHash       String?
+  purchaseOrderId   String?
+  purchaseOrder     PurchaseOrder?     @relation(fields: [purchaseOrderId], references: [id])
 
   batches IngredientBatch[]
 
@@ -124,4 +145,211 @@ model GoodsReceipt {
 
   @@index([purchaseRequestId, receivedAt])
   @@index([status])
+}
+
+// Explicit supplier-facing order. The historical PurchaseRequest stays
+// authoritative for approved demand; POs preserve supplier snapshots.
+model PurchaseOrder {
+  id String @id @default(cuid())
+  code String @unique
+  purchaseRequestId String
+  purchaseRequest PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Restrict)
+  supplierId String
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  supplierName String
+  recipientEmail String?
+  currency String @default("VND")
+  status String @default("CREATED")
+  createdById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  confirmedAt DateTime?
+  confirmedById String?
+  confirmationSource String?
+  confirmationReference String?
+  rejectionAt DateTime?
+  rejectionReason String?
+  cancelledAt DateTime?
+  cancelledById String?
+  cancellationReason String?
+  items PurchaseOrderItem[]
+  events PurchaseOrderEvent[]
+  discrepancies PurchaseDeliveryDiscrepancy[]
+  receipts GoodsReceipt[]
+  supplierReturns PurchaseSupplierReturn[]
+  invoices PurchaseInvoiceReconciliation[]
+  dispatchAttempts PurchaseDispatchAttempt[]
+  supplierEvidence PurchaseSupplierEvidence[]
+  overdeliveryAmendments PurchaseOverdeliveryAmendment[]
+  @@index([purchaseRequestId, status])
+  @@index([supplierId, createdAt])
+}
+
+model PurchaseOrderItem {
+  id String @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  purchaseRequestItemId String
+  requestItem PurchaseRequestItem @relation(fields: [purchaseRequestItemId], references: [id], onDelete: Restrict)
+  ingredientId String?
+  quantityOrdered Int
+  quantityReceived Int @default(0)
+  unit String
+  conversionToBase Decimal @db.Decimal(14,3)
+  unitPrice Decimal @db.Decimal(12,2)
+  currency String @default("VND")
+  @@unique([purchaseOrderId, purchaseRequestItemId])
+}
+
+model PurchaseOrderEvent {
+  id String @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  requestId String @unique
+  type String
+  actorId String
+  payloadHash String
+  details Json
+  createdAt DateTime @default(now())
+  @@index([purchaseOrderId, createdAt])
+}
+
+model PurchaseDeliveryDiscrepancy {
+  id String @id @default(cuid())
+  requestId String @unique
+  purchaseOrderId String
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  purchaseOrderItemId String
+  expectedIngredientId String?
+  observedIngredientId String?
+  observedQuantity Decimal @db.Decimal(14,3)
+  acceptedQuantity Decimal @default(0) @db.Decimal(14,3)
+  rejectedQuantity Decimal @db.Decimal(14,3)
+  category String
+  status String @default("HELD")
+  reason String
+  actorId String
+  evidence Json?
+  createdAt DateTime @default(now())
+  @@index([purchaseOrderId, createdAt])
+}
+
+model PurchaseSupplierReturn {
+  id String @id @default(cuid())
+  requestId String @unique
+  purchaseOrderId String
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  goodsReceiptId String
+  batchId String
+  ingredientId String
+  supplierId String
+  quantity Decimal @db.Decimal(14,3)
+  ledgerId String @unique
+  reason String
+  actorId String
+  creditStatus String @default("UNSETTLED")
+  createdAt DateTime @default(now())
+  @@index([goodsReceiptId, batchId])
+}
+
+model PurchaseInvoiceReconciliation {
+  id String @id @default(cuid())
+  requestId String @unique
+  purchaseOrderId String
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  invoiceNumber String
+  currency String
+  invoiceItems Json
+  differences Json
+  status String
+  actorId String
+  note String?
+  createdAt DateTime @default(now())
+  @@index([purchaseOrderId, createdAt])
+}
+
+// Only a no-network dispatch attempt is supported until a provider adapter has
+// been verified. UNKNOWN must be reconciled before a fresh attempt is allowed.
+model PurchaseDispatchAttempt {
+  id String @id @default(cuid())
+  requestId String @unique
+  purchaseOrderId String
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  attemptNumber Int
+  dispatchIdentity String
+  recipientSnapshot String?
+  mode String
+  providerReference String?
+  providerStatus String
+  requestedById String
+  createdAt DateTime @default(now())
+  @@unique([purchaseOrderId, attemptNumber])
+  @@index([purchaseOrderId, createdAt])
+}
+
+model PurchaseSupplierEvidence {
+  id String @id @default(cuid())
+  requestId String @unique
+  evidenceFingerprint String @unique
+  purchaseOrderId String
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  decision String
+  source String
+  sourceIdentity String
+  evidenceReference String
+  observedAt DateTime
+  actorId String
+  verificationStatus String @default("NOT_VERIFIED_EXTERNAL")
+  recordedAt DateTime @default(now())
+  @@index([purchaseOrderId, recordedAt])
+}
+
+model PurchaseOverdeliveryAmendment {
+  id String @id @default(cuid())
+  requestId String @unique
+  purchaseOrderId String
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  discrepancyId String @unique
+  requestedExtraQuantity Decimal @db.Decimal(14,3)
+  reason String
+  requestedById String
+  status String @default("PENDING_POLICY")
+  createdAt DateTime @default(now())
+  @@index([purchaseOrderId, createdAt])
+}
+
+// Draft is deliberately not a live approval or supplier acceptance rule.
+model PurchaseShelfLifeRule {
+  id String @id @default(cuid())
+  requestId String @unique
+  ingredientId String?
+  categoryId String?
+  minRemainingDays Int
+  status String @default("DRAFT")
+  reason String
+  configuredById String
+  configuredAt DateTime @default(now())
+  @@index([ingredientId, categoryId])
+}
+
+model PurchaseDemandAggregation {
+  id String @id @default(cuid())
+  requestId String @unique
+  sourceHash String
+  reason String
+  approvedById String
+  approvedAt DateTime @default(now())
+  status String @default("ADMIN_GROUPING_APPROVED_PENDING_POLICY")
+  members PurchaseDemandAggregationMember[]
+}
+
+model PurchaseDemandAggregationMember {
+  id String @id @default(cuid())
+  aggregationId String
+  aggregation PurchaseDemandAggregation @relation(fields: [aggregationId], references: [id], onDelete: Restrict)
+  purchaseRequestId String @unique
+  purchaseRequest PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Restrict)
+  sourceKey String
+  sourceHash String
+  @@index([aggregationId])
 }

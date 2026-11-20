@@ -1,8 +1,26 @@
-import { apiClient, unwrapApiField, unwrapApiList } from "./client";
-import type { CreateOrderPayload, Order } from "../types/order.types";
+import { apiClient, unwrapApiField } from "./client";
+import type {
+  CreateOrderPayload,
+  Order,
+  OrderOperation,
+  OrderOperationInput,
+  EditOrderItemsInput,
+} from "../types/order.types";
 
-const VALID_ORDER_STATUSES = new Set(["PENDING", "CONFIRMED", "PROCESSING", "COMPLETED", "CANCELLED"]);
-const VALID_PAYMENT_STATUSES = new Set(["PENDING", "SUCCESS", "PAID", "FAILED", "REFUNDED"]);
+const VALID_ORDER_STATUSES = new Set([
+  "PENDING",
+  "PROCESSING",
+  "PREPARING",
+  "COMPLETED",
+  "CANCELLED",
+]);
+const VALID_PAYMENT_STATUSES = new Set([
+  "PENDING",
+  "SUCCESS",
+  "PAID",
+  "FAILED",
+  "REFUNDED",
+]);
 
 type OrderFilters = {
   status?: string | null;
@@ -12,144 +30,72 @@ type OrderFilters = {
 const normalizeOrderFilters = (filters?: OrderFilters) => {
   const params: Record<string, string> = {};
 
-  if (filters?.status && VALID_ORDER_STATUSES.has(filters.status)) {
-    params.status = filters.status;
+  if (
+    filters?.status &&
+    (filters.status === "CONFIRMED" || VALID_ORDER_STATUSES.has(filters.status))
+  ) {
+    params.status =
+      filters.status === "CONFIRMED" ? "PROCESSING" : filters.status;
   }
 
-  if (filters?.paymentStatus && VALID_PAYMENT_STATUSES.has(filters.paymentStatus)) {
+  if (
+    filters?.paymentStatus &&
+    VALID_PAYMENT_STATUSES.has(filters.paymentStatus)
+  ) {
     params.paymentStatus = filters.paymentStatus;
   }
 
   return Object.keys(params).length > 0 ? params : undefined;
 };
 
-const extractBackendMessage = (error: any): string | undefined => {
-  const data = error?.response?.data;
-  const errors = data?.errors;
+export { salesError as getOrderErrorMessage } from "../pages/admin/salesFeedback";
 
-  if (Array.isArray(errors) && errors.length > 0) {
-    return errors
-      .map((item) => item?.message || item)
-      .filter(Boolean)
-      .join(". ");
-  }
-
-  if (errors && typeof errors === "object") {
-    return Object.values(errors)
-      .flat()
-      .map((item: any) => item?.message || item)
-      .filter(Boolean)
-      .join(". ");
-  }
-
-  return data?.message || data?.error || error?.message;
-};
-
-const translateOrderErrorMessage = (message?: string): string | null => {
-  if (!message) return null;
-
-  const lower = message.toLowerCase();
-  const isInventoryError =
-    lower.includes("not enough inventory") ||
-    lower.includes("current stock") ||
-    lower.includes("requested") ||
-    lower.includes("inventory") ||
-    lower.includes("stock") ||
-    lower.includes("not enough") ||
-    lower.includes("không đủ tồn kho") ||
-    lower.includes("không đủ hàng") ||
-    lower.includes("vừa hết hàng");
-
-  if (!isInventoryError) return null;
-
-  const currentStock =
-    message.match(/current stock[^0-9]*(\d+)/i)?.[1] ??
-    message.match(/tồn kho[^0-9]*(\d+)/i)?.[1] ??
-    message.match(/còn lại[^0-9]*(\d+)/i)?.[1];
-  const requested =
-    message.match(/requested[^0-9]*(\d+)/i)?.[1] ??
-    message.match(/yêu cầu[^0-9]*(\d+)/i)?.[1] ??
-    message.match(/bạn đặt[^0-9]*(\d+)/i)?.[1];
-
-  if (currentStock && requested) {
-    return `Không đủ tồn kho để tạo đơn hàng. Tồn kho hiện tại: ${currentStock}, số lượng yêu cầu: ${requested}. Vui lòng giảm số lượng hoặc cập nhật giỏ hàng.`;
-  }
-
-  return "Không đủ tồn kho để tạo đơn hàng, vui lòng giảm số lượng hoặc cập nhật giỏ hàng.";
-};
-
-const translateValidationErrorMessage = (message?: string): string | null => {
-  if (!message) return null;
-
-  const lower = message.toLowerCase();
-
+const confirmedField = <T>(data: unknown, key: string): T => {
   if (
-    lower.includes("paymentmethod") ||
-    lower.includes("invalid enum") ||
-    lower.includes("payment method")
-  ) {
-    return "Vui lòng chọn phương thức thanh toán.";
-  }
-
-  if (lower.includes("product is required")) {
-    return "Sản phẩm trong giỏ hàng không hợp lệ, vui lòng cập nhật giỏ hàng.";
-  }
-
-  if (lower.includes("order items cannot be empty")) {
-    return "Giỏ hàng đang trống.";
-  }
-
-  if (lower.includes("items")) {
-    return "Giỏ hàng không hợp lệ, vui lòng kiểm tra lại sản phẩm.";
-  }
-
-  if (lower.includes("quantity")) {
-    return "Số lượng sản phẩm không hợp lệ.";
-  }
-
-  if (
-    lower.includes("product not found") ||
-    lower.includes("product is inactive") ||
-    lower.includes("not available") ||
-    lower.includes("inactive") ||
-    lower.includes("không tìm thấy sản phẩm") ||
-    lower.includes("sản phẩm không còn")
-  ) {
-    return "Sản phẩm không còn khả dụng, vui lòng cập nhật giỏ hàng.";
-  }
-
-  return null;
+    !data ||
+    typeof data !== "object" ||
+    ("success" in data && data.success === false)
+  )
+    throw new Error("Sales response not confirmed");
+  return unwrapApiField<T>(data, key);
+};
+const orderList = (data: unknown): Order[] => {
+  const rows = confirmedField<Order[]>(data, "orders");
+  if (!Array.isArray(rows))
+    throw new Error("Order list response not confirmed");
+  return rows.map(normalizeOrder);
 };
 
-export const getOrderErrorMessage = (error: any, fallback: string): string => {
-  const raw = error?.friendlyMessage || extractBackendMessage(error);
-  return translateOrderErrorMessage(raw) ?? translateValidationErrorMessage(raw) ?? raw ?? fallback;
+const normalizeOrder = (order: Order): Order => {
+  if (!order?.id) throw new Error("Order response not confirmed");
+  return {
+    ...order,
+    paymentMethod: order?.paymentMethod ?? order?.payment?.method ?? "CASH",
+    paymentStatus: order?.paymentStatus ?? order?.payment?.status ?? "PENDING",
+    items: order?.items?.map((item: NonNullable<Order["items"]>[number]) => ({
+      ...item,
+      price: item?.price ?? item?.unitPrice ?? 0,
+      product: item?.product ?? {
+        id: item.productId,
+        name: item?.productName ?? "Sản phẩm",
+        unit: "ly",
+        price: item.price,
+      },
+    })),
+  };
 };
 
-const normalizeOrder = (order: any): Order => ({
-  ...order,
-  paymentMethod: order?.paymentMethod ?? order?.payment?.method ?? "CASH",
-  paymentStatus: order?.paymentStatus ?? order?.payment?.status ?? "PENDING",
-  createdAt: order?.createdAt ?? order?.created_at,
-  updatedAt: order?.updatedAt ?? order?.updated_at,
-  items: order?.items?.map((item: any) => ({
-    ...item,
-    price: item?.price ?? item?.unitPrice ?? 0,
-    productId: item?.productId ?? item?.product_id,
-    product: item?.product ?? {
-      id: item?.productId ?? item?.product_id,
-      name: item?.productName ?? "Sản phẩm",
-      unit: item?.unit,
-    },
-  })),
-});
-
-const normalizeOrderPayload = (payload: CreateOrderPayload): CreateOrderPayload => {
+const normalizeOrderPayload = (
+  payload: CreateOrderPayload,
+): CreateOrderPayload => {
   const normalized = {
+    ...(payload.requestId ? { requestId: payload.requestId } : {}),
     items: payload.items.map((item) => ({
       productId: String(item.productId ?? "").trim(),
       quantity: Number(item.quantity),
-      ...(item.toppings && item.toppings.length > 0 ? { toppings: item.toppings } : {}),
+      ...(item.toppings && item.toppings.length > 0
+        ? { toppings: item.toppings }
+        : {}),
     })),
     paymentMethod: payload.paymentMethod,
     shippingName: payload.shippingName.trim(),
@@ -163,73 +109,118 @@ const normalizeOrderPayload = (payload: CreateOrderPayload): CreateOrderPayload 
   return normalized;
 };
 
+const operationResult = (data: unknown): OrderOperation => {
+  const operation = confirmedField<OrderOperation>(data, "operation");
+  if (!operation?.id || !["REQUESTED", "APPLIED"].includes(operation.status))
+    throw new Error("Operation response not confirmed");
+  return operation;
+};
+const path = (id: string) => `/orders/${encodeURIComponent(id)}`;
+
 export const ordersApi = {
+  getOrderByRequest: async (requestId: string): Promise<Order> =>
+    normalizeOrder(
+      confirmedField<Order>(
+        (
+          await apiClient.get(
+            `/orders/by-request/${encodeURIComponent(requestId)}`,
+          )
+        ).data,
+        "order",
+      ),
+    ),
+  requestOperation: async (
+    id: string,
+    payload: OrderOperationInput,
+  ): Promise<OrderOperation> =>
+    operationResult(
+      (await apiClient.post(`${path(id)}/operations`, payload)).data,
+    ),
+  approveOperation: async (
+    id: string,
+    operationId: string,
+    expectedVersion: number,
+  ): Promise<OrderOperation> =>
+    operationResult(
+      (
+        await apiClient.post(
+          `${path(id)}/operations/${encodeURIComponent(operationId)}/approve`,
+          { expectedVersion },
+        )
+      ).data,
+    ),
+  editItems: async (
+    id: string,
+    payload: EditOrderItemsInput,
+  ): Promise<OrderOperation> =>
+    operationResult((await apiClient.patch(`${path(id)}/items`, payload)).data),
+  prepareItem: async (
+    id: string,
+    itemId: string,
+    payload: { requestId: string; expectedVersion: number },
+  ): Promise<OrderOperation> =>
+    operationResult(
+      (
+        await apiClient.post(
+          `${path(id)}/items/${encodeURIComponent(itemId)}/prepare`,
+          payload,
+        )
+      ).data,
+    ),
   createOrder: async (payload: CreateOrderPayload): Promise<Order> => {
-    try {
-      const response = await apiClient.post("/orders", normalizeOrderPayload(payload));
-      return normalizeOrder(unwrapApiField<any>(response.data, "order"));
-    } catch (error: any) {
-      error.friendlyMessage = getOrderErrorMessage(
-        error,
-        "Không thể tạo đơn hàng, vui lòng thử lại."
-      );
-      throw error;
-    }
+    const response = await apiClient.post(
+      "/orders",
+      normalizeOrderPayload(payload),
+    );
+    return normalizeOrder(confirmedField<Order>(response.data, "order"));
   },
 
   getMyOrders: async (): Promise<Order[]> => {
     const response = await apiClient.get("/orders/me");
-    return unwrapApiList<any>(response.data, "orders").map(normalizeOrder);
+    return orderList(response.data);
   },
 
   getOrderById: async (id: string): Promise<Order> => {
-    const response = await apiClient.get(`/orders/${id}`);
-    return normalizeOrder(unwrapApiField<any>(response.data, "order"));
+    const response = await apiClient.get(path(id));
+    return normalizeOrder(confirmedField<Order>(response.data, "order"));
   },
 
   getOrders: async (filters?: OrderFilters): Promise<Order[]> => {
-    const response = await apiClient.get("/orders", { params: normalizeOrderFilters(filters) });
-    return unwrapApiList<any>(response.data, "orders").map(normalizeOrder);
+    const response = await apiClient.get("/orders", {
+      params: normalizeOrderFilters(filters),
+    });
+    return orderList(response.data);
   },
 
   confirmOrder: async (id: string): Promise<Order> => {
-    return ordersApi.updateOrderStatus(id, { status: "PROCESSING" });
+    return ordersApi.updateOrderStatus(id, { status: "CONFIRMED" });
   },
 
   confirmPayment: async (id: string, note?: string): Promise<Order> => {
-    try {
-      const response = await apiClient.post(`/orders/${id}/confirm-payment`, {
-        ...(note ? { note } : {}),
-      });
-      return normalizeOrder(unwrapApiField<any>(response.data, "order"));
-    } catch (error: any) {
-      error.friendlyMessage = getOrderErrorMessage(
-        error,
-        "Không thể xác nhận thanh toán đơn hàng, vui lòng thử lại."
-      );
-      throw error;
-    }
+    const response = await apiClient.post(`${path(id)}/confirm-payment`, {
+      ...(note ? { note } : {}),
+    });
+    return normalizeOrder(confirmedField<Order>(response.data, "order"));
   },
 
   updateOrderStatus: async (
     id: string,
-    payload: { status?: string; paymentStatus?: string }
+    payload: {
+      status?: string;
+      paymentStatus?: string;
+      expectedVersion?: number;
+    },
   ): Promise<Order> => {
-    try {
-      const response = await apiClient.patch(`/orders/${id}/status`, {
-        status: payload.status,
-        ...(payload.paymentStatus ? { paymentStatus: payload.paymentStatus } : {}),
-      });
-      const order = unwrapApiField<any>(response.data, "order");
-      return normalizeOrder(order);
-    } catch (error: any) {
-      if (!error.friendlyMessage) {
-        error.friendlyMessage = getOrderErrorMessage(
-          error,
-          "Không thể cập nhật trạng thái đơn hàng, vui lòng thử lại."
-        );
-      }
-      throw error;
-    }
+    const response = await apiClient.patch(`${path(id)}/status`, {
+      status: payload.status,
+      ...(payload.expectedVersion != null
+        ? { expectedVersion: payload.expectedVersion }
+        : {}),
+      ...(payload.paymentStatus
+        ? { paymentStatus: payload.paymentStatus }
+        : {}),
+    });
+    const order = confirmedField<Order>(response.data, "order");
+    return normalizeOrder(order);
   },
 };

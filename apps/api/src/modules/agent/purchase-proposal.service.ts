@@ -22,6 +22,9 @@ export const proposalReferenceSchema = z.object({
     version: z.number().int().positive(), contentHash: z.string().regex(/^[a-f0-9]{64}$/),
 }).strict();
 export const proposalExecuteSchema = proposalReferenceSchema.extend({ idempotencyKey: id }).strict();
+export const proposalRejectSchema = proposalReferenceSchema.extend({
+    reason: z.string().trim().min(3).max(1000),
+}).strict();
 export type ProposalSnapshot = z.infer<typeof proposalSnapshotSchema>;
 type Reference = z.infer<typeof proposalReferenceSchema>;
 type Tx = Prisma.TransactionClient;
@@ -48,15 +51,45 @@ export class PurchaseProposalService {
         const user = await tx.user.findUnique({ where: { id: actorId }, select: { id: true, role: true, isActive: true } });
         if (!user?.isActive || user.role !== 'ADMIN') throw new HttpError(403, 'ADMIN_REQUIRED');
     }
+    /** A recorded approval is not current authority after its actor loses ADMIN.
+     * Keep the original actor/timestamp immutable; a new revision must receive
+     * a fresh decision instead of silently transferring another ADMIN's veto. */
+    private async currentApprover(tx: Tx, actorId: string) {
+        const actor = await tx.user.findUnique({
+            where: { id: actorId }, select: { role: true, isActive: true }
+        });
+        if (!actor?.isActive || actor.role !== 'ADMIN') {
+            throw new HttpError(409, 'APPROVER_NO_LONGER_ACTIVE', 'APPROVER_NO_LONGER_ACTIVE');
+        }
+    }
     private async current(tx: Tx, proposalId: string, reference?: Reference) {
         await tx.$queryRaw`SELECT "id" FROM "AgentPurchaseProposal" WHERE "id" = ${proposalId} FOR UPDATE`;
         const proposal = await tx.agentPurchaseProposal.findUnique({ where: { id: proposalId } });
         if (!proposal) throw new HttpError(404, 'PROPOSAL_NOT_FOUND');
         const revision = await tx.agentPurchaseProposalVersion.findUnique({ where: { proposalId_version: { proposalId, version: proposal.currentVersion } } });
         if (!revision) return conflict('MISSING_REVISION');
-        if (reference && (reference.version !== revision.version || reference.contentHash !== revision.contentHash)) return conflict('STALE_PROPOSAL');
-        const snapshot = proposalSnapshotSchema.parse(revision.snapshot);
-        if (digest(snapshot) !== revision.contentHash) return conflict('SNAPSHOT_INTEGRITY');
+        // Corrupt/stale persisted JSON must NEVER surface as a generic 500
+        // or be treated as a valid (possibly approved) purchasing revision.
+        // Map this to an explicit integrity conflict so the Agent's backend
+        // inspector can HOLD rather than misclassifying it as STALE_PROPOSAL.
+        const parsedSnapshot = proposalSnapshotSchema.safeParse(revision.snapshot);
+        if (!parsedSnapshot.success) {
+            throw new HttpError(409, 'SNAPSHOT_INTEGRITY', 'SNAPSHOT_INTEGRITY');
+        }
+        const snapshot = parsedSnapshot.data;
+        if (digest(snapshot) !== revision.contentHash ||
+            !/^[0-9a-f]{64}$/.test(revision.contentHash) ||
+            Boolean(revision.approvedById) !== Boolean(revision.approvedAt) ||
+            Boolean(revision.rejectedById) !== Boolean(revision.rejectedAt) ||
+            Boolean(revision.rejectionReason) !== Boolean(revision.rejectedAt)) {
+            throw new HttpError(409, 'SNAPSHOT_INTEGRITY', 'SNAPSHOT_INTEGRITY');
+        }
+        // Check the supplied reference AFTER validating the authoritative
+        // snapshot: corrupted DB state must never masquerade as a routine 409
+        // stale revision/hash which a caller might automatically reconcile.
+        if (reference && (reference.version !== revision.version || reference.contentHash !== revision.contentHash)) {
+            return conflict('STALE_PROPOSAL');
+        }
         return { revision, snapshot };
     }
     private async terms(tx: Tx, snapshot: ProposalSnapshot) {
@@ -78,6 +111,36 @@ export class PurchaseProposalService {
         if (!link || snapshot.unit !== inventory.unit || snapshot.baseUnit !== inventory.unit || snapshot.unitsPerPack !== '1' ||
             !new Prisma.Decimal(snapshot.unitPrice).eq(link.price)) return conflict('SUPPLIER_TERMS_CHANGED');
         return { inventoryId: inventory.id, productId: inventory.productId };
+    }
+
+    /** LN-15: proposal hash proves the proposed terms, not that stock is still current.
+     * Recheck at ADMIN approval and immediately before the first procurement write.
+     * A finished command replay is checked through its durable receipt separately. */
+    private async stockStillCurrent(tx: Tx, snapshot: ProposalSnapshot, createdAt: Date) {
+        if (snapshot.ingredientId) {
+            await tx.$queryRaw`SELECT id FROM "Ingredient" WHERE id = ${snapshot.ingredientId} FOR UPDATE`;
+            const ingredient = await tx.ingredient.findUnique({
+                where: { id: snapshot.ingredientId }, select: { updatedAt: true, isActive: true, deletedAt: true }
+            });
+            if (!ingredient?.isActive || ingredient.deletedAt) return conflict('INGREDIENT_UNAVAILABLE');
+            const changedLot = await tx.ingredientBatch.findFirst({
+                where: { ingredientId: snapshot.ingredientId, updatedAt: { gt: createdAt } }, select: { id: true }
+            });
+            const changedPO = await tx.purchaseOrderItem.findFirst({
+                where: { ingredientId: snapshot.ingredientId, purchaseOrder: { updatedAt: { gt: createdAt } } },
+                select: { id: true }
+            });
+            if (ingredient.updatedAt > createdAt || changedLot || changedPO) return conflict('STALE_INVENTORY_REVIEW_REQUIRED');
+            return;
+        }
+        const inventoryId = snapshot.inventoryId!;
+        await tx.$queryRaw`SELECT id FROM "Inventory" WHERE id = ${inventoryId} FOR UPDATE`;
+        const inventory = await tx.inventory.findUnique({ where: { id: inventoryId }, select: { updatedAt: true } });
+        if (!inventory) return conflict('INVENTORY_UNAVAILABLE');
+        const changedBatch = await tx.inventoryBatch.findFirst({
+            where: { inventoryId, updatedAt: { gt: createdAt } }, select: { id: true }
+        });
+        if (inventory.updatedAt > createdAt || changedBatch) return conflict('STALE_INVENTORY_REVIEW_REQUIRED');
     }
     async create(proposalId: string, raw: unknown) {
         id.parse(proposalId);
@@ -102,6 +165,49 @@ export class PurchaseProposalService {
             return { ...revision, purchaseRequest };
         });
     }
+    /**
+     * One serializable Backend decision read: ACTIVE ADMIN authorization,
+     * integrity-checked current revision, exact reference comparison and PR
+     * receipt lookup share a single transaction. No supplier terms/LLM data
+     * leave this method and no purchase or approval is performed.
+     */
+    async readReviewStatus(proposalId: string, actorId: string, rawReference: unknown) {
+        id.parse(proposalId);
+        const reference = proposalReferenceSchema.parse(rawReference);
+        return this.transaction(async tx => {
+            await this.admin(tx, actorId);
+            const { revision } = await this.current(tx, proposalId);
+            if (revision.version !== reference.version || revision.contentHash !== reference.contentHash) {
+                throw new HttpError(409, 'STALE_PROPOSAL', 'STALE_PROPOSAL');
+            }
+            const purchaseRequest = await tx.purchaseRequest.findUnique({
+                where: { agentProposalId_agentProposalVersion: {
+                    agentProposalId: proposalId, agentProposalVersion: revision.version
+                } },
+                select: { id: true }
+            });
+            // Do not publish an unexecuted old approval as usable authority
+            // after its original ADMIN was disabled/demoted. Executed history
+            // and an explicit later rejection remain independently auditable.
+            if (revision.approvedById && !revision.rejectedAt && !purchaseRequest) {
+                await this.currentApprover(tx, revision.approvedById);
+            }
+            return {
+                proposalId,
+                version: revision.version,
+                contentHash: revision.contentHash,
+                status: purchaseRequest ? 'EXECUTED' : revision.rejectedAt ? 'REJECTED' :
+                    revision.approvedAt ? 'APPROVED_AWAITING_BACKEND' : 'PENDING_APPROVAL',
+                approvedById: revision.approvedById ?? null,
+                approvedAt: revision.approvedAt ?? null,
+                rejectedById: revision.rejectedById ?? null,
+                rejectedAt: revision.rejectedAt ?? null,
+                rejectionReason: revision.rejectionReason ?? null,
+                purchaseRequestId: purchaseRequest?.id ?? null,
+                writesPerformed: false as const
+            };
+        });
+    }
     async revise(proposalId: string, rawReference: unknown, rawSnapshot: unknown) {
         const reference = proposalReferenceSchema.parse(rawReference), snapshot = proposalSnapshotSchema.parse(rawSnapshot);
         return this.transaction(async tx => {
@@ -119,9 +225,37 @@ export class PurchaseProposalService {
         return this.transaction(async tx => {
             await this.admin(tx, actorId);
             const { revision, snapshot } = await this.current(tx, proposalId, reference);
+            if (revision.rejectedAt) return conflict('PROPOSAL_REJECTED');
             await this.terms(tx, snapshot);
-            if (revision.approvedById) return revision;
+            await this.stockStillCurrent(tx, snapshot, revision.createdAt);
+            if (revision.approvedById) {
+                await this.currentApprover(tx, revision.approvedById);
+                return revision;
+            }
             return tx.agentPurchaseProposalVersion.update({ where: { proposalId_version: { proposalId, version: reference.version } }, data: { approvedById: actorId, approvedAt: new Date() } });
+        });
+    }
+    /** AI18: An authenticated current ADMIN may veto one exact persisted
+     * revision/hash. Neither the model nor an internal service token can reject
+     * or silently reverse an existing rejection. No procurement is issued. */
+    async reject(proposalId: string, actorId: string, raw: unknown) {
+        id.parse(proposalId);
+        const input = proposalRejectSchema.parse(raw);
+        return this.transaction(async tx => {
+            await this.admin(tx, actorId);
+            const { revision } = await this.current(tx, proposalId, input);
+            if (await tx.purchaseRequest.findFirst({
+                where: { agentProposalId: proposalId }, select: { id: true }
+            })) return conflict('PROPOSAL_ALREADY_EXECUTED');
+            if (revision.rejectedAt) {
+                if (revision.rejectedById === actorId && revision.rejectionReason === input.reason)
+                    return revision;
+                return conflict('PROPOSAL_ALREADY_REJECTED');
+            }
+            return tx.agentPurchaseProposalVersion.update({
+                where: { proposalId_version: { proposalId, version: input.version } },
+                data: { rejectedById: actorId, rejectedAt: new Date(), rejectionReason: input.reason }
+            });
         });
     }
     async execute(proposalId: string, raw: unknown) {
@@ -130,6 +264,7 @@ export class PurchaseProposalService {
         const requestHash = digest({ operation: 'agent.purchase.execute', proposalId, version: input.version, contentHash: input.contentHash });
         return this.transaction(async tx => {
             const { revision, snapshot } = await this.current(tx, proposalId, input);
+            if (revision.rejectedAt) return conflict('PROPOSAL_REJECTED');
             const receipt = await tx.agentPurchaseCommandReceipt.findUnique({ where: { key: input.idempotencyKey } });
             if (receipt && receipt.requestHash !== requestHash) return conflict('IDEMPOTENCY_CONFLICT');
             let request = await tx.purchaseRequest.findUnique({ where: { agentProposalId_agentProposalVersion: { agentProposalId: proposalId, agentProposalVersion: input.version } }, include: includeRequest });
@@ -138,6 +273,7 @@ export class PurchaseProposalService {
                 if (!revision.approvedById || !revision.approvedAt) throw new HttpError(403, 'APPROVAL_REQUIRED');
                 await this.admin(tx, revision.approvedById);
                 const stock = await this.terms(tx, snapshot);
+                await this.stockStillCurrent(tx, snapshot, revision.createdAt);
                 const totalAmount = new Prisma.Decimal(snapshot.unitPrice).mul(snapshot.quantity);
                 if (totalAmount.gte('10000000000')) return conflict('TOTAL_AMOUNT_OUT_OF_RANGE');
                 request = await tx.purchaseRequest.create({ data: {

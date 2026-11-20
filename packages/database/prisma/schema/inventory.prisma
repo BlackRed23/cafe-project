@@ -10,6 +10,7 @@ enum InventoryTransactionType {
   RETURN
   RESERVE
   RELEASE
+  RETURN_OUT
 }
 
 enum WasteReason {
@@ -24,6 +25,9 @@ enum StockCountStatus {
   PENDING
   COMPLETED
   CANCELLED
+  PENDING_APPROVAL
+  REJECTED
+  NEEDS_INVESTIGATION
 }
 
 model Ingredient {
@@ -47,6 +51,7 @@ model Ingredient {
   isActive            Boolean   @default(true)
   deletedAt           DateTime?
   rowVersion          Int       @default(0)
+  movementCursor      BigInt    @default(0)
 
   batches         IngredientBatch[]
   recipeItems     RecipeIngredient[]
@@ -122,7 +127,10 @@ model InventoryTransaction {
 
   createdAt DateTime @default(now())
 
+  movementSeq BigInt?
+
   @@index([ingredientId, createdAt])
+  @@index([ingredientId, movementSeq])
   @@index([referenceType, referenceId])
   @@index([orderItemId])
   @@index([type, createdAt])
@@ -174,13 +182,79 @@ model StockCount {
   approvedBy   User?            @relation("StockCountApprovedBy", fields: [approvedById], references: [id])
   approvedAt   DateTime?
   note         String?
+  kind         String @default("LEGACY")
+  scope        Json?
+  assignedCounterId String?
+  revision     Int @default(0)
+  submittedAt  DateTime?
+  rejectedById String?
+  rejectedReason String?
+  rejectedAt DateTime?
+  investigationReason String?
 
   items StockCountItem[]
+  stocktakeEntries StocktakeEntry[]
+  stocktakeRequests StocktakeRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status])
+}
+
+// Versioned per-lot evidence belonging to the existing StockCount lifecycle.
+// A row with countedAt=null is uncounted, never an implicit physical zero.
+model StocktakeEntry {
+  id String @id @default(cuid())
+  stockCountId String
+  stockCount StockCount @relation(fields: [stockCountId], references: [id], onDelete: Restrict)
+  ingredientId String
+  batchId String
+  openingQty Decimal @db.Decimal(14, 3)
+  openingCursor BigInt
+  openingQualityStatus String
+  openingExpirationDate DateTime?
+  presentAtOpen Boolean @default(true)
+  expectedAtCount Decimal? @db.Decimal(14, 3)
+  observedQty Decimal? @db.Decimal(14, 3)
+  varianceQty Decimal? @db.Decimal(14, 3)
+  observedCursor BigInt?
+  countedAt DateTime?
+  countedById String?
+  reason String?
+  reasonCategory String?
+  revision Int @default(0)
+  history StocktakeEntryHistory[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([stockCountId, batchId])
+  @@index([stockCountId, ingredientId])
+}
+
+model StocktakeEntryHistory {
+  id String @id @default(cuid())
+  entryId String
+  entry StocktakeEntry @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  revision Int
+  previousQty Decimal? @db.Decimal(14, 3)
+  newQty Decimal @db.Decimal(14, 3)
+  actorId String
+  reason String
+  createdAt DateTime @default(now())
+
+  @@unique([entryId, revision])
+}
+
+model StocktakeRequest {
+  requestId String @id
+  stockCountId String
+  stockCount StockCount @relation(fields: [stockCountId], references: [id], onDelete: Restrict)
+  action String
+  actorId String
+  payloadHash String
+  createdAt DateTime @default(now())
+  @@index([stockCountId, action])
 }
 
 model StockCountItem {

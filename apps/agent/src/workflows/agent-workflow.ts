@@ -1,8 +1,11 @@
 import '../config/env';
 import { z } from 'zod';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { UnifiedToolRegistry } from './tool-registry';
+import { selectToolForTask } from '../services/tool-selection/tool-selection.service';
+import { TOOL_SELECTION_VERSION, type ToolSelectionInput } from '../services/tool-selection/tool-selection.schema';
+import { executeActReadStep } from '../services/execution/act-read-step';
 export * from './tool-contracts';
 export * from './tool-registry';
 export * from './tool-policies';
@@ -27,6 +30,8 @@ import { MockLLMProvider, mockDecision } from './testing/mock-llm-provider';
 export { MockLLMProvider } from './testing/mock-llm-provider';
 import { MockAgentRepository } from '../repositories/mock-agent.repository';
 export { MockAgentRepository } from '../repositories/mock-agent.repository';
+import { compileAgentLangGraph, graphResult, type AgentGraphInput, type AgentGraphResult } from './agent-langgraph';
+export type { AgentGraphInput, AgentGraphResult, AgentGraphEvent, AgentGraphStatus } from './agent-langgraph';
 
 export const TOOL_REGISTRY = Object.freeze({
     'inventory.read': Object.freeze({ cost: 1, approval: false, permission: 'inventory.read', attempts: 2 }),
@@ -199,10 +204,396 @@ function validatePlan(plan: Plan, allowlist: readonly ToolName[]): void {
         } else if (step.input !== null) throw new Error('INVALID_TOOL_INPUT');
     }
 }
+/** Graph-only strict policy: reject extra actions and implausible numeric payloads
+ * BEFORE persisting an LLM plan, never silently cap a supplier purchase. This is
+ * a technical safety bound, not an approved merchant purchasing policy. */
+function validateGraphPlan(plan: Plan, allowlist: readonly ToolName[], budget: number): void {
+    validatePlan(plan, allowlist);
+    if (plan.reduce((sum, step) => sum + TOOL_REGISTRY[step.tool].cost, 0) > budget) {
+        throw new Error('BUDGET_EXCEEDED');
+    }
+    for (const step of plan) {
+        if ('id' in step) continue; // replenishmentPlan already verifies canonical graph byte-for-byte
+        if (Object.keys(step).sort().join(',') !== 'input,tool') throw new Error('INVALID_PLAN');
+        if (step.tool !== 'purchase.create') continue;
+        const proposal = step.input;
+        if (!proposal || Object.keys(proposal).sort().join(',') !== 'lines,supplierId' ||
+            proposal.lines.some(line => Object.keys(line).sort().join(',') !== 'ingredientId,quantity,unitCost' ||
+                !/^(0|[1-9]\d*)(\.\d{1,3})?$/.test(line.quantity) ||
+                !/^(0|[1-9]\d*)(\.\d{1,4})?$/.test(line.unitCost) ||
+                Number(line.quantity) > 1e12 || Number(line.unitCost) > 1e12)) {
+            throw new Error('INVALID_PROPOSAL');
+        }
+    }
+}
+
+/** A joint Backend review can request only two READ contracts per scoped ingredient. */
+function validJointReadTools(tools: AgentGraphInput['readTools']): boolean {
+    if (!tools || tools.length < 2 || tools.length > 8 || tools.length % 2 !== 0) return false;
+    const ids = new Set<string>();
+    for (let i = 0; i < tools.length; i += 2) {
+        const available = tools[i]!, batches = tools[i + 1]!;
+        const input = available.input;
+        if (available.name !== 'getIngredientAvailability' || batches.name !== 'getIngredientBatches' ||
+            available.version !== '1.0.0' || batches.version !== '1.0.0' ||
+            !record(input) || Object.keys(input).length !== 1 ||
+            typeof input.ingredientId !== 'string' ||
+            !/^[A-Za-z0-9][A-Za-z0-9:_-]{0,119}$/.test(input.ingredientId) ||
+            !record(batches.input) || Object.keys(batches.input).length !== 1 ||
+            batches.input.ingredientId !== input.ingredientId ||
+            ids.has(input.ingredientId)) return false;
+        ids.add(input.ingredientId);
+    }
+    return true;
+}
+
+/** Stable non-LLM identity for joint review. No purchase plan, approval, or tool execution. */
+const jointReadIdentityPlan = (): Plan => [
+    { tool: 'inventory.read', input: null },
+    { tool: 'inventory.recommend', input: null }
+];
+function validJointReadIdentity(execution: Execution | undefined, actorId: string): execution is Execution {
+    const fixed = jointReadIdentityPlan();
+    return Boolean(execution && execution.actorId === actorId &&
+        execution.status === 'PLANNED' && execution.budget === 2 &&
+        execution.revision === '1' && execution.hash === digest(fixed, {}) &&
+        isDeepStrictEqual(execution.plan, fixed) &&
+        Object.keys(execution.versions).length === 0 &&
+        execution.spent === 0 && execution.reserved === 0 &&
+        Array.isArray(execution.result) && execution.result.length === 0 &&
+        Array.isArray(execution.revisions) && execution.revisions.length === 0);
+}
 /** Planner/Executor/Verifier; purchasing and stock rules belong exclusively to BusinessPort. */
 export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
     private readonly allowlist: readonly ToolName[];
-    constructor(private readonly repository: AgentRepository | null, private readonly readBusiness: Pick<BusinessPort, 'authorize' | 'toolRegistry'> & Partial<BusinessPort>, private readonly llm: LLMProvider, allowlist: readonly ToolName[] = allowed, private readonly clock = () => new Date()) { this.allowlist = Object.freeze([...allowlist]); }
+    constructor(private readonly repository: AgentRepository | null, private readonly readBusiness: Pick<BusinessPort, 'authorize' | 'toolRegistry'> & Partial<BusinessPort>, private readonly llm: LLMProvider, allowlist: readonly ToolName[] = allowed, private readonly clock = () => new Date(), private readonly readOnlyGraphExecution = false) {
+        if (readOnlyGraphExecution && allowlist.some(tool => tool !== 'inventory.read' && tool !== 'inventory.recommend')) {
+            throw new Error('INVALID_READ_ONLY_ALLOWLIST');
+        }
+        this.allowlist = Object.freeze([...allowlist]);
+    }
+    /**
+     * LangGraph orchestration is a method of the existing AgentWorkflow, not a second
+     * purchasing engine. Durable identity/checkpoints are written into the SAME
+     * AgentRepository state as executions/approvals/tool calls. Production postgres
+     * remains fail-closed until its repository+BusinessPort adapter is verified.
+     */
+    async runLangGraph(raw: AgentGraphInput): Promise<AgentGraphResult> {
+        const schema = z.strictObject({
+            requestId: z.uuid(),
+            actorId: z.string().trim().min(1).max(120),
+            prompt: z.string().trim().min(1).max(10000),
+            budget: z.number().int().nonnegative().max(1000000),
+            mode: z.enum(['PLAN', 'RESUME']),
+            replenishment: z.strictObject({
+                supplierId: z.string().trim().min(1),
+                unitCosts: z.record(z.string(), z.string())
+            }).optional(),
+            readTools: z.array(z.strictObject({
+                name: z.string().trim().min(1),
+                input: z.unknown(),
+                version: z.string().optional()
+            })).max(8).optional(),
+            proposalReview: z.strictObject({
+                proposalId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9:_-]{0,119}$/),
+                version: z.number().int().positive().max(2147483647),
+                contentHash: z.string().regex(/^[a-f0-9]{64}$/)
+            }).optional(),
+            jointReview: z.literal(true).optional()
+        });
+        const parsed = schema.safeParse(raw);
+        if (!parsed.success) throw new Error('INVALID_GRAPH_REQUEST');
+        const request = parsed.data as AgentGraphInput;
+        if (!this.repository) throw new Error('POSTGRES_NOT_VERIFIED: Agent graph persistence adapter unavailable');
+        if (request.jointReview && (!request.proposalReview || !this.readOnlyGraphExecution ||
+            !this.readBusiness.inspectProposal || !this.readBusiness.demandRisk ||
+            !this.readBusiness.toolRegistry || request.budget !== 2 ||
+            request.replenishment || !validJointReadTools(request.readTools) ||
+            this.allowlist.length !== 2 || !this.allowlist.includes('inventory.read') ||
+            !this.allowlist.includes('inventory.recommend'))) {
+            throw new Error('POSTGRES_NOT_VERIFIED: Joined Backend inspection is READ-only');
+        }
+        if (request.proposalReview && !request.jointReview && (!this.readOnlyGraphExecution ||
+            !this.readBusiness.inspectProposal || request.budget !== 0 ||
+            request.replenishment || request.readTools?.length)) {
+            throw new Error('POSTGRES_NOT_VERIFIED: Backend proposal status is read-only');
+        }
+        const graphId = createHash('sha256').update(JSON.stringify([request.actorId, request.requestId])).digest('hex');
+        const inputHash = createHash('sha256').update(canonical({
+            actorId: request.actorId, prompt: request.prompt, budget: request.budget,
+            replenishment: request.replenishment ?? null, readTools: request.readTools ?? [],
+            proposalReview: request.proposalReview ?? null,
+            ...(request.jointReview ? { jointReview: true } : {})
+        })).digest('hex');
+        const invocationId = randomUUID();
+        const leaseUntil = () => new Date(this.clock().getTime() + 60000).toISOString();
+        const prior = await this.store.atomic(s => {
+            s.graphRuns ??= {};
+            // A requestId cannot be rebound to a different principal just by
+            // selecting a distinct graphId. This mirrors Backend actor scope.
+            if (Object.values(s.graphRuns).some(x => x.requestId === request.requestId && x.actorId !== request.actorId)) {
+                throw new Error('INVALID_GRAPH_REPLAY');
+            }
+            const existing = s.graphRuns[graphId];
+            if (existing) {
+                if (existing.inputHash !== inputHash || existing.actorId !== request.actorId) throw new Error('INVALID_GRAPH_REPLAY');
+                if (request.mode === 'RESUME' && !existing.executionId && !request.proposalReview) {
+                    throw new Error('INVALID_GRAPH_RESUME');
+                }
+                const active = existing.leaseOwner && Date.parse(existing.leaseUntil ?? '') > this.clock().getTime();
+                if (active) {
+                    if (request.mode === 'RESUME') throw new Error('GRAPH_RESUME_IN_PROGRESS');
+                    return { state: structuredClone(existing), claimed: false };
+                }
+                if (request.mode === 'PLAN' && existing.status !== 'RUNNING') {
+                    return { state: structuredClone(existing), claimed: false };
+                }
+                if (request.mode === 'RESUME' && ['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(existing.status)) {
+                    return { state: structuredClone(existing), claimed: false };
+                }
+                // A crashed invocation may be retried after its bounded lease.
+                // plan() reuses the recorded execution identity under this same lock.
+                existing.leaseOwner = invocationId;
+                existing.leaseUntil = leaseUntil();
+                if (request.mode === 'RESUME' && existing.status === 'HELD_POLICY') {
+                    existing.actCycle = (existing.actCycle ?? 0) + 1;
+                }
+                if (request.mode === 'RESUME' && request.proposalReview) {
+                    // The prior decision remains in append-only trace, but is
+                    // NOT a current Backend observation. A RESUME can fail at
+                    // inventory/risk/tool checks BEFORE proposal inspection.
+                    // Never return yesterday's approval/rejection as newly
+                    // revalidated, including to concurrent PLAN duplicates.
+                    existing.status = 'RUNNING';
+                    delete existing.approvalBoundary;
+                }
+                return { state: structuredClone(existing), claimed: true };
+            }
+            if (request.mode === 'RESUME') throw new Error('INVALID_GRAPH_RESUME');
+            s.graphRuns[graphId] = { requestId: request.requestId, actorId: request.actorId,
+                inputHash, status: 'RUNNING', trace: [], startedAt: this.clock().toISOString(),
+                updatedAt: this.clock().toISOString(), leaseOwner: invocationId, leaseUntil: leaseUntil() };
+            return null;
+        });
+        const resultFromStored = async (): Promise<AgentGraphResult> => {
+            await this.business.authorize(request.actorId, 'agent.run');
+            const saved = await this.store.atomic(s => s.graphRuns?.[graphId]);
+            if (!saved) throw new Error('INVALID_GRAPH_CHECKPOINT');
+            await this.store.atomic(s => permit(s, request.actorId, 'agent.run'));
+            const execution = saved.executionId ? await this.store.execution(saved.executionId) : undefined;
+            return { graphId, requestId: saved.requestId, actorId: saved.actorId, status: saved.status,
+                source: 'LANGGRAPH_STATEGRAPH', trace: structuredClone(saved.trace),
+                classifications: [], toolResults: [], ...(execution ? { execution } : {}),
+                ...(saved.approvalBoundary ? { approvalBoundary: structuredClone(saved.approvalBoundary) } : {}) };
+        };
+        // A duplicate PLAN cannot create a second execution, including when the
+        // first attempt has not reached its final node. RESUME is a separate action.
+        if (prior && !prior.claimed) return resultFromStored();
+        const graph = compileAgentLangGraph({
+            now: () => this.clock().getTime(),
+            authorize: (actor, permission) => this.business.authorize(actor, permission),
+            inventory: actor => this.business.inventory(actor),
+            recommendations: (actor, inventory) => this.business.recommendInventory(actor, inventory) as Promise<import('./replenishment').StockRecommendation[]>,
+            ...(this.business.perceiveInventory ? { perceive: (actor: string, rows: import('./replenishment').InventoryRow[]) =>
+                this.business.perceiveInventory!(actor, rows) } : {}),
+            ...(this.business.demandRisk ? { risk: (actor: string, rows: import('./replenishment').InventoryRow[]) =>
+                this.business.demandRisk!(actor, rows) } : {}),
+            ...(this.business.inspectProposal ? { proposalReview: (actor: string,
+                reference: import('./agent-backend-proposal-review').ProposalReviewReference) =>
+                this.business.inspectProposal!(actor, reference) } : {}),
+            createReadIdentity: async input => {
+                if (!input.jointReview || !this.readOnlyGraphExecution ||
+                    !this.readBusiness.inspectProposal || !this.readBusiness.demandRisk ||
+                    !this.readBusiness.toolRegistry || !validJointReadTools(input.readTools)) {
+                    throw new Error('POSTGRES_NOT_VERIFIED');
+                }
+                await this.business.authorize(input.actorId, 'agent.run');
+                return this.store.atomic(s => {
+                    permit(s, input.actorId, 'agent.run');
+                    const run = s.graphRuns?.[graphId];
+                    if (!run || run.inputHash !== inputHash || run.actorId !== input.actorId ||
+                        run.leaseOwner !== invocationId) throw new Error('INVALID_GRAPH_CHECKPOINT');
+                    if (run.executionId) {
+                        const existing = s.executions[run.executionId];
+                        if (!validJointReadIdentity(existing, input.actorId)) {
+                            throw new Error('INVALID_GRAPH_CHECKPOINT');
+                        }
+                        return existing;
+                    }
+                    const plan = jointReadIdentityPlan();
+                    const execution: Execution = {
+                        id: `execution-${++s.sequence}`, actorId: input.actorId,
+                        status: 'PLANNED', plan, versions: {}, hash: digest(plan, {}),
+                        revision: '1', revisions: [], spent: 0, reserved: 0,
+                        budget: 2, result: []
+                    };
+                    s.executions[execution.id] = execution;
+                    run.executionId = execution.id;
+                    return execution;
+                });
+            },
+            plan: input => this.plan(input.actorId, input.prompt, input.budget, input.replenishment, { graphId, inputHash, invocationId }),
+            resume: async input => {
+                const stored = await this.store.atomic(s => s.graphRuns?.[graphId]);
+                if (!stored?.executionId) throw new Error('INVALID_GRAPH_RESUME');
+                const execution = await this.store.execution(stored.executionId);
+                if (!execution || execution.actorId !== input.actorId) throw new Error('FORBIDDEN');
+                if (input.jointReview && !validJointReadIdentity(execution, input.actorId)) {
+                    throw new Error('INVALID_GRAPH_CHECKPOINT');
+                }
+                return execution;
+            },
+            execute: (id, actor) => this.execute(id, actor),
+            inspect: async (actor, id) => {
+                await this.business.authorize(actor, 'agent.run');
+                return this.store.atomic(s => {
+                    permit(s, actor, 'agent.run');
+                    const execution = s.executions[id];
+                    if (!execution || execution.actorId !== actor) throw new Error('FORBIDDEN');
+                    return { execution, approvals: Object.values(s.approvals).filter(a => a.executionId === id) };
+                });
+            },
+            validate: (plan, budget) => validateGraphPlan(plan, this.allowlist, budget),
+            dispatchRead: async (actor, name, input, version) => {
+                // All names and WRITE classifications are checked by the single registry.
+                return this.dispatchTool(actor, name, input, version);
+            },
+            ...(this.readOnlyGraphExecution &&
+                process.env.AGENT_ACT_READ_EXECUTION === 'YES' && this.readBusiness.toolRegistry
+                ? { executeActRead: async (step: import('../services/execution/act-read-step').ActReadStep) => {
+                    const events: import('./agent-langgraph').AgentGraphEvent[] = [];
+                    const sourceVersion = this.readBusiness.actSourceVersion &&
+                        typeof (step.input as { ingredientId?: unknown } | null)?.ingredientId === 'string'
+                        ? () => this.readBusiness.actSourceVersion!(
+                            step.actorId, (step.input as { ingredientId: string }).ingredientId)
+                        : undefined;
+                    const result = await executeActReadStep(step, {
+                        registry: this.readBusiness.toolRegistry!,
+                        authorize: (actor, permission) => this.business.authorize(actor, permission),
+                        ...(sourceVersion ? { sourceVersion } : {}),
+                        checkpoint: async event => {
+                            const run = await this.store.atomic(s => s.graphRuns?.[graphId]);
+                            if (!run || run.inputHash !== inputHash ||
+                                run.leaseOwner !== invocationId || run.actorId !== event.actorId) {
+                                throw new Error('INVALID_GRAPH_CHECKPOINT');
+                            }
+                            const item: import('./agent-langgraph').AgentGraphEvent = {
+                                node: 'act_executor', edge: 'allowlisted_tools',
+                                status: 'ACT_' + event.status, at: event.at,
+                                tool: event.tool, stepId: event.stepId,
+                                attempt: event.attempt, actorId: event.actorId,
+                                ...(event.code ? { code: event.code } : {}),
+                                ...(run.executionId ? { executionId: run.executionId } : {})
+                            };
+                            if (this.store.recordActEvent) {
+                                await this.store.recordActEvent({
+                                    graphId, inputHash, invocationId,
+                                    actorId: event.actorId, requestId: request.requestId,
+                                    executionId: run.executionId,
+                                    toolIndex: Number(event.stepId.slice(4)) - 1,
+                                    event: item
+                                });
+                            } else {
+                                await this.store.atomic(s => {
+                                    const locked = s.graphRuns?.[graphId];
+                                    if (!locked || locked.inputHash !== inputHash ||
+                                        locked.leaseOwner !== invocationId) throw new Error('INVALID_GRAPH_CHECKPOINT');
+                                    locked.trace.push(structuredClone(item));
+                                    locked.updatedAt = event.at;
+                                });
+                            }
+                            events.push(item);
+                        }
+                    });
+                    return { result, events };
+                } } : {}),
+            ...(this.readBusiness.toolRegistry ? { selectRead: async (actor: string, name: string,
+                rawInput: unknown, hasTrustedPerception: boolean) => {
+                const objectiveByTool: Record<string, ToolSelectionInput['objective']> = {
+                    getIngredientAvailability: 'INVENTORY', getIngredientBatches: 'EXPIRY',
+                    getSalesHistory: 'CONSUMPTION', getStocktakeStatus: 'STOCKTAKE',
+                    getInboundPurchaseOrder: 'INBOUND', findIngredientSuppliers: 'SUPPLIER',
+                    calculateReorderQuantity: 'REORDER'
+                };
+                const known = Object.prototype.hasOwnProperty.call(TOOL_CONTRACTS, name);
+                const contract = known ? TOOL_CONTRACTS[name as keyof typeof TOOL_CONTRACTS] : undefined;
+                const checked = contract?.input.safeParse(rawInput);
+                if (known && !checked?.success) throw new Error('INVALID_TOOL_INPUT');
+                // No raw model-provided arguments can bypass the strict selector.
+                const inputs = checked?.success ? checked.data : {};
+                return selectToolForTask({
+                    version: TOOL_SELECTION_VERSION, actorId: actor,
+                    objective: objectiveByTool[name] ?? 'EXPLICIT',
+                    dataQuality: hasTrustedPerception ? 'VERIFIED' : 'PARTIAL',
+                    requiredInformation: [], availableInformation: [],
+                    dependencyIds: [], completedDependencyIds: [],
+                    inputs, requestedTool: name, previousOutcome: 'NOT_RUN', recoveryCount: 0
+                }, this.readBusiness.toolRegistry!, (id, permission) => this.readBusiness.authorize(id, permission));
+            } } : {}),
+            checkpoint: async (event, execution) => {
+                await this.store.atomic(s => {
+                    const run = s.graphRuns?.[graphId];
+                    if (!run || run.inputHash !== inputHash || run.leaseOwner !== invocationId) throw new Error('INVALID_GRAPH_CHECKPOINT');
+                    if (execution) {
+                        if (run.executionId && run.executionId !== execution.id) throw new Error('INVALID_GRAPH_REPLAY');
+                        run.executionId = execution.id;
+                    }
+                    run.trace.push(structuredClone(event));
+                    if (event.approvalBoundary) run.approvalBoundary = structuredClone(event.approvalBoundary);
+                    run.updatedAt = this.clock().toISOString();
+                });
+            }
+        });
+        try {
+            const snapshot = await graph.invoke({ graphId, request, status: 'RUNNING' }, { recursionLimit: 35 });
+            const result = graphResult(snapshot);
+            if (this.readOnlyGraphExecution && process.env.AGENT_ACT_READ_EXECUTION === 'YES' &&
+                this.store.finalizeActRun) {
+                await this.store.finalizeActRun({
+                    graphId, inputHash, invocationId, status: result.status
+                });
+            } else {
+                await this.store.atomic(s => {
+                    const run = s.graphRuns?.[graphId];
+                    if (!run || run.inputHash !== inputHash || run.leaseOwner !== invocationId) {
+                        throw new Error('INVALID_GRAPH_CHECKPOINT');
+                    }
+                    run.status = result.status;
+                    run.updatedAt = this.clock().toISOString();
+                    delete run.leaseOwner;
+                    delete run.leaseUntil;
+                });
+            }
+            return result;
+        } catch {
+            // If the actual StateGraph invocation/checkpoint throws, do not
+            // strand a 60s live lease or preserve an old Backend decision as
+            // current. Only the invocation holding the SAME lease may clean it.
+            // If PostgreSQL itself is unavailable, leave its crash-lease
+            // recovery intact, but never claim success or expose the cause.
+            try {
+                await this.store.atomic(s => {
+                    const run = s.graphRuns?.[graphId];
+                    if (!run || run.inputHash !== inputHash || run.leaseOwner !== invocationId) return;
+                    const now = this.clock().toISOString();
+                    run.status = 'HELD_POLICY';
+                    run.trace.push({ node: 'graph_failure', edge: 'audit', status: 'INVOCATION_HELD',
+                        code: 'UNVERIFIED_GRAPH_EXECUTION', at: now });
+                    if (request.proposalReview) {
+                        run.approvalBoundary = { ...request.proposalReview,
+                            backendStatus: 'BACKEND_UNVERIFIED', observedAt: now, httpStatus: null,
+                            approved: false, rejected: false, purchaseRequestPresent: false,
+                            decisionActorId: null, decisionAt: null, rejectionReasonHash: null,
+                            writesPerformed: false };
+                    }
+                    run.updatedAt = now;
+                    delete run.leaseOwner;
+                    delete run.leaseUntil;
+                });
+            } catch { /* Storage may itself be unavailable: bounded lease still fails closed. */ }
+            throw new Error('UNVERIFIED_GRAPH_EXECUTION');
+        }
+    }
     private get store(): AgentRepository {
         if (!this.repository) throw new Error('READ_ONLY_WORKFLOW_REPOSITORY_DISABLED');
         return this.repository;
@@ -396,7 +787,8 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
             return { execution, approvals: Object.values(s.approvals).filter(a => a.executionId === id), toolCalls: Object.values(s.toolCalls).filter(c => c.executionId === id), evaluations: s.evaluations.filter(e => e.executionId === id), audit: s.audit.filter(a => a.executionId === id) };
         }, commit, finish));
     }
-    async plan(actorId: string, prompt: string, budget: number, replenishment?: ReplenishmentInput): Promise<Execution> {
+    async plan(actorId: string, prompt: string, budget: number, replenishment?: ReplenishmentInput,
+        graphContext?: { graphId: string; inputHash: string; invocationId: string }): Promise<Execution> {
         const requestedPlan = replenishment === undefined ? undefined : replenishmentPlan(replenishment);
         await this.business.authorize(actorId, 'agent.run');
         await this.store.atomic(s => permit(s, actorId, 'agent.run'));
@@ -409,6 +801,7 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
         const traced = requestedPlan ? undefined : mock?.[mockDecision](prompt, context);
         const plan = requestedPlan ?? traced?.plan ?? structuredClone(await this.llm.plan(prompt, structuredClone(context)));
         validatePlan(plan, this.allowlist);
+        if (graphContext) validateGraphPlan(plan, this.allowlist, budget);
         const attribution: MemoryAttribution[] = context.evidence.map(({ memoryId }) => {
             if (traced?.influence?.memoryId === memoryId) return { memoryId, presented: true, status: 'USED', proof: traced.influence.proof };
             return { memoryId, presented: !requestedPlan, status: requestedPlan || traced ? 'UNUSED' : 'UNKNOWN' };
@@ -420,12 +813,24 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
         if (context.evidence.length) await this.business.authorize(actorId, 'memory');
         return this.store.atomic(s => {
             permit(s, actorId, 'agent.run'); const id = `execution-${++s.sequence}`;
+            if (graphContext) {
+                const run = s.graphRuns?.[graphContext.graphId];
+                if (!run || run.inputHash !== graphContext.inputHash || run.actorId !== actorId ||
+                    run.leaseOwner !== graphContext.invocationId) throw new Error('INVALID_GRAPH_CHECKPOINT');
+                if (run.executionId) {
+                    const existing = s.executions[run.executionId];
+                    if (!existing) throw new Error('INVALID_GRAPH_CHECKPOINT');
+                    return existing;
+                }
+            }
             const e: Execution = { id, actorId, status: !workflow && plan.some(p => TOOL_REGISTRY[p.tool].approval) ? 'AWAITING_APPROVAL' : 'PLANNED', plan, versions, hash: digest(plan, versions), revision: '1', revisions: [], spent: 0, reserved: 0, budget, result: [] };
             // Reject stale evidence if forgotten/revoked while provider was planning.
             const current = memoryAllowed ? planningContext(s, actorId, prompt, this.clock().getTime()) : context;
             if (JSON.stringify(current) !== JSON.stringify(context)) throw new Error('INVALID_MEMORY_CONTEXT');
             e.planning = { evidence: context.evidence, attribution, decision: structuredClone(plan) };
-            s.executions[id] = e; return e;
+            s.executions[id] = e;
+            if (graphContext) s.graphRuns![graphContext.graphId]!.executionId = id;
+            return e;
         });
     }
     async revise(id: string, actorId: string, plan: Plan, expectedRevision?: string): Promise<Execution> {
@@ -456,7 +861,8 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
     }
     async revoke(id: string, actorId: string): Promise<void> { await this.business.authorize(actorId, 'agent.approve'); return this.store.atomic(s => { permit(s, actorId, 'agent.approve'); const a = s.approvals[id]; if (!a || a.consumed) throw new Error('INVALID_APPROVAL'); a.revoked = true; }); }
     async execute(id: string, actorId: string): Promise<Execution> {
-        return this.business.atomic((business, onCommit, onFinish) => this.store.atomic(async s => {
+        const perform = (business: BusinessPort, onCommit?: (publish: () => void) => void,
+            onFinish?: (finish: () => void) => void) => this.store.atomic(async s => {
             await business.authorize(actorId, 'agent.run');
             permit(s, actorId, 'agent.run'); const e = s.executions[id];
             if (!e || e.actorId !== actorId) throw new Error('FORBIDDEN');
@@ -542,7 +948,12 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
             }
             if (e.result.length === e.plan.length) e.status = 'SUCCEEDED';
             return this.finishOutcome(s, business, e);
-        }, onCommit, onFinish));
+        }, onCommit, onFinish);
+        // Only an explicitly constructed READ-only graph (both legacy allowlist
+        // and authoritative BusinessPort tools) may use a standalone PG checkpoint
+        // transaction. No purchase or cross-database business write is possible.
+        if (this.readOnlyGraphExecution) return perform(this.business);
+        return this.business.atomic((business, onCommit, onFinish) => perform(business, onCommit, onFinish));
     }
     async cancel(id: string, actorId: string): Promise<Execution> {
         return this.business.atomic((business, commit, finish) => this.store.atomic(async s => {

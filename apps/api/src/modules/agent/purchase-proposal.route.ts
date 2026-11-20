@@ -42,6 +42,10 @@ export function createPurchaseProposalRouter(service: PurchaseProposalService = 
         // req.user originates exclusively from Backend JWT + current-account lookup.
         sendSuccess(res, 200, 'Exact proposal revision approved.', await service.approve(req.params.id, req.user!.id, req.body));
     }));
+    router.post('/purchase-proposals/:id/reject', ...admin, asyncHandler(async (req: AuthenticatedRequest, res) => {
+        sendSuccess(res, 200, 'Exact proposal revision rejected; no purchase executed.',
+            await service.reject(req.params.id, req.user!.id, req.body));
+    }));
     router.post('/purchase-proposals/:id/execute', ...admin, asyncHandler(async (req, res) => {
         sendSuccess(res, 200, 'Approved proposal result.', await service.execute(req.params.id, req.body));
     }));

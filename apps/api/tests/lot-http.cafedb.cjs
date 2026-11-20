@@ -236,7 +236,7 @@ async function main() {
       const orderBody = { items: [{ productId: p.id, quantity: 2, toppings: [] }], paymentMethod: 'CASH' };
       const o = ok(await api('POST', '/orders', orderBody), 201).order; let s = await state(i); assert.equal(Number(s.ingredient.quantity), 25); assert.equal(Number(s.ingredient.reserved), 6);
       ok(await api('PATCH', `/orders/${o.id}/status`, { status: 'CANCELLED' })); s = await state(i); assert.equal(Number(s.ingredient.quantity), 25); assert.equal(Number(s.ingredient.reserved), 0);
-      const o2 = ok(await api('POST', '/orders', orderBody), 201).order; ok(await api('PATCH', `/orders/${o2.id}/status`, { status: 'CONFIRMED' })); ok(await api('PATCH', `/orders/${o2.id}/status`, { status: 'COMPLETED' })); s = await state(i); consistent(s); assert.equal(Number(s.ingredient.quantity), 19); assert.equal(Number(s.ingredient.reserved), 0);
+      const o2 = ok(await api('POST', '/orders', orderBody), 201).order; ok(await api('PATCH', `/orders/${o2.id}/status`, { status: 'CONFIRMED' })); ok(await api('PATCH', `/orders/${o2.id}/status`, { status: 'PREPARING' })); ok(await api('PATCH', `/orders/${o2.id}/status`, { status: 'COMPLETED' })); s = await state(i); consistent(s); assert.equal(Number(s.ingredient.quantity), 19); assert.equal(Number(s.ingredient.reserved), 0);
       assert.equal(Number(s.batches.find(b => b.id === expired.batch.id).quantityRemaining), 7);
       assert.equal(ok(await api('GET', `/ingredients/${i.id}`)).availableQuantity, 12);
       const reservationBefore = await state(i);

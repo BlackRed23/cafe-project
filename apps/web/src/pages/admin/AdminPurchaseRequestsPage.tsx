@@ -1,11 +1,12 @@
 import { mockEnabled } from '../../mock/config';
 import { MockWorkspace } from '../../mock/MockWorkspace';
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, FileSpreadsheet, MailWarning, Plus, X } from "lucide-react";
 import { purchaseRequestsApi } from "../../api/purchaseRequests.api";
 import { ingredientsApi } from "../../api/ingredients.api";
 import { suppliersApi } from "../../api/suppliers.api";
+import { purchasingApi } from "../../api/purchasing.api";
 import type { PurchaseRequest } from "../../types/purchaseRequest.types";
 import { formatDate } from "../../utils/formatDate";
 import { Badge } from "../../components/common/Badge";
@@ -43,10 +44,14 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
   const [isFormLoading, setIsFormLoading] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [supplierProductsMapping, setSupplierProductsMapping] = useState<any[]>([]);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [unitPrice, setUnitPrice] = useState("");
+  const [eligibility, setEligibility] = useState<Awaited<ReturnType<typeof purchasingApi.eligibleSuppliers>> | null>(null);
+  const [eligibilityIngredient, setEligibilityIngredient] = useState("");
+  const [uncertainCreate, setUncertainCreate] = useState(false);
+  const createIntent = useRef<Parameters<typeof purchaseRequestsApi.createPurchaseRequest>[0] | null>(null);
   const [note, setNote] = useState("");
   const toast = useToast();
 
@@ -75,14 +80,12 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
     setIsModalOpen(true);
     setIsFormLoading(true);
     try {
-      const [ingRes, suppRes, spmRes] = await Promise.all([
+      const [ingRes, suppRes] = await Promise.all([
         ingredientsApi.getIngredients(),
         suppliersApi.getSuppliers(),
-        suppliersApi.getSupplierProducts(),
       ]);
       setProducts(ingRes);
       setSuppliers(suppRes);
-      setSupplierProductsMapping(spmRes);
     } catch {
       toast.error("Không thể tải danh sách nguyên liệu hoặc nhà cung cấp.");
     } finally {
@@ -91,10 +94,15 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
   };
 
   const handleCloseModal = () => {
+    if (uncertainCreate) return;
     setIsModalOpen(false);
     setSelectedProductId("");
     setSelectedSupplierId("");
     setQuantity("");
+    setUnitPrice("");
+    setEligibility(null);
+    setEligibilityIngredient("");
+    createIntent.current = null;
     setNote("");
   };
 
@@ -104,24 +112,38 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
     if (!selectedSupplierId) return toast.error("Vui lòng chọn nhà cung cấp.");
     if (!quantity) return toast.error("Vui lòng nhập số lượng đề xuất.");
 
-    const qty = parseInt(quantity, 10);
-    if (Number.isNaN(qty) || qty <= 0) return toast.error("Số lượng đề xuất phải lớn hơn 0.");
+    const qty = Number(quantity);
+    if (!Number.isSafeInteger(qty) || qty <= 0) return toast.error("Số lượng đề xuất phải là số nguyên dương.");
+    const price = Number(unitPrice);
+    if (unitPrice.trim() && (!Number.isFinite(price) || price < 0)) return toast.error("Đơn giá phải không âm.");
+    if (eligibilityIngredient !== selectedProductId || !eligibility?.eligible.some(s=>s.supplierId===selectedSupplierId))
+      return toast.error("Nhà cung cấp chưa được xác minh hợp lệ cho nguyên liệu này. Hãy chọn lại hoặc tạo sourcing hold.");
+    if (!window.confirm(uncertainCreate
+      ? 'Xác nhận thử lại yêu cầu cũ với cùng demandSourceKey và nội dung?'
+      : 'Xác nhận tạo Purchase Request đang chờ ADMIN phê duyệt?')) return;
 
     setIsFormLoading(true);
     toast.info("Đang tạo yêu cầu nhập nguyên liệu...");
 
     try {
-      const newPr = await purchaseRequestsApi.createPurchaseRequest({
+      const payload = createIntent.current ?? {
         supplierId: selectedSupplierId,
+        demandSourceKey: `manual-pr:${crypto.randomUUID()}`,
         notes: note,
-        items: [{ ingredientId: selectedProductId, quantity: qty }],
-      });
+        items: [{ ingredientId: selectedProductId, quantity: qty, ...(unitPrice.trim()?{unitPrice:price}:{}) }],
+      };
+      createIntent.current=payload;
+      const newPr = await purchaseRequestsApi.createPurchaseRequest(payload);
 
-      toast.success("Tạo yêu cầu nhập nguyên liệu thành công.");
+      createIntent.current=null;
+      setUncertainCreate(false);
+      toast.success("Đã tạo yêu cầu mua hàng. Đang chờ phê duyệt.");
       setStatusFilter(newPr.status || "PENDING");
       handleCloseModal();
       fetchPRs();
     } catch (err: any) {
+      if (!err?.response?.status || err.response.status >= 500 || err.response.status === 408) setUncertainCreate(true);
+      else {createIntent.current=null;setUncertainCreate(false);}
       const msg = err.response?.data?.message || err.message || "Không thể tạo yêu cầu nhập hàng, vui lòng thử lại.";
       toast.error(msg);
     } finally {
@@ -281,6 +303,7 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
             Tạo yêu cầu nhập hàng
           </button>
         )}
+        <button onClick={()=>navigate('/admin/purchasing')} className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-900">Đơn mua & nhập theo PO</button>
       </div>
 
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-800">{error}</div>}
@@ -346,24 +369,14 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
                     onChange={(e) => {
                       const newProductId = e.target.value;
                       setSelectedProductId(newProductId);
-                      if (newProductId) {
-                        const sps = supplierProductsMapping.filter(
-                          (sp: any) =>
-                            sp.ingredientId === newProductId ||
-                            sp.productId === newProductId ||
-                            sp.product_id === newProductId
-                        );
-                        if (sps.length > 0) {
-                          const preferred = sps.find((sp: any) => sp.isPreferred || sp.is_preferred) || sps[0];
-                          setSelectedSupplierId(preferred.supplierId || preferred.supplier_id);
-                        } else {
-                          setSelectedSupplierId("");
-                        }
-                      } else {
-                        setSelectedSupplierId("");
-                      }
+                      setSelectedSupplierId("");
+                      setEligibility(null);
+                      setEligibilityIngredient("");
+                      if(newProductId) purchasingApi.eligibleSuppliers(newProductId)
+                        .then(data=>{setEligibility(data);setEligibilityIngredient(newProductId);})
+                        .catch(()=>toast.error("Không xác minh được nhà cung cấp; không thể tạo PR với nguồn chưa kiểm tra."));
                     }}
-                    disabled={isFormLoading}
+                    disabled={isFormLoading||uncertainCreate}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                   >
                     <option value="">-- Chọn nguyên liệu --</option>
@@ -382,34 +395,19 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
                   <select
                     value={selectedSupplierId}
                     onChange={(e) => setSelectedSupplierId(e.target.value)}
-                    disabled={isFormLoading}
+                    disabled={isFormLoading||uncertainCreate||!eligibility}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                   >
                     <option value="">-- Chọn nhà cung cấp --</option>
-                    {(selectedProductId
-                      ? suppliers.filter((supplier) => {
-                        const sps = supplierProductsMapping.filter(
-                          (sp: any) =>
-                            sp.ingredientId === selectedProductId ||
-                            sp.productId === selectedProductId ||
-                            sp.product_id === selectedProductId
-                        );
-
-                        if (sps.length > 0) {
-                          return sps.some((sp: any) => (sp.supplierId || sp.supplier_id) === supplier.id);
-                        }
-
-                        // If NO mappings are found at all, we show all suppliers so they can at least pick one manually
-                        return true;
-                      })
-                      : suppliers
-                    ).map((supplier) => (
+                    {suppliers.filter(supplier => eligibilityIngredient===selectedProductId &&
+                      eligibility?.eligible.some(e=>e.supplierId===supplier.id)).map((supplier) => (
                       <option key={supplier.id} value={supplier.id}>
                         {supplier.name}
                       </option>
                     ))}
                   </select>
                 </div>
+                {selectedProductId&&eligibilityIngredient===selectedProductId&&!eligibility?.createPOAllowed&&<p className="text-sm text-amber-800">Chưa có nhà cung cấp hợp lệ. Sử dụng Sourcing hold trong trang Mua hàng & đối soát.</p>}
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-semibold text-slate-700">
@@ -420,18 +418,24 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
                     min="1"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
-                    disabled={isFormLoading}
+                    disabled={isFormLoading||uncertainCreate}
                     placeholder="Nhập số lượng"
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                   />
                 </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-semibold text-slate-700">Đơn giá theo đơn vị mua (VND, nếu có)</label>
+                  <input type="number" min="0" step="0.01" value={unitPrice} onChange={e=>setUnitPrice(e.target.value)}
+                    disabled={isFormLoading||uncertainCreate} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"/>
+                </div>
+                {uncertainCreate&&<p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">Chưa xác định kết quả tạo PR. Giữ nguyên biểu mẫu và demandSourceKey; kiểm tra danh sách trước khi thử lại đúng yêu cầu cũ.</p>}
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-semibold text-slate-700">Ghi chú</label>
                   <textarea
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    disabled={isFormLoading}
+                    disabled={isFormLoading||uncertainCreate}
                     placeholder="Nhập ghi chú nếu có"
                     rows={3}
                     className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
@@ -444,7 +448,7 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleCloseModal}
-                disabled={isFormLoading}
+                disabled={isFormLoading||uncertainCreate}
                 className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-200"
               >
                 Hủy
@@ -455,7 +459,7 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
                 disabled={isFormLoading}
                 className="rounded-xl bg-amber-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-900 disabled:opacity-50"
               >
-                {isFormLoading ? "Đang xử lý..." : "Tạo yêu cầu"}
+                {isFormLoading ? "Đang xử lý..." : uncertainCreate ? "Xác nhận thử lại cùng mã yêu cầu" : "Tạo yêu cầu"}
               </button>
             </div>
           </div>

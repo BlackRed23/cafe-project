@@ -9,8 +9,7 @@ import { Loading } from "../components/common/Loading";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
 import { sortProductsInStockFirst } from "../utils/productStock";
-import { HomeHero, BrandMarquee, BrandStory, HomeGallery } from "../features/home/HomeEditorial";
-import "../features/home/home.css";
+import { HomeHero, BrandStory, HomeGallery } from "../features/home/HomeEditorial";
 
 export const HomePage: React.FC = () => {
   const { addToCart, items } = useCart();
@@ -20,6 +19,7 @@ export const HomePage: React.FC = () => {
   const location = useLocation();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -28,8 +28,10 @@ export const HomePage: React.FC = () => {
         const data = await productsApi.getProducts();
         const inStockFirst = sortProductsInStockFirst(data);
         setProducts(inStockFirst.slice(0, 3));
+        setLoadFailed(false);
       } catch (err) {
         console.error("Error fetching preview products:", err);
+        setLoadFailed(true);
       } finally {
         setIsLoading(false);
       }
@@ -79,40 +81,41 @@ export const HomePage: React.FC = () => {
   };
 
   return (
-    <div className="coffee-home">
+    <div className="min-w-0 overflow-x-clip bg-[var(--sf-paper)] font-['Be_Vietnam_Pro',sans-serif] text-[var(--sf-ink)]">
       <HomeHero />
-      <BrandMarquee />
       <BrandStory />
 
-      <section className="home-featured home-container" aria-labelledby="home-products-title">
-        <div className="home-section-heading">
+      <section className="mx-auto w-[calc(100%-2.25rem)] max-w-6xl py-16 md:w-[calc(100%-3rem)] md:py-20 xl:w-[calc(100%-4rem)] xl:py-28" aria-labelledby="home-products-title">
+        <div className="mb-9 grid items-end gap-5 md:grid-cols-[1fr_.55fr] md:gap-10">
           <div>
-            <p className="home-eyebrow">03 / Bộ sưu tập</p>
-            <h2 id="home-products-title">Chọn một <em>hương vị riêng.</em></h2>
+            <p className="text-xs font-bold uppercase tracking-widest text-[var(--sf-green)]">02 / CHỌN MÓN</p>
+            <h2 id="home-products-title" className="mt-4 max-w-md text-3xl leading-snug font-semibold tracking-tight md:text-4xl">Một vài món <em className="font-['Playfair_Display',Georgia,serif] font-normal text-[var(--sf-green)]">để bắt đầu.</em></h2>
           </div>
-          <p>Khám phá các sản phẩm cà phê đóng gói. Chọn theo sở thích, thưởng thức theo cách của bạn.</p>
+          <p className="max-w-sm text-sm leading-7 text-[var(--sf-muted)]">Thực đơn được cập nhật từ cửa hàng. Xem món còn bán, giá hiện tại và chọn thứ bạn muốn thưởng thức.</p>
         </div>
 
         {isLoading ? (
-          <div className="home-products-state" role="status">
+          <div className="flex min-h-40 items-center justify-center border-y border-[var(--sf-line)] p-8 text-center" role="status">
             <Loading message="Đang tải menu..." />
           </div>
+        ) : loadFailed ? (
+          <div className="flex min-h-40 items-center justify-center border-y border-[var(--sf-line)] p-8 text-center" role="alert">
+            <p>Chưa tải được thực đơn. Bạn có thể thử lại tại <Link to="/products" className="font-semibold underline underline-offset-4">trang sản phẩm</Link>.</p>
+          </div>
         ) : products.length === 0 ? (
-          <p className="home-products-state" role="status">Chưa có sản phẩm nào trong menu.</p>
+          <p className="flex min-h-40 items-center justify-center border-y border-[var(--sf-line)] p-8 text-center text-[var(--sf-muted)]" role="status">Chưa có sản phẩm nào trong menu.</p>
         ) : (
-          <div className="home-products-grid">
+          <div className="grid min-w-0 grid-cols-1 gap-10 md:grid-cols-3 md:gap-5 lg:gap-9">
             {products.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                onAddToCart={handleAddToCart}
-              />
+              <div key={product.id} className="min-w-0 [&>div]:min-w-0 [&>div]:rounded-none [&>div]:border-0 [&>div]:bg-transparent [&>div]:shadow-none [&>div>a]:aspect-square [&>div>a]:overflow-hidden [&>div>a]:bg-[var(--sf-soft)] [&>div>div]:px-0 [&>div>div]:pt-4 [&_h3]:font-['Be_Vietnam_Pro',sans-serif] [&_h3]:text-[var(--sf-ink)] [&_[data-ds=button]]:rounded-none">
+                <ProductCard product={product} onAddToCart={handleAddToCart} />
+              </div>
             ))}
           </div>
         )}
 
-        <div className="home-products-footer">
-          <Link to="/products" className="home-text-link">
+        <div className="mt-10 text-right">
+          <Link to="/products" className="inline-flex min-h-11 items-center gap-3 text-sm font-semibold underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-current">
             Xem toàn bộ sản phẩm <ArrowRight size={18} aria-hidden="true" />
           </Link>
         </div>

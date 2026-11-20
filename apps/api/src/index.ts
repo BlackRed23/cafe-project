@@ -9,7 +9,7 @@ import orderRoutes from './modules/order/order.route';
 import paymentRoutes from './modules/payment/payment.route';
 import productRoutes from './modules/product/product.route';
 import { productRecipeRoutes, toppingRoutes } from './modules/recipe/recipe.route';
-import purchaseRoutes from './modules/purchase/purchase.route';
+import purchaseRoutes, { purchaseOrderRoutes } from './modules/purchase/purchase.route';
 import simulateSaleRoutes from './modules/simulate-sale/simulate-sale.route';
 import systemSettingRoutes from './modules/system-setting/system-setting.route';
 import { productSupplierRoutes, supplierProductRoutes, supplierRoutes } from './modules/supplier/supplier.route';
@@ -21,7 +21,12 @@ import { errorHandler } from './common/error-handler';
 import { sendSuccess } from './common/response';
 import { scheduleJobs } from './modules/cron/cron.service';
 import { ingredientBatchRoutes } from './modules/ingredient/ingredient-batch.route';
+import { stocktakeRoutes } from './modules/inventory/stocktake.route';
 const app = express();
+// PostgreSQL per-ingredient movement cursors are 64-bit. JSON has no BigInt;
+// publish these exact values as decimal strings without losing precision.
+app.set('json replacer', (_key: string, value: unknown) =>
+    typeof value === 'bigint' ? value.toString() : value);
 const PORT = env.port;
 const SERVER_URL = `http://localhost:${PORT}`;
 
@@ -75,6 +80,7 @@ app.use('/api/inventory-transactions', inventoryTransactionRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/purchase-requests', purchaseRoutes);
+app.use('/api/purchase-orders', purchaseOrderRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/supplier-products', supplierProductRoutes);
 app.use('/api/products', productSupplierRoutes);
@@ -84,6 +90,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/ingredient-batches', ingredientBatchRoutes);
+app.use('/api/stocktakes', stocktakeRoutes);
 app.get('/health', (_req: Request, res: Response) => {
     sendSuccess(res, 200, 'Cafe API server is running.', { status: 'OK' });
 });

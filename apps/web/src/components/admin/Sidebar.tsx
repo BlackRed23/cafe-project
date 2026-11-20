@@ -45,6 +45,7 @@ const MENU_GROUPS = [
       { label: "Danh mục", path: "/admin/categories", icon: LayoutGrid },
       { label: "Thực đơn pha chế", path: "/admin/products", icon: Coffee },
       { label: "Nguyên liệu & Giá vốn", path: "/admin/ingredients", icon: FlaskConical },
+      { label: "Phiên kiểm kê", path: "/admin/stocktakes", icon: FileSpreadsheet },
       { label: "Lịch sử kho nguyên liệu", path: "/admin/inventory/transactions", icon: History },
       { label: "Nhà cung cấp", path: "/admin/suppliers", icon: Truck },
     ],
@@ -60,6 +61,7 @@ const MENU_GROUPS = [
     label: "Hệ thống tự động",
     items: [
       { label: "Yêu cầu mua hàng", path: "/admin/purchase-requests", icon: FileSpreadsheet },
+      { label: "Đơn mua & nhập hàng", path: "/admin/purchasing", icon: Truck },
       { label: "Nhật ký Agent", path: "/admin/agent-logs", icon: Terminal },
     ],
   },

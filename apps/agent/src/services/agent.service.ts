@@ -43,8 +43,8 @@ export type AgentLogQuery = {
     itemType?: unknown;
 };
 
-const isSupplierActive = (supplier: { status?: string | null; deletedAt?: Date | null }): boolean =>
-    supplier.status !== 'INACTIVE' && !supplier.deletedAt;
+const isSupplierActive = (supplier: { status?: string | null; deletedAt?: Date | null } | null | undefined): boolean =>
+    Boolean(supplier && supplier.status !== 'INACTIVE' && !supplier.deletedAt);
 
 const parseBooleanSetting = (value: string | null, defaultValue: boolean): boolean => {
     if (value === null) return defaultValue;
@@ -579,6 +579,49 @@ export const agentService = {
                 return { results: [toLogDto(log)], createdPurchaseRequests: [], scanSessionId, sessionStatus: 'SUCCESS', summary: { totalChecked: 0, createdPurchaseRequestCount: 0, skippedDuplicateCount: 0, noSupplierCount: 0, failedCount: 0, stockOkCount: 0 } };
             }
 
+            // Explicit opt-in safety bridge. In this mode the existing AgentWorkflow's
+            // real LangGraph reads current Prisma stock, persists node/edge audit and
+            // RETURNS before any legacy proposal write. Until the PostgreSQL graph
+            // checkpoint+approval adapter is verified there is no automatic procurement.
+            if (process.env.AGENT_GRAPH_READONLY === 'YES') {
+                // Keep the optional graph bridge out of the default legacy import path.
+                // Mocked AgentService tests intentionally do not load Prisma.Decimal,
+                // and production scans must not require LangGraph unless opted in.
+                const { runLiveReadOnlyGraph, logLiveGraphHold } = await import('../workflows/agent-live-readonly');
+                let graph;
+                let graphLog;
+                try {
+                    graph = await runLiveReadOnlyGraph(input, userId, scanSessionId);
+                    graphLog = graph.log;
+                } catch (error) {
+                    graphLog = await logLiveGraphHold(userId, scanSessionId, error);
+                }
+                const verified = Boolean(graph?.verified);
+                await agentRepository.updateLog(sessionLog.id, {
+                    result: verified ? 'SUCCESS' : 'SKIPPED',
+                    reasoning: verified ? 'Real LangGraph read-only preflight verified; writes disabled.' :
+                        'Real LangGraph read-only preflight held; no proposal or purchase writes.',
+                    output: JSON.stringify({
+                        scanSessionId, graphId: graph?.graphId ?? null,
+                        status: verified ? 'GRAPH_READONLY_VERIFIED' : 'GRAPH_READONLY_HELD',
+                        createdPurchaseRequestCount: 0, createdProposalCount: 0,
+                        graphCheckpointDurable: graph?.checkpointDurable === true
+                    })
+                });
+                activeScanSessionId = null;
+                activeTriggerType = null;
+                activeScanStartedAt = null;
+                return {
+                    results: [toLogDto(graphLog)], createdPurchaseRequests: [],
+                    createdProposals: [], scanSessionId,
+                    sessionStatus: verified ? 'GRAPH_READONLY_VERIFIED' : 'GRAPH_READONLY_HELD',
+                    graph: graph ? { id: graph.graphId, source: graph.source,
+                        trace: graph.trace, classifications: graph.classifications,
+                        checkpointDurable: graph.checkpointDurable === true, auditDurable: true } : null,
+                    agentWarning: 'LangGraph READ_ONLY: PostgreSQL approval/checkpoint adapter not verified; no purchase created.'
+                };
+            }
+
             const scope: ScanInventoryScope = input.scope || 'ALL';
             const inventories = scope === 'INGREDIENT' ? [] : await agentRepository.findInventories(input.productIds);
             const results = [];
@@ -815,7 +858,7 @@ export const agentService = {
 
                         if (!isPRSupplierActive) {
                             const suggestedSuppliers = product.supplierProducts
-                                .filter((sp) => sp.supplierId !== openPurchaseRequest.supplier.id && isSupplierActive(sp.supplier))
+                                .filter((sp) => sp.supplierId !== openPurchaseRequest.supplier?.id && isSupplierActive(sp.supplier))
                                 .map((sp) => ({
                                     supplierId: sp.supplierId,
                                     supplierName: sp.supplier.name,
@@ -839,14 +882,14 @@ export const agentService = {
                                     inventoryId: inventory.id,
                                     existingPurchaseRequestId: openPurchaseRequest.id,
                                     existingPurchaseRequestStatus: openPurchaseRequest.status,
-                                    supplierId: openPurchaseRequest.supplier.id,
-                                    supplierName: openPurchaseRequest.supplier.name,
+                                    supplierId: openPurchaseRequest.supplier?.id ?? null,
+                                    supplierName: openPurchaseRequest.supplier?.name ?? null,
                                     supplierStatus: 'INACTIVE',
                                     suggestedSuppliers,
                                     message: `AI Agent bỏ qua sản phẩm ${product.name} vì đã có yêu cầu nhập hàng đang xử lý.`,
                                     notification: {
                                         title: "Yêu cầu nhập hàng dùng nhà cung cấp đã tắt",
-                                        description: `Sản phẩm ${product.name} đang có yêu cầu nhập hàng chờ xử lý, nhưng nhà cung cấp ${openPurchaseRequest.supplier.name} hiện đã ngừng hoạt động.`,
+                                        description: `Sản phẩm ${product.name} đang có yêu cầu nhập hàng chờ xử lý, nhưng nhà cung cấp ${openPurchaseRequest.supplier?.name ?? 'chưa được gán'} hiện không khả dụng.`,
                                         actionLabel: "Xem yêu cầu nhập hàng",
                                         actionUrl: `/admin/purchase-requests/${openPurchaseRequest.id}`
                                     }
@@ -1104,8 +1147,10 @@ export const agentService = {
                     startOfToday.setHours(0, 0, 0, 0);
                     const allBatches = ingredient.batches ?? [];
                     const positiveBatches = allBatches.filter((b) => Number(b.quantityRemaining) > 0);
+                    // Quality holds and expired lots are never counted as usable inventory.
                     const unexpiredBatches = positiveBatches.filter(
-                        (b) => !b.expirationDate || new Date(b.expirationDate) >= startOfToday
+                        (b) => (!b.qualityStatus || b.qualityStatus === 'AVAILABLE') &&
+                            (!b.expirationDate || new Date(b.expirationDate).getTime() > Date.now())
                     );
 
                     const currentQty = Number(ingredient.quantity || 0);
@@ -1283,6 +1328,28 @@ export const agentService = {
 
                     ingredientLowCount++;
 
+                    // Outstanding POs are conditional supply, not independently verified
+                    // delivery or stock. Hold duplicate procurement for ADMIN review.
+                    const inboundReview = typeof agentRepository.readIngredientSupplyState === 'function'
+                        ? await agentRepository.readIngredientSupplyState(ingredient.id) : undefined;
+                    if (inboundReview?.inboundOutstanding) {
+                        const log = await agentRepository.createLog({
+                            action: 'SCAN_INGREDIENT_INBOUND_REVIEW', input: JSON.stringify(baseInput),
+                            output: JSON.stringify({ ...baseOutput, skipped: true, reason: 'PENDING_INBOUND_SUPPLY',
+                                availableStock: inboundReview.available, conditionalInbound: inboundReview.inbound,
+                                outstandingBase: inboundReview.inboundOutstanding,
+                                revalidatedAt: inboundReview.observedAt,
+                                recommendedBaseQuantityBeforeInboundReview: recommendedBaseQty,
+                                message: 'Đã có PO đang nhập; cần ADMIN kiểm chứng Supplier và nhu cầu chưa đáp ứng trước khi đặt thêm.' }),
+                            reasoning: 'Không tự coi PO đang nhập là tồn kho thực hoặc tự đặt thêm cùng nhu cầu.',
+                            result: 'SKIPPED', fallback_used: false,
+                            reference_type: 'Ingredient', reference_id: ingredient.id,
+                            creator: userId ? { connect: { id: userId } } : undefined
+                        });
+                        results.push(toLogDto(log));
+                        continue;
+                    }
+
                     const openIngPr = agentRepository.findOpenIngredientPurchaseRequest
                         ? await agentRepository.findOpenIngredientPurchaseRequest(ingredient.id)
                         : null;
@@ -1392,6 +1459,42 @@ export const agentService = {
                         ]
                     );
 
+                    // LN-09/10/15: re-read authoritative stock and inbound commitments after
+                    // analysis, immediately before preparing any proposal. A Supplier PO is
+                    // conditional supply, not confirmed stock or an authorization to reorder.
+                    const freshSupply = typeof agentRepository.readIngredientSupplyState === 'function'
+                        ? await agentRepository.readIngredientSupplyState(ingredient.id) : undefined;
+                    const originalBatchFingerprint = (ingredient.batches ?? [])
+                        .map(batch => `${batch.id}:${batch.quantityRemaining.toString()}:${batch.qualityStatus ?? 'AVAILABLE'}:${batch.updatedAt?.toISOString() ?? ''}`)
+                        .sort().join('|');
+                    const stale = freshSupply !== undefined && (!freshSupply ||
+                        freshSupply.rowVersion !== ingredient.rowVersion ||
+                        freshSupply.movementCursor !== ingredient.movementCursor?.toString() ||
+                        freshSupply.batchesFingerprint !== originalBatchFingerprint ||
+                        Math.abs(freshSupply.available - availableStock) > 0.0001);
+                    if (stale || (freshSupply && freshSupply.inboundOutstanding > 0)) {
+                        const risk = stale ? 'STALE_INVENTORY' : 'PENDING_INBOUND_SUPPLY';
+                        const log = await agentRepository.createLog({
+                            action: 'SCAN_INGREDIENT_REVALIDATION_HOLD',
+                            input: JSON.stringify(baseInput),
+                            output: JSON.stringify({ ...baseOutput, skipped: true, reason: risk,
+                                analysisStartedAt: scanStartedAt.toISOString(),
+                                revalidatedAt: freshSupply?.observedAt ?? new Date().toISOString(),
+                                snapshotVersion: ingredient.rowVersion,
+                                currentVersion: freshSupply?.rowVersion ?? null,
+                                currentAvailable: freshSupply?.available ?? null,
+                                conditionalInbound: freshSupply?.inbound ?? [],
+                                message: stale
+                                    ? 'Tồn kho hoặc trạng thái chất lượng đã thay đổi; cần phân tích lại trước khi đề xuất.'
+                                    : 'Đã có PO đang nhập nhưng chưa chứng minh giao hàng; yêu cầu ADMIN đối chiếu nhu cầu còn thiếu.' }),
+                            reasoning: `Chặn đề xuất tự động do ${risk}; không coi cam kết Supplier là tồn kho chắc chắn.`,
+                            result: 'SKIPPED', fallback_used: false,
+                            reference_type: 'Ingredient', reference_id: ingredient.id,
+                            creator: userId ? { connect: { id: userId } } : undefined
+                        });
+                        results.push(toLogDto(log));
+                        continue;
+                    }
                     const proposal = await agentRepository.proposeIngredientPurchase(
                         ingredient, activeSupplierLink, recommendedBaseQty, reasoning, userId);
                     createdProposals.push(proposal);

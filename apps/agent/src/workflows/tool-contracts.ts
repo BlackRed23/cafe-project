@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+    stocktakeReadInputSchema, inboundReadInputSchema,
+    stocktakeToolReadOutputSchema, inboundToolReadOutputSchema
+} from '../services/tool-selection/tool-business-read';
 
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9:_-]{0,119}$/);
 const qty = z.number().finite().nonnegative().max(1e12);
@@ -31,6 +35,12 @@ const definitions = {
             includedItems: qty.int(), excludedCancelledQuantity: qty, excludedRefundedQuantity: qty, excludedUnpaidQuantity: qty,
             excludedUncommittedQuantity: qty, missingCommittedAtItems: qty.int(), complete: z.boolean(),
             timeBasis: z.literal('OrderItem.committedAt'), refundPolicy: z.literal('EXCLUDE_ANY_REFUNDED_ORDER') }) },
+    getStocktakeStatus: { category: 'READ', purpose: 'Read pending physical count and unapproved variance; never approve or adjust inventory.',
+        permission: 'inventory.read', service: 'GET /api/stocktakes/:id', status: 'IMPLEMENTED',
+        input: stocktakeReadInputSchema, output: stocktakeToolReadOutputSchema },
+    getInboundPurchaseOrder: { category: 'READ', purpose: 'Read outstanding PO and receipt provenance; not supplier confirmation or physical inventory.',
+        permission: 'purchase.read', service: 'GET /api/purchase-orders/:id + ingredient batches', status: 'IMPLEMENTED',
+        input: inboundReadInputSchema, output: inboundToolReadOutputSchema },
     findIngredientSuppliers: { category: 'READ', purpose: 'Read active supplier mappings; prices are references, not confirmed quotes.',
         permission: 'supplier.read', service: 'supplierService.findIngredientSuppliers', status: 'IMPLEMENTED',
         input: ingredient, output: z.array(supplier) },
@@ -62,6 +72,7 @@ const bindings = {
     getIngredientAvailability: 'availability', getIngredientBatches: 'batches', getRecipeRequirements: 'recipe',
     findIngredientSuppliers: 'suppliers', estimatePurchaseCost: 'estimate',
     getSalesHistory: 'sales', calculateReorderQuantity: 'reorder', createDraftPurchaseRequest: null,
+    getStocktakeStatus: 'stocktake', getInboundPurchaseOrder: 'inbound',
 } as const;
 // Single runtime definition: schemas, capability, policy and adapter service binding.
 export const TOOL_CONTRACTS = Object.freeze(Object.fromEntries(Object.entries(definitions).map(([name, definition]) =>

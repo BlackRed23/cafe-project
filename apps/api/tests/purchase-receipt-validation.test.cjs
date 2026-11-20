@@ -49,6 +49,7 @@ test('direct receipt repository rejects duplicate payload before any transaction
         '../../common/unit-conversion': {},
         '../recipe/recipe.service': {},
         '../../common/http-error': { HttpError },
+        'node:crypto': require('node:crypto'),
         './purchase.receipt-validation': deps['./purchase.receipt-validation']
     });
     for (const duplicate of ['item-1', ' item-1 ']) {

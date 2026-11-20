@@ -78,6 +78,20 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse) =
             const data = await agentService.scanInventory(body.input || {}, userId!);
             return sendJson(res, 200, { data });
         }
+        if (method === 'POST' && url.pathname === '/internal/agent/graph-proposal-review') {
+            const body = await readJsonBody(req);
+            // User principal comes exclusively from verified internal headers,
+            // NOT from the supplied JSON or a forged ADMIN JWT.
+            const { runLiveReadOnlyProposalReview } = await import('./workflows/agent-live-readonly');
+            const data = await runLiveReadOnlyProposalReview(body.input, userId!);
+            return sendJson(res, 200, { data });
+        }
+        if (method === 'POST' && url.pathname === '/internal/agent/graph-proposal-risk-review') {
+            const body = await readJsonBody(req);
+            const { runLiveReadOnlyJointReview } = await import('./workflows/agent-live-readonly');
+            const data = await runLiveReadOnlyJointReview(body.input, userId!);
+            return sendJson(res, 200, { data });
+        }
 
         if (method === 'GET' && url.pathname === '/internal/agent/logs') {
             const data = await agentService.logs(getQuery(url));

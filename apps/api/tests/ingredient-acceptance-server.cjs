@@ -7,8 +7,9 @@ const url = new URL(process.env.DATABASE_URL); assert.equal(url.pathname, '/cafe
 url.hostname = '127.0.0.1'; url.port = '55432'; process.env.DATABASE_URL = url.toString();
 require('ts-node').register({ project: 'apps/api/tsconfig.json', transpileOnly: true });
 const express = require('express');
-const app = express(); app.use(express.json());
+const app = express(); app.set('json replacer', (_key, value) => typeof value === 'bigint' ? value.toString() : value); app.use(express.json());
 app.use('/api/ingredients', require('../src/modules/ingredient/ingredient.route').ingredientRoutes);
+app.use('/api/stocktakes', require('../src/modules/inventory/stocktake.route').stocktakeRoutes);
 app.use('/api/products', require('../src/modules/product/product.route').default);
 app.use('/api/products', require('../src/modules/recipe/recipe.route').productRecipeRoutes);
 app.use('/api/orders', require('../src/modules/order/order.route').default);

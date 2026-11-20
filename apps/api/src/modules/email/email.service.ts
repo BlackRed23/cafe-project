@@ -55,7 +55,7 @@ export const emailService = {
             throw new HttpError(400, 'Purchase request must be APPROVED or SENT to preview email.');
         }
 
-        const supplierEmail = request.supplier.email || '';
+        const supplierEmail = request.supplier?.email || '';
         const isValidEmail = EMAIL_REGEX.test(supplierEmail);
         const emailDraft = await buildPurchaseRequestEmailDraft(request as any);
 
@@ -100,7 +100,7 @@ export const emailService = {
             throw new HttpError(400, 'Only approved purchase requests can be emailed.');
         }
 
-        const isPendingDelete = request.items.some((item: any) => item.product.pendingDeleteUntil);
+        const isPendingDelete = request.items.some((item: any) => item.product?.pendingDeleteUntil);
         if (isPendingDelete) {
             await createAgentLogViaAgentService({
                 action: 'SEND_SUPPLIER_EMAIL_BLOCKED',
@@ -144,7 +144,7 @@ export const emailService = {
         if (request.supplier?.status === 'INACTIVE') {
             let suggestedSuppliers: any[] = [];
             const productId = request.items?.[0]?.productId;
-            if (productId) {
+            if (productId && request.supplier) {
                 const altSupplierProducts = await prisma.supplierProduct.findMany({
                     where: {
                         productId,

@@ -1,0 +1,342 @@
+.sales-workspace {
+  color: var(--admin-ink);
+  font:
+    400 0.9375rem/1.6 "Be Vietnam Pro",
+    sans-serif;
+  min-width: 0;
+  display: grid;
+  gap: 1.25rem;
+}
+.sales-workspace * {
+  min-width: 0;
+}
+.sales-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.sales-header h1,
+.sales-panel h2 {
+  margin: 0 0 0.4rem;
+  font-family: "Playfair Display", Georgia, serif;
+}
+.sales-panel h2 {
+  font-size: 1.5rem;
+}
+.sales-workspace h3 {
+  font-size: 0.9375rem;
+  font-weight: 650;
+  margin: 0.4rem 0;
+}
+.sales-workspace p {
+  margin: 0.35rem 0;
+  overflow-wrap: anywhere;
+}
+.sales-eyebrow {
+  color: var(--admin-accent);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  font-weight: 650;
+}
+.sales-muted,
+.sales-workspace small {
+  color: var(--admin-muted);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+.sales-panel {
+  background: var(--admin-panel);
+  border: 1px solid var(--admin-line);
+  border-radius: 0.5rem;
+  padding: clamp(1rem, 2vw, 1.5rem);
+  min-width: 0;
+}
+.sales-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-block: 1px solid var(--admin-line);
+}
+.sales-summary > div {
+  padding: 1rem;
+  display: grid;
+  gap: 0.3rem;
+}
+.sales-summary > div + div {
+  border-left: 1px solid var(--admin-line);
+}
+.sales-summary span {
+  color: var(--admin-muted);
+  font-size: 0.8125rem;
+}
+.sales-summary strong {
+  font:
+    500 2rem "Playfair Display",
+    Georgia,
+    serif;
+}
+.sales-actions,
+.sales-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+.sales-toolbar {
+  margin-bottom: 1rem;
+  align-items: end;
+}
+.sales-toolbar > label:first-child {
+  flex: 1 1 240px;
+}
+.sales-workspace label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 550;
+}
+.sales-workspace :is(input, select, textarea) {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--admin-line);
+  border-radius: 0.3rem;
+  background: var(--admin-paper);
+  color: var(--admin-ink);
+  font: inherit;
+}
+.sales-workspace textarea {
+  min-height: 85px;
+  resize: vertical;
+}
+.sales-workspace button,
+.sales-link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 0.9rem;
+  font:
+    600 0.875rem/1.5 "Be Vietnam Pro",
+    sans-serif;
+  border: 1px solid var(--admin-line);
+  border-radius: 0.3rem;
+  background: var(--admin-panel);
+  color: var(--admin-ink);
+  cursor: pointer;
+  text-align: center;
+}
+.sales-workspace .sales-primary {
+  background: var(--admin-primary);
+  color: var(--admin-on-primary);
+  border-color: var(--admin-primary);
+}
+.sales-workspace button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.sales-workspace :is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid var(--admin-accent);
+  outline-offset: 3px;
+}
+.sales-workspace .sales-link {
+  color: var(--admin-primary);
+  text-decoration: none;
+}
+.sales-table-wrap {
+  overflow-x: auto;
+  width: 100%;
+}
+.sales-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.875rem;
+}
+.sales-table :is(th, td) {
+  padding: 0.85rem 0.7rem;
+  border-bottom: 1px solid var(--admin-line);
+  vertical-align: middle;
+}
+.sales-table th {
+  color: var(--admin-muted);
+  font-weight: 550;
+  white-space: nowrap;
+}
+.sales-table td {
+  overflow-wrap: anywhere;
+}
+.sales-table small {
+  display: block;
+  margin-top: 0.25rem;
+}
+.sales-badge {
+  display: inline-block;
+  font-size: 0.8125rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--admin-line);
+  border-radius: 2rem;
+  background: var(--admin-soft);
+  color: var(--admin-ink);
+  white-space: nowrap;
+}
+.sales-badge[data-status="COMPLETED"],
+.sales-badge[data-status="APPLIED"] {
+  background: var(--admin-primary);
+  color: var(--admin-on-primary);
+}
+.sales-badge[data-status="PREPARING"],
+.sales-badge[data-status="REQUESTED"] {
+  border-color: var(--admin-accent);
+  color: var(--admin-accent);
+  background: var(--admin-paper);
+}
+.sales-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--admin-muted);
+}
+.sales-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(280px, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+.sales-stack,
+.sales-form,
+.sales-action-stack {
+  display: grid;
+  gap: 1rem;
+}
+.sales-info-grid,
+.sales-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.sales-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.sales-item,
+.sales-operation {
+  border-top: 1px solid var(--admin-line);
+  padding-block: 1rem;
+}
+.sales-totals > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--admin-line);
+}
+.sales-totals dd {
+  text-align: right;
+  font-weight: 600;
+  margin: 0;
+  white-space: nowrap;
+}
+.sales-timeline {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  border: 1px solid var(--admin-line);
+  background: var(--admin-panel);
+  border-radius: 0.5rem;
+}
+.sales-timeline li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--admin-muted);
+}
+.sales-timeline li > span {
+  display: grid;
+  place-items: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border: 1px solid var(--admin-line);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sales-timeline li[data-done="true"] > span {
+  background: var(--admin-primary);
+  color: var(--admin-on-primary);
+}
+.sales-timeline li[aria-current="step"] {
+  color: var(--admin-primary);
+  font-weight: 700;
+}
+.sales-form fieldset {
+  display: grid;
+  gap: 1rem;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.sales-form legend {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+.sales-item-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px auto;
+  gap: 0.65rem;
+  align-items: end;
+}
+.sales-workspace .sales-check {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+}
+.sales-check input {
+  width: 20px;
+  min-height: 20px;
+  flex-shrink: 0;
+}
+@media (max-width: 1000px) {
+  .sales-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .sales-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sales-summary > div:nth-child(3) {
+    border-left: 0;
+  }
+  .sales-summary > div:nth-child(n + 3) {
+    border-top: 1px solid var(--admin-line);
+  }
+  .sales-timeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sales-info-grid,
+  .sales-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .sales-toolbar {
+    align-items: stretch;
+  }
+  .sales-toolbar label {
+    width: 100%;
+  }
+  .sales-item-input {
+    grid-template-columns: minmax(0, 1fr) 80px;
+  }
+  .sales-item-input > button {
+    grid-column: 1/-1;
+  }
+  .sales-header .sales-actions {
+    width: 100%;
+  }
+}

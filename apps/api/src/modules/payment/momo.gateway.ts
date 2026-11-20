@@ -114,7 +114,7 @@ export const verifyMoMoSignature = (
 
 export const createMoMoPayUrl = async (input: CreateMoMoPayUrlInput): Promise<CreateMoMoPayUrlResult> => {
     const config = getMoMoConfig();
-    const requestId = `${input.merchantRef}_${Date.now()}`;
+    const requestId = input.merchantRef;
     const amount = Math.round(Number(input.amount)).toString();
     const orderInfo = input.orderInfo || `Thanh toan don hang ${input.orderId}`;
     const requestType = 'captureWallet';
@@ -169,6 +169,7 @@ export const createMoMoPayUrl = async (input: CreateMoMoPayUrlInput): Promise<Cr
     try {
         const response = await fetch(config.endpoint, {
             method: 'POST',
+            signal: AbortSignal.timeout(15000),
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
         });
@@ -178,7 +179,7 @@ export const createMoMoPayUrl = async (input: CreateMoMoPayUrlInput): Promise<Cr
         } catch {
             // Dev/Sandbox fallback if MoMo Sandbox is under maintenance or blocking IP (HTTP 403/503)
             const allowMockFallback =
-                process.env.NODE_ENV !== 'production' && process.env.MOMO_DEV_FALLBACK !== 'false';
+                process.env.NODE_ENV !== 'production' && process.env.MOMO_DEV_FALLBACK === 'true';
             if (allowMockFallback) {
                 console.warn(
                     `[PAYMENT][MOMO] Sandbox endpoint (${config.endpoint}) returned non-JSON (HTTP ${response.status}: ${rawText.slice(0, 80).replace(/\s+/g, ' ')}). Using local Dev Sandbox fallback payUrl.`
@@ -200,7 +201,9 @@ export const createMoMoPayUrl = async (input: CreateMoMoPayUrlInput): Promise<Cr
         }
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown network error';
-        throw new HttpError(502, `Không thể kết nối cổng MoMo: ${message}`, 'MOMO_GATEWAY_ERROR');
+        const unknown = new HttpError(502, `Không thể kết nối cổng MoMo: ${message}`, 'MOMO_GATEWAY_ERROR') as HttpError & { requestPayload: Record<string, unknown> };
+        unknown.requestPayload = sanitizedRequestPayload;
+        throw unknown;
     }
 
     if (Number(responseData.resultCode) !== 0 || typeof responseData.payUrl !== 'string') {

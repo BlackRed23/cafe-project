@@ -78,6 +78,8 @@ export const AdminIngredientsPage: React.FC = () => {
   const [importExpiry, setImportExpiry] = useState("");
   const [importNote, setImportNote] = useState("");
   const [submittingImport, setSubmittingImport] = useState(false);
+  const importIntent = useRef<{ ingredientId: string; payload: import("../../types/ingredient.types").ImportIngredientPayload } | null>(null);
+  const [importUncertain, setImportUncertain] = useState(false);
 
   // Waste Modal
   const [wasteTarget, setWasteTarget] = useState<Ingredient | null>(null);
@@ -285,6 +287,7 @@ export const AdminIngredientsPage: React.FC = () => {
   };
 
   const openImportModal = (ing: Ingredient) => {
+    if (importIntent.current) return;
     setImportTarget(ing);
     setImportQty("");
     setImportUnit(ing.baseUnit);
@@ -297,7 +300,7 @@ export const AdminIngredientsPage: React.FC = () => {
 
   const handleImportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!importTarget || submitLock.current || !isAdmin) return;
+    if (!importTarget || submitLock.current) return;
     const expiryError = lotImportExpiryError(importTarget, importExpiry);
     if (expiryError) { toast.error(expiryError); return; }
     const qty = Number(importQty);
@@ -314,14 +317,20 @@ export const AdminIngredientsPage: React.FC = () => {
     submitLock.current = true;
     setSubmittingImport(true);
     try {
-      const res = await ingredientsApi.importStock(importTarget.id, {
+      const payload = {
+        requestId: crypto.randomUUID(),
         quantity: qty,
         unit: importUnit || importTarget.baseUnit,
         ...(importCostMode === "totalCost" ? { totalCost: cost } : { unitCost: cost }),
         batchCode: importBatchCode.trim() || undefined,
         expirationDate: importExpiry || undefined,
         note: importNote.trim() || undefined,
-      });
+      };
+      importIntent.current ??= { ingredientId: importTarget.id, payload };
+      const res = await ingredientsApi.importStock(importIntent.current.ingredientId, importIntent.current.payload);
+      if (!res.batch?.id) throw new Error('Unconfirmed inventory receipt');
+      importIntent.current = null;
+      setImportUncertain(false);
       toast.success(
         `Đã nhập kho ${res.batch.importedQuantityBase} ${importTarget.baseUnit}. Đã cập nhật giá vốn cho ${res.recalculatedProductCount} món.`
       );
@@ -329,6 +338,13 @@ export const AdminIngredientsPage: React.FC = () => {
       await loadData();
     } catch (err) {
       toast.error(lotError(err));
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (!status || status >= 500 || status === 408) {
+        setImportUncertain(true);
+      } else {
+        importIntent.current = null;
+        setImportUncertain(false);
+      }
     } finally {
       submitLock.current = false;
       setSubmittingImport(false);
@@ -692,12 +708,13 @@ export const AdminIngredientsPage: React.FC = () => {
       {/* Import Modal */}
       <Modal
         isOpen={!!importTarget}
-        onClose={() => { if (!submittingImport) setImportTarget(null); }}
+        onClose={() => { if (!submittingImport && !importIntent.current) setImportTarget(null); }}
         title={`Nhập kho nguyên liệu: ${importTarget?.name ?? ""}`}
       >
         {importTarget && (
           <form onSubmit={handleImportSubmit} className="ingredient-dialog space-y-4">
-            <p className="text-sm">Phân loại: {importTarget.expiryClassification ?? 'Chưa phân loại (giữ nguyên)'}. NON_PERISHABLE có thể bỏ hạn dùng; hạn bảo quản đã lưu vẫn có thể tạo hạn dùng theo Backend. Nhập kho không có mã chống lặp: nếu mất kết nối, kiểm tra lịch sử trước khi gửi lại.</p>
+            <p className="text-sm">Phân loại: {importTarget.expiryClassification ?? 'Chưa phân loại (giữ nguyên)'}. NON_PERISHABLE có thể bỏ hạn dùng; hạn bảo quản đã lưu vẫn có thể tạo hạn dùng theo Backend. Mỗi lần nhập dùng một mã yêu cầu, giữ nguyên khi kết quả chưa rõ.</p>
+            {importUncertain && <p role="status" className="ingredient-error">Chưa rõ kết quả nhập kho. Mã yêu cầu và nội dung đã khóa; thử lại cùng mã, không tạo lần nhập mới.</p>}
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
               Tồn hiện tại: <b>{importTarget.quantity.toLocaleString("vi-VN")} {importTarget.baseUnit}</b> •
               Giá vốn BQGQ hiện tại:{" "}
@@ -708,6 +725,7 @@ export const AdminIngredientsPage: React.FC = () => {
                 đ/{importTarget.baseUnit}
               </b>
             </div>
+            <fieldset disabled={submittingImport || importUncertain}>
             <div className="grid grid-cols-2 gap-3">
               <Input
                 label="Số lượng nhập"
@@ -785,17 +803,18 @@ export const AdminIngredientsPage: React.FC = () => {
               value={importNote}
               onChange={(e) => setImportNote(e.target.value)}
             />
+            </fieldset>
 
             <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
               <Button
                 type="button"
                 variant="outline"
-                disabled={submittingImport} onClick={() => setImportTarget(null)}
+                disabled={submittingImport || importUncertain} onClick={() => setImportTarget(null)}
               >
                 Hủy
               </Button>
               <Button type="submit" isLoading={submittingImport}>
-                Xác nhận nhập kho
+                {importUncertain ? "Thử lại cùng mã nhập kho" : "Xác nhận nhập kho"}
               </Button>
             </div>
           </form>

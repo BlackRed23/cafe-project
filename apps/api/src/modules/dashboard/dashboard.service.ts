@@ -617,7 +617,7 @@ export const dashboardService = {
                 id: `pr-${pr.id}`,
                 type: 'PURCHASE_REQUEST',
                 title: `Purchase Request ${pr.status}`,
-                description: `Request number: ${pr.requestNumber} for supplier ${pr.supplier.name} totaling ${Number(pr.totalAmount).toLocaleString('vi-VN')} VND`,
+                description: `Request number: ${pr.requestNumber} for supplier ${pr.supplier?.name ?? 'CHƯA CHỌN'} totaling ${Number(pr.totalAmount).toLocaleString('vi-VN')} VND`,
                 timestamp: pr.createdAt
             });
         }

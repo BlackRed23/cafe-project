@@ -17,6 +17,7 @@ import type { CreatePurchaseRequestInput, MarkPurchaseRequestPaidInput, Purchase
 import { scanInventoryViaAgentService } from '../agent/agent.client';
 import { getOptionalSettingValue } from '../system-setting/system-setting.service';
 import { prisma } from '@cafe-project/database';
+import { createHash, randomUUID } from 'node:crypto';
 const totalForItem = (quantity: number, unitPrice: number | null): number => quantity * (unitPrice ?? 0);
 
 const getItemDisplayName = (item: PurchaseRequestRecord['items'][number]): string => {
@@ -33,7 +34,7 @@ const getItemDisplayUnit = (item: PurchaseRequestRecord['items'][number]): strin
 
 const purchaseConversionForItem = (request: PurchaseRequestRecord, item: PurchaseRequestRecord['items'][number]) => {
     if (item.ingredientId && item.ingredient) {
-        const supIng = request.supplier.ingredients?.find((mapping) => mapping.ingredientId === item.ingredientId);
+        const supIng = request.supplier?.ingredients?.find((mapping) => mapping.ingredientId === item.ingredientId);
         const conversionQuantity = supIng ? Number(supIng.conversionQuantity) : null;
         const purchaseUnit = supIng?.purchaseUnit ?? null;
         const conversionTargetUnit = supIng?.conversionTargetUnit ?? item.ingredient.baseUnit;
@@ -62,7 +63,7 @@ const purchaseConversionForItem = (request: PurchaseRequestRecord, item: Purchas
         };
     }
 
-    const supplierProduct = request.supplier.products.find((mapping) => mapping.productId === item.productId);
+    const supplierProduct = request.supplier?.products.find((mapping) => mapping.productId === item.productId);
     const conversionQuantity = supplierProduct?.conversionQuantity ?? null;
     const purchaseUnit = supplierProduct?.purchaseUnit ?? null;
     const conversionTargetUnit = supplierProduct?.conversionTargetUnit ?? null;
@@ -203,7 +204,7 @@ ${itemLabel} này chưa có quy cách nhập hàng theo nhà cung cấp, nên s�
 };
 
 export const buildPurchaseRequestEmailDraft = async (request: PurchaseRequestRecord) => {
-    const supplierName = request.supplier.name || 'nhà cung cấp';
+    const supplierName = request.supplier?.name || 'nhà cung cấp chưa xác định';
     const subject = await buildSupplierEmailSubject(request);
     const itemsList = request.items.map((item) => buildSupplierEmailItemLine(request, item)).join('\n');
 
@@ -236,7 +237,7 @@ Trân trọng,
 ${storeName}${contactInfo}`;
 
     return {
-        to: request.supplier.email || '',
+        to: request.supplier?.email || '',
         subject,
         body: isSupplierEmailContentUsable(request.emailContent) ? request.emailContent.trim() : generatedBody.trim(),
         status: emailStatusForRequest(request)
@@ -308,7 +309,12 @@ const ensureStatus = (request: PurchaseRequestRecord, expected: PurchaseRequestS
     if (request.status !== expected) throw new HttpError(400, message);
 };
 
-const requestNumber = (): string => `PR-${Date.now()}`;
+const requestNumber = (): string => `PR-${randomUUID()}`;
+const demandHash = (input: CreatePurchaseRequestInput): string => createHash('sha256')
+    .update(JSON.stringify({ supplierId: input.supplierId, notes: input.notes ?? null,
+        items: input.items.map(i => ({ ingredientId: i.ingredientId, inventoryId: i.inventoryId,
+            quantity: i.quantity, unitPrice: i.unitPrice ?? null, notes: i.notes ?? null })) }))
+    .digest('hex');
 
 export const purchaseService = {
     async list(filters: PurchaseRequestFiltersInput) {
@@ -321,25 +327,39 @@ export const purchaseService = {
     },
 
     async create(input: CreatePurchaseRequestInput, userId: string) {
+        if (input.demandSourceKey) {
+            const previous = await prisma.purchaseRequest.findUnique({ where: { demandSourceKey: input.demandSourceKey } });
+            if (previous) {
+                if (previous.requestedBy !== userId || previous.demandHash !== demandHash(input))
+                    throw new HttpError(409, 'Nguồn nhu cầu đã được dùng cho nội dung khác.');
+                return await toDto(await ensureRequest(previous.id));
+            }
+        }
         if (!(await purchaseRepository.supplierExists(input.supplierId))) throw new HttpError(404, 'Không thể tạo yêu cầu nhập hàng với nhà cung cấp đang ngưng hoạt động hoặc không tồn tại.');
         for (const item of input.items) {
             if (item.inventoryId && (await purchaseRepository.hasActiveRequestForInventory(item.inventoryId))) {
                 throw new HttpError(400, ACTIVE_PURCHASE_REQUEST_MESSAGE);
             }
-            if (item.ingredientId && (await purchaseRepository.hasActiveRequestForIngredient(item.ingredientId))) {
+            if (!input.demandSourceKey && item.ingredientId &&
+                (await purchaseRepository.hasActiveRequestForIngredient(item.ingredientId))) {
                 throw new HttpError(400, ACTIVE_PURCHASE_REQUEST_MESSAGE);
             }
         }
         try {
             return await toDto(await purchaseRepository.create(input, userId, requestNumber()));
         } catch (error) {
+            if (error instanceof HttpError) throw error;
             throw new HttpError(400, error instanceof Error ? error.message : 'Unable to create purchase request.');
         }
     },
 
     async approve(id: string, userId: string) {
         const request = await ensureRequest(id);
+        if (request.status === PurchaseRequestStatus.APPROVED && request.approvedBy === userId)
+            return toDto(request);
         ensureStatus(request, PurchaseRequestStatus.PENDING, 'Only pending requests can be approved.');
+        if (await prisma.purchaseDemandAggregationMember.findUnique({ where: { purchaseRequestId: id } }))
+            throw new HttpError(409, 'BLOCKED_POLICY: yêu cầu thuộc nhóm tổng hợp chờ chính sách, chưa thể duyệt đặt riêng.');
 
         const isPendingDelete = request.items.some(item => item.product?.pendingDeleteUntil || item.ingredient?.deletedAt);
         if (isPendingDelete) {
@@ -361,6 +381,7 @@ export const purchaseService = {
             throw new HttpError(400, 'Không thể duyệt yêu cầu vì sản phẩm đang chờ xoá.');
         }
 
+        if (!request.supplier) throw new HttpError(409, 'Yêu cầu chưa có nhà cung cấp; cần chọn nhà cung cấp trước khi duyệt.');
         if (request.supplier.status === 'INACTIVE') {
             await prisma.agentLog.create({
                 data: {
@@ -380,18 +401,22 @@ export const purchaseService = {
             throw new HttpError(400, 'Không thể duyệt yêu cầu vì nhà cung cấp đang bị tắt.');
         }
 
-        return await toDto(await purchaseRepository.updateStatus(id, {
-            status: PurchaseRequestStatus.APPROVED,
-            approver: { connect: { id: userId } },
-            approvedAt: new Date()
-        }));
+        const updated = await prisma.purchaseRequest.updateMany({
+            where: { id, status: PurchaseRequestStatus.PENDING }, data: {
+                status: PurchaseRequestStatus.APPROVED, approvedBy: userId, approvedAt: new Date()
+            }
+        });
+        if (updated.count !== 1) {
+            const latest = await ensureRequest(id);
+            if (latest.status === PurchaseRequestStatus.APPROVED && latest.approvedBy === userId) return toDto(latest);
+            throw new HttpError(409, 'Yêu cầu đã được xử lý bởi giao dịch khác.');
+        }
+        return toDto(await ensureRequest(id));
     },
 
-    async reject(id: string, input: RejectPurchaseRequestInput) {
+    async reject(id: string, input: RejectPurchaseRequestInput, actorId: string) {
         const request = await ensureRequest(id);
-        if (request.status === PurchaseRequestStatus.RECEIVED || request.status === PurchaseRequestStatus.COMPLETED) {
-            throw new HttpError(400, 'Không thể huỷ/từ chối yêu cầu đã nhận hàng hoặc hoàn thành.');
-        }
+        if (request.status !== PurchaseRequestStatus.PENDING) throw new HttpError(409, 'Chỉ có thể từ chối yêu cầu đang chờ duyệt.');
 
         const isPendingDelete = request.items.some(item => item.product?.pendingDeleteUntil || item.ingredient?.deletedAt);
         if (isPendingDelete) {
@@ -412,13 +437,20 @@ export const purchaseService = {
             });
         }
 
-        return await toDto(await purchaseRepository.updateStatus(id, { status: PurchaseRequestStatus.REJECTED, notes: input.reason }));
+        const result = await prisma.purchaseRequest.updateMany({ where: { id, status: PurchaseRequestStatus.PENDING },
+            data: { status: PurchaseRequestStatus.REJECTED, rejectedById: actorId,
+                rejectionReason: input.reason, rejectedAt: new Date() } });
+        if (result.count !== 1) throw new HttpError(409, 'Yêu cầu đã được xử lý đồng thời.');
+        return toDto(await ensureRequest(id));
     },
 
     async markSent(id: string) {
         const request = await ensureRequest(id);
-        ensureStatus(request, PurchaseRequestStatus.APPROVED, 'Only approved requests can be marked sent.');
-        return await toDto(await purchaseRepository.updateStatus(id, { status: PurchaseRequestStatus.SENT, emailSentAt: new Date() }));
+        // Legacy shortcut may not fabricate delivery evidence. Only the SMTP
+        // adapter can write emailSentAt after a confirmed provider submission.
+        if (request.status !== PurchaseRequestStatus.SENT || !request.emailSentAt)
+            throw new HttpError(409, 'Không thể đánh dấu đã gửi khi chưa có bằng chứng từ dịch vụ email; sử dụng quy trình PO.');
+        return toDto(request);
     },
 
     async receive(id: string, input: ReceivePurchaseRequestInput, userId: string) {
@@ -427,8 +459,16 @@ export const purchaseService = {
             const existingReceipt = await prisma.goodsReceipt.findUnique({
                 where: { idempotencyKey: input.idempotencyKey }
             });
-            if (existingReceipt && existingReceipt.purchaseRequestId === id) {
-                return { purchaseRequest: await toDto(request), isStockSafe: true };
+            if (existingReceipt) {
+                const h = createHash('sha256').update(JSON.stringify({
+                    purchaseOrderId: input.purchaseOrderId ?? null,
+                    supplierInvoiceNo: input.supplierInvoiceNo ?? null, note: input.note ?? null,
+                    items: input.items
+                })).digest('hex');
+                if (existingReceipt.purchaseRequestId !== id || existingReceipt.receivedBy !== userId ||
+                    existingReceipt.requestHash !== h)
+                    throw new HttpError(409, 'Mã nhận hàng đã được dùng với nội dung khác.');
+                return { purchaseRequest: await toDto(request), isStockSafe: true, replayed: true };
             }
         }
 
@@ -521,6 +561,7 @@ export const purchaseService = {
             }
             return { purchaseRequest: await toDto(received), isStockSafe };
         } catch (error) {
+            if (error instanceof HttpError) throw error;
             throw new HttpError(400, error instanceof Error ? error.message : 'Unable to receive purchase request.');
         }
     },

@@ -21,6 +21,7 @@ import type {
 } from './purchase.validator';
 import { duplicateReceiptItemIndex } from './purchase.receipt-validation';
 import { HttpError } from '../../common/http-error';
+import { createHash } from 'node:crypto';
 
 export const purchaseInclude = {
     supplier: { include: { products: true, ingredients: true } },
@@ -97,6 +98,19 @@ export const purchaseRepository = {
 
     async create(input: CreatePurchaseRequestInput, userId: string, requestNumber: string): Promise<PurchaseRequestRecord> {
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            if (input.demandSourceKey) {
+                await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.demandSourceKey}))::text`;
+                const previous = await tx.purchaseRequest.findUnique({ where: { demandSourceKey: input.demandSourceKey } });
+                if (previous) {
+                    const hash = createHash('sha256').update(JSON.stringify({ supplierId: input.supplierId,
+                        notes: input.notes ?? null,
+                        items: input.items.map(i => ({ ingredientId: i.ingredientId, inventoryId: i.inventoryId,
+                            quantity: i.quantity, unitPrice: i.unitPrice ?? null, notes: i.notes ?? null })) })).digest('hex');
+                    if (previous.requestedBy === userId && previous.demandHash === hash)
+                        return tx.purchaseRequest.findUniqueOrThrow({ where: { id: previous.id }, include: purchaseInclude });
+                    throw new HttpError(409, 'Nguồn nhu cầu đã được dùng cho nội dung khác.');
+                }
+            }
             const inventoryIds = input.items.map((i) => i.inventoryId).filter((id): id is string => Boolean(id));
             const ingredientIds = input.items.map((i) => i.ingredientId).filter((id): id is string => Boolean(id));
 
@@ -134,13 +148,18 @@ export const purchaseRepository = {
             }
 
             if (ingredientIds.length > 0) {
-                const activeIngItem = await tx.purchaseRequestItem.findFirst({
+                // Serialize demand creation per ingredient: two proposals for the
+                // same active shortage must not race past the active-item check.
+                for (const ingId of [...new Set(ingredientIds)].sort()) {
+                    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'purchasing-demand:' + ingId}))::text`;
+                }
+                const activeIngItem = !input.demandSourceKey ? await tx.purchaseRequestItem.findFirst({
                     where: {
                         ingredientId: { in: ingredientIds },
                         request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } }
                     },
                     select: { id: true }
-                });
+                }) : null;
                 if (activeIngItem) throw new Error(ACTIVE_PURCHASE_REQUEST_MESSAGE);
             }
 
@@ -188,6 +207,12 @@ export const purchaseRepository = {
                 data: {
                     requestNumber,
                     supplierId: input.supplierId,
+                    demandSourceKey: input.demandSourceKey ?? null,
+                    demandHash: input.demandSourceKey ? createHash('sha256')
+                        .update(JSON.stringify({ supplierId: input.supplierId, notes: input.notes ?? null,
+                            items: input.items.map(i => ({ ingredientId: i.ingredientId, inventoryId: i.inventoryId,
+                                quantity: i.quantity, unitPrice: i.unitPrice ?? null, notes: i.notes ?? null })) }))
+                        .digest('hex') : null,
                     notes: input.notes,
                     aiGenerated: input.aiGenerated,
                     totalAmount: roundMoney2(totalAmount),
@@ -199,7 +224,7 @@ export const purchaseRepository = {
                 },
                 include: purchaseInclude
             });
-        });
+        }, { timeout: 20000 });
     },
 
     async updateStatus(id: string, data: Prisma.PurchaseRequestUpdateInput): Promise<PurchaseRequestRecord> {
@@ -210,18 +235,26 @@ export const purchaseRepository = {
         if (duplicateReceiptItemIndex(input.items) !== -1) {
             throw new HttpError(400, 'Each purchase request item can appear only once per receipt.');
         }
+        const payloadHash = createHash('sha256').update(JSON.stringify({
+            purchaseOrderId: input.purchaseOrderId ?? null,
+            supplierInvoiceNo: input.supplierInvoiceNo ?? null,
+            note: input.note ?? null,
+            items: input.items
+        })).digest('hex');
 
         if (input.idempotencyKey) {
             const existingReceipt = await prisma.goodsReceipt.findUnique({
                 where: { idempotencyKey: input.idempotencyKey }
             });
-            if (existingReceipt && existingReceipt.purchaseRequestId === request.id) {
+            if (existingReceipt && existingReceipt.purchaseRequestId === request.id &&
+                existingReceipt.receivedBy === userId && existingReceipt.requestHash === payloadHash) {
                 const existingPr = await prisma.purchaseRequest.findUnique({
                     where: { id: request.id },
                     include: purchaseInclude
                 });
                 if (existingPr) return existingPr;
             }
+            if (existingReceipt) throw new HttpError(409, 'Mã nhận hàng đã dùng với nội dung khác.');
         }
         let retries = 0;
         let lastError: any = null;
@@ -229,16 +262,36 @@ export const purchaseRepository = {
         while (retries < 3) {
             try {
                 return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+                    // All receipts for the same approved demand serialize here.
+                    await tx.$queryRaw`SELECT "id" FROM "PurchaseRequest" WHERE "id" = ${request.id} FOR UPDATE`;
                     if (input.idempotencyKey) {
                         const existingReceipt = await tx.goodsReceipt.findUnique({
                             where: { idempotencyKey: input.idempotencyKey }
                         });
-                        if (existingReceipt && existingReceipt.purchaseRequestId === request.id) {
+                        if (existingReceipt && existingReceipt.purchaseRequestId === request.id &&
+                            existingReceipt.receivedBy === userId && existingReceipt.requestHash === payloadHash) {
                             const existingPr = await tx.purchaseRequest.findUnique({
                                 where: { id: request.id },
                                 include: purchaseInclude
                             });
                             if (existingPr) return existingPr;
+                        }
+                        if (existingReceipt) throw new HttpError(409, 'Mã nhận hàng đã dùng với nội dung khác.');
+                    }
+                    const freshItems = await tx.purchaseRequestItem.findMany({
+                        where: { requestId: request.id }
+                    });
+                    if (!input.purchaseOrderId && await tx.purchaseOrder.count({
+                        where: { purchaseRequestId: request.id }
+                    }) > 0) {
+                        throw new HttpError(409, 'Yêu cầu đã có PO; phải nhận hàng qua PO có trạng thái hợp lệ.');
+                    }
+                    let po: Awaited<ReturnType<typeof tx.purchaseOrder.findUnique>> | null = null;
+                    if (input.purchaseOrderId) {
+                        po = await tx.purchaseOrder.findUnique({ where: { id: input.purchaseOrderId } });
+                        if (!po || po.purchaseRequestId !== request.id ||
+                            !['CONFIRMED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
+                            throw new HttpError(409, 'PO chưa được xác nhận hoặc không thể tiếp tục nhận hàng.');
                         }
                     }
 
@@ -265,7 +318,9 @@ export const purchaseRepository = {
                             receivedBy: userId,
                             supplierInvoiceNo: input.supplierInvoiceNo?.trim() || null,
                             note: input.note?.trim() || null,
-                            idempotencyKey: input.idempotencyKey?.trim() || null
+                            idempotencyKey: input.idempotencyKey?.trim() || null,
+                            requestHash: input.idempotencyKey ? payloadHash : null,
+                            purchaseOrderId: po?.id ?? null
                         }
                     });
 
@@ -279,6 +334,22 @@ export const purchaseRepository = {
                         }
                         const requestItem = request.items.find((item) => item.id === receiveItem.purchaseRequestItemId);
                         if (!requestItem) throw new Error('Purchase request item not found.');
+                        const latestItem = freshItems.find(item => item.id === requestItem.id);
+                        if (!latestItem) throw new HttpError(409, 'Purchase item no longer exists.');
+                        if (po) {
+                            const poItem = await tx.purchaseOrderItem.findFirst({
+                                where: { purchaseOrderId: po.id, purchaseRequestItemId: requestItem.id }
+                            });
+                            if (!poItem || receiveItem.receivedQuantity > poItem.quantityOrdered - poItem.quantityReceived) {
+                                throw new HttpError(409, 'Lượng nhận vượt PO hoặc mặt hàng không thuộc PO.');
+                            }
+                            if (receiveItem.unitPrice !== undefined &&
+                                !new Prisma.Decimal(receiveItem.unitPrice).equals(poItem.unitPrice)) {
+                                throw new HttpError(409, 'Đơn giá nhận hàng khác PO; phải đối soát hóa đơn riêng.');
+                            }
+                            await tx.purchaseOrderItem.update({ where: { id: poItem.id },
+                                data: { quantityReceived: { increment: receiveItem.receivedQuantity } } });
+                        }
 
                         const effectiveUnitPrice = receiveItem.unitPrice !== undefined
                             ? toDecimal(receiveItem.unitPrice)
@@ -288,7 +359,7 @@ export const purchaseRepository = {
                             effectiveUnitPrice.mul(receiveItem.receivedQuantity)
                         );
 
-                        const currentQuantityReceived = requestItem.quantityReceived || 0;
+                        const currentQuantityReceived = latestItem.quantityReceived || 0;
                         const remaining = requestItem.quantity - currentQuantityReceived;
 
                         if (receiveItem.receivedQuantity > remaining) {
@@ -299,7 +370,8 @@ export const purchaseRepository = {
                             where: { id: requestItem.id },
                             data: {
                                 quantityReceived: { increment: receiveItem.receivedQuantity },
-                                ...(receiveItem.unitPrice !== undefined ? { unitPrice: roundMoney2(effectiveUnitPrice) } : {})
+                                // Agreed price is immutable; invoice discrepancies
+                                // are captured via PurchaseInvoiceReconciliation.
                             }
                         });
 
@@ -310,7 +382,7 @@ export const purchaseRepository = {
                             const currentIng = await tx.ingredient.findUnique({ where: { id: ingId } });
                             if (!currentIng) throw new Error('Không tìm thấy nguyên liệu.');
 
-                            const supIng = request.supplier.ingredients.find((si) => si.ingredientId === ingId);
+                            const supIng = request.supplier?.ingredients.find((si) => si.ingredientId === ingId);
                             const conversionQty = supIng
                                 ? toDecimal(supIng.conversionQuantity, 1)
                                 : new Prisma.Decimal(1);
@@ -530,6 +602,14 @@ export const purchaseRepository = {
                         ? PurchaseRequestStatus.RECEIVED
                         : currentRequest?.status || PurchaseRequestStatus.SENT;
 
+                    if (po) {
+                        const poItems = await tx.purchaseOrderItem.findMany({ where: { purchaseOrderId: po.id } });
+                        const finished = poItems.every(item => item.quantityReceived >= item.quantityOrdered);
+                        const partial = poItems.some(item => item.quantityReceived > 0);
+                        await tx.purchaseOrder.update({ where: { id: po.id },
+                            data: { status: finished ? 'RECEIVED' : partial ? 'PARTIALLY_RECEIVED' : 'CONFIRMED' } });
+                    }
+
                     return tx.purchaseRequest.update({
                         where: { id: request.id },
                         data: {
@@ -539,7 +619,7 @@ export const purchaseRepository = {
                         },
                         include: purchaseInclude
                     });
-                });
+                }, { timeout: 25000 });
             } catch (error: any) {
                 lastError = error;
                 if (error.code === 'P2002' || error.message?.includes('Unique constraint failed')) {

@@ -41,7 +41,11 @@ function fixture() {
     const tx = {
       $queryRaw: async () => [], user: { findUnique: async ({ where }) => users[where.id] ?? null },
       supplier: { findUnique: async () => ({ status: 'ACTIVE' }) },
-      ingredient: { findUnique: async () => ({ id: 'milk', isActive: true, baseUnit: 'ml' }) },
+      ingredient: { findUnique: async () => ({ id: 'milk', isActive: true, deletedAt: null, baseUnit: 'ml', updatedAt: new Date(0) }) },
+      ingredientBatch: { findFirst: async () => null },
+      purchaseOrderItem: { findFirst: async () => null },
+      inventory: { findUnique: async () => ({ id: 'inv-milk', updatedAt: new Date(0) }) },
+      inventoryBatch: { findFirst: async () => null },
       supplierIngredient: { findUnique: async () => ({ conversionQuantity: '1000', conversionTargetUnit: 'ml', minOrderQuantity: 1, purchaseUnit: 'bottle', pricePerBaseUnit: '0.1' }) },
       agentPurchaseProposal: {
         findUnique: async ({ where }) => state.proposals[where.id] ?? null,
@@ -50,7 +54,7 @@ function fixture() {
       },
       agentPurchaseProposalVersion: {
         findUnique: async ({ where }) => state.revisions[compound(where)] ?? null,
-        create: async ({ data }) => state.revisions[data.proposalId + ':' + data.version] = { approvedAt: null, approvedById: null, ...structuredClone(data) },
+        create: async ({ data }) => state.revisions[data.proposalId + ':' + data.version] = { approvedAt: null, approvedById: null, createdAt: new Date(), ...structuredClone(data) },
         update: async ({ where, data }) => Object.assign(state.revisions[compound(where)], data),
       },
       purchaseRequest: {
@@ -72,7 +76,14 @@ function fixture() {
       return structuredClone(await work(tx));
     } catch (error) { state = before; throw error; } finally { release(); }
   } };
-  return { db, service: new PurchaseProposalService(db), users, state: () => structuredClone(state), fault: value => { failReceipt = value; }, serialization: n => { serializationFailures = n; } };
+  return {
+    db, service: new PurchaseProposalService(db), users,
+    state: () => structuredClone(state),
+    // Only the in-memory fixture is mutated to simulate damaged persisted
+    // rows. This helper cannot alter live PostgreSQL or real proposals.
+    corruptVersion: (key, fields) => Object.assign(state.revisions[key], fields),
+    fault: value => { failReceipt = value; }, serialization: n => { serializationFailures = n; }
+  };
 }
 
 test('1: proposal exists before PR; execute without approval denied', async () => {
@@ -153,6 +164,152 @@ test('serialization retry rechecks transaction; revoked ADMIN cannot authorize n
   const f = fixture(); f.serialization(2); const p = await f.service.create('proposal', snapshot);
   await f.service.approve('proposal', 'admin', reference(p)); f.users.admin.role = 'STAFF';
   await assert.rejects(f.service.execute('proposal', command(p)), /ADMIN_REQUIRED/);
+  assert.equal(Object.keys(f.state().requests).length, 0);
+});
+test('AI18: exact-revision ADMIN rejection is durable, replay-stable and forbids purchase after veto', async () => {
+  const f = fixture(), p = await f.service.create('rejected', snapshot);
+  const payload = { ...reference(p), reason: 'Supplier terms are not accepted' };
+  await assert.rejects(f.service.reject('rejected', 'staff', payload), /ADMIN_REQUIRED/);
+  await assert.rejects(f.service.reject('rejected', 'admin',
+    { ...payload, contentHash: 'a'.repeat(64) }), /STALE_PROPOSAL/);
+  const decision = await f.service.reject('rejected', 'admin', payload);
+  assert.equal(decision.rejectedById, 'admin');
+  assert.equal(decision.rejectionReason, payload.reason);
+  assert.ok(decision.rejectedAt);
+  const repeated = await new PurchaseProposalService(f.db).reject('rejected', 'admin', payload);
+  assert.deepEqual(repeated, decision);
+  await assert.rejects(f.service.reject('rejected', 'admin',
+    { ...payload, reason: 'Changed rejection reason' }), /PROPOSAL_ALREADY_REJECTED/);
+  await assert.rejects(f.service.approve('rejected', 'admin', reference(p)), /PROPOSAL_REJECTED/);
+  await assert.rejects(f.service.execute('rejected', command(p)), /PROPOSAL_REJECTED/);
+  assert.equal(Object.keys(f.state().requests).length, 0);
+  assert.equal(Object.keys(f.state().receipts).length, 0);
+});
+
+test('AI18/AI19: rejected history survives new version, stale approval cannot restore old proposal', async () => {
+  const f = fixture(), p = await f.service.create('rejected', snapshot);
+  await f.service.reject('rejected', 'admin', {
+    ...reference(p), reason: 'Replenishment no longer required'
+  });
+  const next = await f.service.revise('rejected', reference(p), {
+    ...snapshot, quantity: 3
+  });
+  assert.equal(next.version, 2);
+  assert.equal(next.approvedById, null);
+  assert.ok(f.state().revisions['rejected:1'].rejectedAt);
+  await assert.rejects(f.service.approve('rejected', 'admin', reference(p)), /STALE_PROPOSAL/);
+  await assert.rejects(f.service.execute('rejected', command(next)), /APPROVAL_REQUIRED/);
+  assert.equal(Object.keys(f.state().requests).length, 0);
+});
+
+test('AI18 concurrent ADMIN vetoes produce exactly one rejection decision', async () => {
+  const f = fixture(), p = await f.service.create('rejected', snapshot);
+  const data = { ...reference(p), reason: 'Independent operator review required' };
+  const responses = await Promise.all(Array.from({ length: 6 },
+    () => f.service.reject('rejected', 'admin', data)));
+  assert.ok(responses.every(row => row.rejectedById === 'admin'));
+  assert.equal(new Set(responses.map(row => row.rejectedAt.toISOString())).size, 1);
+  assert.equal(Object.keys(f.state().requests).length, 0);
+});
+
+test('AI18: a veto before purchase execution overrides an older approval without erasing its audit', async () => {
+  const f = fixture(), p = await f.service.create('veto-approved', snapshot);
+  const approved = await f.service.approve('veto-approved', 'admin', reference(p));
+  assert.ok(approved.approvedAt);
+  const rejected = await f.service.reject('veto-approved', 'admin', {
+    ...reference(p), reason: 'Do not place purchase, unsafe stock projection'
+  });
+  assert.equal(rejected.approvedById, 'admin');
+  assert.equal(rejected.rejectedById, 'admin');
+  await assert.rejects(f.service.execute('veto-approved', command(p)),
+    /PROPOSAL_REJECTED/);
+  assert.equal(Object.keys(f.state().requests).length, 0);
+});
+
+test('AI18/AI19: review status reads active ADMIN and exact hash in one serializable transaction, never authorizes execution', async () => {
+  const f = fixture(), p = await f.service.create('status-review', snapshot);
+  const ref = reference(p);
+  const pending = await f.service.readReviewStatus('status-review', 'admin', ref);
+  assert.equal(pending.status, 'PENDING_APPROVAL');
+  assert.equal(pending.writesPerformed, false);
+  assert.equal(pending.purchaseRequestId, null);
+  await assert.rejects(f.service.readReviewStatus('status-review', 'staff', ref), /ADMIN_REQUIRED/);
+  await assert.rejects(f.service.readReviewStatus('status-review', 'admin', {
+    ...ref, contentHash: '0'.repeat(64)
+  }), /STALE_PROPOSAL/);
+  await f.service.reject('status-review', 'admin', {
+    ...ref, reason: 'Rejection remains operator controlled'
+  });
+  const rejected = await f.service.readReviewStatus('status-review', 'admin', ref);
+  assert.equal(rejected.status, 'REJECTED');
+  assert.equal(rejected.rejectedById, 'admin');
+  assert.equal(rejected.writesPerformed, false);
+  f.users.admin.isActive = false;
+  await assert.rejects(f.service.readReviewStatus('status-review', 'admin', ref), /ADMIN_REQUIRED/);
+  assert.equal(Object.keys(f.state().requests).length, 0);
+});
+test('AI19/AI22: deactivated original approver cannot remain authorized by an unrelated active ADMIN read or repeat approval', async () => {
+  const f = fixture(), p = await f.service.create('disabled-approver', snapshot);
+  f.users.reviewer = { id: 'reviewer', role: 'ADMIN', isActive: true };
+  const approved = await f.service.approve('disabled-approver', 'admin', reference(p));
+  assert.equal(approved.approvedById, 'admin');
+  f.users.admin.isActive = false;
+  for (const action of [
+    () => f.service.readReviewStatus('disabled-approver', 'reviewer', reference(p)),
+    () => f.service.approve('disabled-approver', 'reviewer', reference(p))
+  ]) {
+    await assert.rejects(action(),
+      error => error.statusCode === 409 && error.code === 'APPROVER_NO_LONGER_ACTIVE');
+  }
+  await assert.rejects(f.service.execute('disabled-approver', command(p)), /ADMIN_REQUIRED/);
+  assert.equal(f.state().revisions['disabled-approver:1'].approvedById, 'admin');
+  assert.equal(Object.keys(f.state().requests).length, 0);
+  assert.equal(Object.keys(f.state().receipts).length, 0);
+});
+test('AI18/AI19: later authorized veto remains visible and a newer revision requires independent approval after role loss', async () => {
+  const f = fixture(), p = await f.service.create('review-after-demotion', snapshot);
+  f.users.reviewer = { id: 'reviewer', role: 'ADMIN', isActive: true };
+  await f.service.approve('review-after-demotion', 'admin', reference(p));
+  f.users.admin.role = 'STAFF';
+  await assert.rejects(f.service.readReviewStatus('review-after-demotion', 'reviewer', reference(p)),
+    error => error.statusCode === 409 && error.code === 'APPROVER_NO_LONGER_ACTIVE');
+  const rejected = await f.service.reject('review-after-demotion', 'reviewer',
+    { ...reference(p), reason: 'Original ADMIN no longer authorized' });
+  assert.equal(rejected.rejectedById, 'reviewer');
+  const visible = await f.service.readReviewStatus('review-after-demotion', 'reviewer', reference(p));
+  assert.equal(visible.status, 'REJECTED');
+  const next = await f.service.revise('review-after-demotion', reference(p), { ...snapshot, quantity: 3 });
+  assert.equal(next.approvedById, null);
+  await assert.rejects(f.service.execute('review-after-demotion', command(next)), /APPROVAL_REQUIRED/);
+  assert.equal(Object.keys(f.state().requests).length, 0);
+});
+test('AI19/AI23: malformed persisted snapshot returns explicit integrity 409, not HTTP500 or stale', async () => {
+  const f = fixture(), p = await f.service.create('corrupt-row', snapshot);
+  const ref = reference(p);
+  f.corruptVersion('corrupt-row:1', { snapshot: {
+    supplierId: 'supplier', ingredientId: 'milk', quantity: -99,
+    unit: 'bottle', baseUnit: 'ml', unitsPerPack: '1000',
+    unitPrice: '100.00', notes: 'untrusted malformed', emailContent: null
+  } });
+  for (const candidate of [ref, { ...ref, contentHash: 'f'.repeat(64) }]) {
+    await assert.rejects(f.service.readReviewStatus('corrupt-row', 'admin', candidate),
+      error => error.statusCode === 409 && error.code === 'SNAPSHOT_INTEGRITY');
+  }
+  await assert.rejects(f.service.approve('corrupt-row', 'admin', ref),
+    error => error.statusCode === 409 && error.code === 'SNAPSHOT_INTEGRITY');
+  assert.equal(Object.keys(f.state().requests).length, 0);
+  assert.equal(Object.keys(f.state().receipts).length, 0);
+});
+test('AI18/AI19: damaged stored hash or half-written ADMIN rejection metadata fails closed', async () => {
+  const f = fixture(), p = await f.service.create('bad-metadata', snapshot);
+  f.corruptVersion('bad-metadata:1', { rejectedById: 'admin', rejectedAt: null,
+    rejectionReason: 'Forged inconsistent decision' });
+  await assert.rejects(f.service.readReviewStatus('bad-metadata', 'admin', reference(p)),
+    error => error.statusCode === 409 && error.code === 'SNAPSHOT_INTEGRITY');
+  f.corruptVersion('bad-metadata:1', { rejectedById: null,
+    rejectionReason: null, contentHash: 'a'.repeat(64) });
+  await assert.rejects(f.service.readReviewStatus('bad-metadata', 'admin', reference(p)),
+    error => error.statusCode === 409 && error.code === 'SNAPSHOT_INTEGRITY');
   assert.equal(Object.keys(f.state().requests).length, 0);
 });
 test('12: Agent runtime has no Prisma PurchaseRequest mutation, legacy scan outputs proposals', () => {

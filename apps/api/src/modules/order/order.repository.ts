@@ -882,7 +882,7 @@ export const orderRepository = {
             });
 
             if (updatedOrderCount.count !== 1) {
-                throw new Error('Đơn hàng đã được thanh toán hoặc không ở trạng thái hợp lệ.');
+                throw new HttpError(409, 'Đơn hàng đã được thanh toán hoặc không ở trạng thái hợp lệ.');
             }
 
             const latestPayment = await tx.payment.findFirst({
@@ -1013,7 +1013,7 @@ export const orderRepository = {
                 });
 
                 if (updatedOrderCount.count !== 1) {
-                    throw new Error('Đơn hàng đã được xử lý trước đó hoặc không ở trạng thái hợp lệ.');
+                    throw new HttpError(409, 'Đơn hàng đã được xử lý trước đó hoặc không ở trạng thái hợp lệ.');
                 }
             }
 

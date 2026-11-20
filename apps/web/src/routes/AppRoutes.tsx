@@ -38,6 +38,7 @@ import { AdminOrderDetailPage } from "../pages/admin/AdminOrderDetailPage";
 import { AdminSimulateSalePage } from "../pages/admin/AdminSimulateSalePage";
 import { AdminPurchaseRequestsPage } from "../pages/admin/AdminPurchaseRequestsPage";
 import { AdminPurchaseRequestDetailPage } from "../pages/admin/AdminPurchaseRequestDetailPage";
+import { AdminPurchasingWorkspace } from "../pages/admin/AdminPurchasingWorkspace";
 import { AdminAgentLogsPage } from "../pages/admin/AdminAgentLogsPage";
 import { AdminUsersPage } from "../pages/admin/AdminUsersPage";
 import { AdminNotificationsPage } from "../pages/admin/AdminNotificationsPage";
@@ -45,6 +46,7 @@ import { AdminCategoriesPage } from "../pages/admin/AdminCategoriesPage";
 import { AdminSystemSettingsPage } from "../pages/admin/AdminSystemSettingsPage";
 
 import { AdminIngredientBatchesPage } from "../pages/admin/AdminIngredientBatchesPage";
+import { AdminStocktakesPage } from "../pages/admin/AdminStocktakesPage";
 
 
 const ScrollToTop: React.FC = () => {
@@ -134,6 +136,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="products/:id/edit" element={<AdminProductFormPage />} />
           <Route path="ingredients" element={<AdminIngredientsPage />} />
           <Route path="ingredients/:id" element={<AdminIngredientDetailPage />} />
+          <Route path="stocktakes" element={<AdminStocktakesPage />} />
 
           <Route
             path="ingredient-batches"
@@ -150,6 +153,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="simulate-sale" element={<AdminOnlyRoute><AdminSimulateSalePage /></AdminOnlyRoute>} />
           <Route path="purchase-requests" element={<AdminPurchaseRequestsPage />} />
           <Route path="purchase-requests/:id" element={<AdminPurchaseRequestDetailPage />} />
+          <Route path="purchasing" element={<AdminPurchasingWorkspace />} />
           <Route path="agent-logs" element={<AdminAgentLogsPage />} />
           <Route path="users" element={<AdminOnlyRoute><AdminUsersPage /></AdminOnlyRoute>} />
           <Route path="change-password" element={<ChangePasswordPage />} />

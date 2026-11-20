@@ -70,6 +70,34 @@ export interface IngredientTransaction {
   createdAt: string;
 }
 
+export interface StockCountRequest {
+  id: string;
+  code: string;
+  status: 'PENDING' | 'COMPLETED' | 'CANCELLED' | 'DRAFT';
+  createdById: string;
+  approvedById?: string | null;
+  approvedAt?: string | null;
+  items: Array<{ id: string; ingredientId: string; systemQty: string; actualQty: string; varianceQty: string; reason: string | null }>;
+}
+
+export interface ReconciliationResult {
+  ingredientId: string;
+  evaluatedAt: string;
+  physicalQuantity: string;
+  batchQuantity: string;
+  aggregateBatchDifference: string;
+  aggregateBatchConsistent: boolean;
+  ledgerNetMovements: string;
+  ledgerBalanceDifference: string;
+  ledgerBaseline: string;
+  ledgerDifferenceIsDefinitive: boolean;
+  movementCount: number;
+  movementReferences: Array<{ id: string; batchId: string | null; type: string; quantity: string; referenceType: string | null; referenceId: string | null }>;
+  reservationOnlyCount: number;
+  unclassifiedMovements: Array<{ id: string; type: string }>;
+  batches: Array<{ id: string; quantityRemaining: string; qualityStatus: string }>;
+}
+
 export interface CreateIngredientPayload {
   expiryClassification?: ExpiryClassification;
   sku?: string;
@@ -87,6 +115,7 @@ export interface CreateIngredientPayload {
 }
 
 export interface ImportIngredientPayload {
+  requestId?: string;
   quantity: number;
   unit?: string;
   unitCost?: number;

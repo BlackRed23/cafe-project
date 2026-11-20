@@ -4,9 +4,16 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const http = require('node:http');
 const { pathToFileURL } = require('node:url');
+const { randomUUID } = require('node:crypto');
 const { chromium } = require('playwright');
 let server, browser, origin;
-const evidence = path.resolve(__dirname, '../../..', 'reports/frontend-design');
+// Each test process owns its screenshot output: parallel/full-suite runs must
+// never overwrite a previous PNG (Windows can refuse an in-use destination).
+// Keep the caller's optional root override, but isolate every invocation.
+const evidenceRoot = process.env.DESIGN_EVIDENCE_DIR
+  ? path.resolve(process.env.DESIGN_EVIDENCE_DIR)
+  : path.resolve(__dirname, '../../..', 'reports/frontend-design');
+const evidence = path.join(evidenceRoot, 'design-run-' + process.pid + '-' + randomUUID().slice(0, 12));
 before(async () => {
   const root = path.resolve(__dirname, '..');
   const { build } = await import(pathToFileURL(require.resolve('vite', { paths: [root] })).href);

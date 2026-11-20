@@ -52,8 +52,7 @@ function harness({ products = [product('one')], loading = false, authenticated =
     '../utils/productStock': stockModule.exports,
     '../components/product/ProductCard': { ProductCard },
     '../components/common/Loading': { Loading },
-    '../features/home/HomeEditorial': { HomeHero: () => null, BrandMarquee: () => null, BrandStory: () => null, HomeGallery: () => null },
-    '../features/home/home.css': {},
+    '../features/home/HomeEditorial': { HomeHero: () => null, BrandStory: () => null, HomeGallery: () => null },
   };
   const module = { exports: {} };
   vm.runInNewContext(compile(source), {
@@ -139,4 +138,33 @@ test('Home delegates one-unit addition and preserves cart rejection feedback', (
     assert.equal(calls.warnings.length, didAdd ? 0 : 1);
     if (!didAdd) assert.match(calls.warnings[0], /Chỉ còn 2/);
   }
+});
+
+test('Editorial sections use existing local coffee images and real menu navigation', () => {
+  const editorial = fs.readFileSync(path.join(root, 'src/features/home/HomeEditorial.tsx'), 'utf8');
+  for (const file of ['hero-bg.jpg', 'about-video-bg.jpg', 'gallery-1.jpg', 'gallery-2.jpg', 'gallery-3.jpg']) {
+    assert.ok(fs.existsSync(path.join(root, 'public/images', file)), file);
+    assert.ok(editorial.includes('/images/' + file), file);
+  }
+  assert.ok(editorial.includes('to="/products"'));
+  assert.ok(editorial.includes('href="#about"'));
+  assert.ok(editorial.includes('loading="lazy"'));
+  assert.ok(editorial.includes('fetchPriority="high"'));
+  assert.match(editorial, /md:grid-cols-2/);
+  assert.match(editorial, /md:grid-cols-\[1\.15fr_\.75fr_\.9fr\]/);
+  assert.match(editorial, /motion-reduce:transition-none/);
+  assert.match(editorial, /bg-\[var\(--sf-story\)\]/);
+  assert.match(editorial, /bg-\[var\(--sf-soft\)\]/);
+  assert.match(source, /md:grid-cols-3/);
+  assert.match(source, /bg-\[var\(--sf-paper\)\]/);
+  assert.doesNotMatch(source, /home\.css/);
+  assert.doesNotMatch(editorial, /home\.css/);
+  assert.ok(!editorial.includes('testimonials'));
+});
+
+test('Home distinguishes failed menu API from a genuinely empty list', () => {
+  assert.match(source, /loadFailed \? \(/);
+  assert.match(source, /role="alert"/);
+  assert.match(source, /sortProductsInStockFirst\(data\)/);
+  assert.match(source, /onAddToCart=\{handleAddToCart\}/);
 });

@@ -17,7 +17,7 @@ export const paymentStatusSchema = z.object({
 
 export const markRefundedSchema = z.object({
     note: z.string().trim().optional()
-});
+}).strict();
 
 export const simulateMoMoIpnSchema = z.object({
     paymentId: z.string().trim().min(1, 'paymentId là bắt buộc.'),
@@ -28,6 +28,17 @@ export const createPaymentUrlSchema = z.object({
     orderId: z.string().trim().min(1, 'orderId là bắt buộc.'),
     method: z.enum(['MOMO', 'VNPAY'])
 });
+
+export const requestRefundSchema = z.object({
+    requestId: z.string().trim().regex(/^[a-zA-Z0-9_-]{8,64}$/),
+    amount: z.string().trim().regex(/^[1-9]\d{0,11}$/, 'Số tiền phải là số VND nguyên dương.'),
+    reason: z.string().trim().min(8).max(500),
+    approvalRef: z.string().trim().min(8).max(120)
+}).strict();
+
+export const attestCashRefundSchema = z.object({
+    receiptRef: z.string().trim().regex(/^[a-zA-Z0-9_-]{8,120}$/)
+}).strict();
 
 export const momoWebhookSchema = z
     .object({
@@ -52,3 +63,5 @@ export type MarkRefundedInput = z.infer<typeof markRefundedSchema>;
 export type SimulateMoMoIpnInput = z.infer<typeof simulateMoMoIpnSchema>;
 export type CreatePaymentUrlInput = z.infer<typeof createPaymentUrlSchema>;
 export type MoMoWebhookInput = z.infer<typeof momoWebhookSchema>;
+export type RequestRefundInput = z.infer<typeof requestRefundSchema>;
+export type AttestCashRefundInput = z.infer<typeof attestCashRefundSchema>;

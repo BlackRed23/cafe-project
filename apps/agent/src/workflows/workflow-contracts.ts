@@ -1,6 +1,9 @@
 import type { ToolAuthorization, UnifiedToolRegistry } from './tool-registry';
 import type { InventoryRow, PurchaseProposal, ReplenishmentPlan, SupplierQuote } from './replenishment';
 import type { DynamicToolName, DynamicToolPlan, ToolChoicePolicy } from './dynamic-plan';
+import type { ProposalReviewReference, ProposalReviewObservation } from './agent-backend-proposal-review';
+import type { PerceptionContext } from './inventory-perception';
+import type { BackendRiskEvidence } from './agent-backend-risk-evidence';
 
 export type LegacyTool = 'inventory.read' | 'inventory.recommend' | 'purchase.create';
 export type LegacyStep = { tool: LegacyTool; input: PurchaseProposal | null };
@@ -15,6 +18,14 @@ export interface BusinessPort extends ToolAuthorization {
     atomic<T>(work: (business: BusinessPort, onCommit: (publish: () => void) => void, onFinish: (finish: () => void) => void) => Promise<T>): Promise<T>;
     inventory(actorId: string): Promise<InventoryRow[]>;
     recommendInventory(actorId: string, snapshot?: InventoryRow[]): Promise<unknown[]>;
+    /** Optional authoritative lot-aware perception before planning; READ only. */
+    perceiveInventory?(actorId: string, snapshot: InventoryRow[]): Promise<PerceptionContext[]>;
+    /** Optional authoritative Backend READ projection. Never an approval token. */
+    demandRisk?(actorId: string, inventory: InventoryRow[]): Promise<string[] | BackendRiskEvidence>;
+    /** Authoritative current source cursor for ACT read dispatch (READ-only). */
+    actSourceVersion?(actorId: string, ingredientId: string): Promise<string>;
+    /** Observe Backend-authoritative AI18 revision only: no approve/reject/execute method. */
+    inspectProposal?(actorId: string, reference: ProposalReviewReference): Promise<ProposalReviewObservation>;
     purchaseQuotes?(actorId: string, supplierId: string): Promise<(SupplierQuote | undefined)[]>;
     createPurchase(command: PurchaseCommand, proposal: PurchaseProposal): Promise<PurchaseResult>;
     purchaseReceipt(command: PurchaseCommand, proposal: PurchaseProposal): Promise<(PurchaseReceiptProof & { response: PurchaseResult }) | undefined>;
@@ -50,6 +61,24 @@ export type Execution = { id: string; actorId: string; status: 'PLANNED' | 'AWAI
 export type Approval = { id: string; executionId: string; approverId: string; hash: string; expiresAt: string; revoked: boolean; consumed: boolean };
 export type Memory = { id: string; ownerId: string; text: string; learned: boolean; confidence?: number; expiresAt?: string; revoked?: boolean; forgotten?: boolean; provenance?: { executionId: string; evaluationIds: string[]; tool: ToolName }[]; sourceIds?: string[] };
 export type AgentState = { sequence: number; executions: Record<string, Execution>; approvals: Record<string, Approval>; audit: { executionId: string; tool: string; status: string; stepId?: string; attempt?: number }[]; memories: Record<string, Memory>; permissions: Record<string, string[]>;
+    /** Same transaction/repository as Execution identity. Never use MemorySaver as production persistence. */
+    graphRuns?: Record<string, {
+        requestId: string; actorId: string; inputHash: string; executionId?: string;
+        status: 'RUNNING' | 'AWAITING_APPROVAL' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'UNKNOWN' | 'DEGRADED_LLM' | 'HELD_POLICY';
+        trace: { node: string; edge: string; status: string; at: string; code?: string; executionId?: string; tool?: string;
+            stepId?: string; attempt?: number; actorId?: string;
+            approvalBoundary?: ProposalReviewObservation }[];
+        /** Sanitized observation, never a local approval grant. */
+        approvalBoundary?: ProposalReviewObservation;
+        /** Immutable verified source snapshot for safe terminal Graph replay. */
+        sourceFingerprint?: string;
+        completedSourceAt?: string;
+        /** New journal slot namespace for a fresh authorized RESUME after HOLD. */
+        actCycle?: number;
+        startedAt: string; updatedAt: string;
+        /** Temporary ownership of a graph invocation; expiry allows crash recovery. */
+        leaseOwner?: string; leaseUntil?: string;
+    }>;
     operations: Record<string, { hash: string; actorId: string; response: { status: number; body: unknown } }>;
     toolCalls: Record<string, {
         id: string; executionId: string; index: number; tool: ToolName; input: unknown; status: string; result: unknown;
@@ -67,4 +96,17 @@ export interface AgentApprovalRepository { approve(id: string, approverId: strin
 export interface MemoryLearning { remember(ownerId: string, text: string): Promise<Memory>; retrieve(ownerId: string, query: string): Promise<Memory[]>; learn(ownerId: string, id: string): Promise<Memory>; consolidate(ownerId: string): Promise<Memory[]>; forget(ownerId: string, id: string): Promise<void> }
 export interface AgentRepository extends AgentExecutionRepository {
     atomic<T>(work: (state: AgentState) => Promise<T> | T, onCommit?: (publish: () => void) => void, onFinish?: (finish: () => void) => void): Promise<T>;
+    /** Optional PostgreSQL ACT read-only projection: one transaction updates the
+     * Graph checkpoint and the AgentExecution/AgentToolCall attempt witness.
+     * Never exposed as purchasing authority. */
+    recordActEvent?(input: {
+        graphId: string; inputHash: string; invocationId: string; actorId: string;
+        requestId: string; executionId?: string; toolIndex: number;
+        event: { node: string; edge: string; status: string; at: string; code?: string;
+            tool?: string; stepId?: string; attempt?: number; actorId?: string; executionId?: string };
+    }): Promise<void>;
+    finalizeActRun?(input: {
+        graphId: string; inputHash: string; invocationId: string;
+        status: NonNullable<AgentState['graphRuns']>[string]['status'];
+    }): Promise<void>;
 }

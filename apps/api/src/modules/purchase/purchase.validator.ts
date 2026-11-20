@@ -4,6 +4,7 @@ import { duplicateReceiptItemIndex } from './purchase.receipt-validation';
 
 export const createPurchaseRequestSchema = z.object({
     supplierId: z.string().trim().min(1, 'Supplier is required.'),
+    demandSourceKey: z.string().trim().min(8).max(200).optional(),
     notes: z.string().trim().max(1000, 'Notes must be at most 1000 characters.').optional().nullable(),
     aiGenerated: z.coerce.boolean().optional().default(false),
     items: z.array(z.object({
@@ -31,6 +32,7 @@ export const rejectPurchaseRequestSchema = z.object({
 
 export const receivePurchaseRequestSchema = z.object({
     idempotencyKey: z.string().trim().max(200).optional(),
+    purchaseOrderId: z.string().trim().min(1).optional(),
     supplierInvoiceNo: z.string().trim().max(200).optional().nullable(),
     note: z.string().trim().max(1000, 'Note must be at most 1000 characters.').optional().nullable(),
     items: z.array(z.object({

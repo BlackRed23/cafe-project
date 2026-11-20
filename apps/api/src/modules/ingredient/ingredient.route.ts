@@ -7,11 +7,16 @@ import { ingredientController } from './ingredient.controller';
 import { ingredientIncidentService } from './ingredient-incident.service';
 import { ingredientInternalUseService } from './ingredient-internal-use.service';
 import { ingredientLotService } from './ingredient-lot.service';
+import { reconcileIngredientInventory } from '../inventory/inventory-reconciliation.service';
+import { inventoryAdjustmentService } from '../inventory/inventory-adjustment.service';
+import { inventoryCorrectionService } from '../inventory/inventory-correction.service';
 import { sendSuccess } from '../../common/response';
 import type { AuthenticatedRequest } from '../auth/auth.middleware';
 import {
     createIngredientSchema,
     ingredientIncidentSchema,
+    ingredientAdjustmentSchema,
+    ingredientCorrectionSchema,
     ingredientInternalUseSchema,
     lotTransitionSchema,
     lotReturnSchema,
@@ -27,6 +32,35 @@ ingredientRoutes.use(authMiddleware);
 ingredientRoutes.get('/:id/batches', roleMiddleware(UserRole.ADMIN, UserRole.STAFF),
     asyncHandler(async (req, res) => {
         sendSuccess(res, 200, 'Ingredient lots.', await ingredientLotService.list(req.params.id!));
+    }));
+ingredientRoutes.get('/:id/reconciliation', roleMiddleware(UserRole.ADMIN, UserRole.STAFF),
+    asyncHandler(async (req, res) => {
+        sendSuccess(res, 200, 'Đối soát tồn kho chỉ đọc.', await reconcileIngredientInventory(req.params.id!));
+    }));
+ingredientRoutes.post('/:id/adjustments', roleMiddleware(UserRole.ADMIN, UserRole.STAFF), validateBody(ingredientAdjustmentSchema),
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+        sendSuccess(res, 201, 'Đã tạo phiếu kiểm kê chờ duyệt.',
+            await inventoryAdjustmentService.create(req.params.id!, req.body, req.user!.id));
+    }));
+ingredientRoutes.get('/:id/adjustments/:requestId', roleMiddleware(UserRole.ADMIN, UserRole.STAFF),
+    asyncHandler(async (req, res) => {
+        sendSuccess(res, 200, 'Chi tiết phiếu kiểm kê.',
+            await inventoryAdjustmentService.get(req.params.id!, req.params.requestId!));
+    }));
+ingredientRoutes.post('/:id/adjustments/:requestId/approve', roleMiddleware(UserRole.ADMIN),
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+        sendSuccess(res, 200, 'Đã duyệt phiếu kiểm kê.',
+            await inventoryAdjustmentService.approve(req.params.id!, req.params.requestId!, req.user!.id));
+    }));
+ingredientRoutes.post('/:id/adjustments/:requestId/reject', roleMiddleware(UserRole.ADMIN),
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+        sendSuccess(res, 200, 'Đã từ chối phiếu kiểm kê.',
+            await inventoryAdjustmentService.reject(req.params.id!, req.params.requestId!, req.user!.id));
+    }));
+ingredientRoutes.post('/:id/transactions/:transactionId/corrections', roleMiddleware(UserRole.ADMIN),
+    validateBody(ingredientCorrectionSchema), asyncHandler(async (req: AuthenticatedRequest, res) => {
+        sendSuccess(res, 200, 'Đã ghi bút toán đảo riêng biệt; không sửa giao dịch gốc.',
+            await inventoryCorrectionService.compensate(req.params.id!, req.params.transactionId!, req.body, req.user!.id));
     }));
 ingredientRoutes.get('/:id/batches/:batchId/trace', roleMiddleware(UserRole.ADMIN, UserRole.STAFF),
     asyncHandler(async (req, res) => {
