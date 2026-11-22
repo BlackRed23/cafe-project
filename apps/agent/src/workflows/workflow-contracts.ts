@@ -4,6 +4,8 @@ import type { DynamicToolName, DynamicToolPlan, ToolChoicePolicy } from './dynam
 import type { ProposalReviewReference, ProposalReviewObservation } from './agent-backend-proposal-review';
 import type { PerceptionContext } from './inventory-perception';
 import type { BackendRiskEvidence } from './agent-backend-risk-evidence';
+import type { D4Context, D4Recommendation } from './integration/d4-purchasing-intelligence';
+import type { GraphPurchaseReference } from './agent-langgraph';
 
 export type LegacyTool = 'inventory.read' | 'inventory.recommend' | 'purchase.create';
 export type LegacyStep = { tool: LegacyTool; input: PurchaseProposal | null };
@@ -26,6 +28,12 @@ export interface BusinessPort extends ToolAuthorization {
     actSourceVersion?(actorId: string, ingredientId: string): Promise<string>;
     /** Observe Backend-authoritative AI18 revision only: no approve/reject/execute method. */
     inspectProposal?(actorId: string, reference: ProposalReviewReference): Promise<ProposalReviewObservation>;
+    /** Opt-in production Graph proposal writer. It is NOT a purchasing grant. */
+    createD4Proposal?(actorId: string, graphId: string,
+        context: D4Context, recommendation: D4Recommendation): Promise<GraphPurchaseReference>;
+    /** Backend performs final active ADMIN, exact revision and source rechecks. */
+    executeD4ApprovedProposal?(actorId: string, graphId: string,
+        reference: GraphPurchaseReference): Promise<{ purchaseRequestId: string }>;
     purchaseQuotes?(actorId: string, supplierId: string): Promise<(SupplierQuote | undefined)[]>;
     createPurchase(command: PurchaseCommand, proposal: PurchaseProposal): Promise<PurchaseResult>;
     purchaseReceipt(command: PurchaseCommand, proposal: PurchaseProposal): Promise<(PurchaseReceiptProof & { response: PurchaseResult }) | undefined>;
@@ -67,9 +75,15 @@ export type AgentState = { sequence: number; executions: Record<string, Executio
         status: 'RUNNING' | 'AWAITING_APPROVAL' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'UNKNOWN' | 'DEGRADED_LLM' | 'HELD_POLICY';
         trace: { node: string; edge: string; status: string; at: string; code?: string; executionId?: string; tool?: string;
             stepId?: string; attempt?: number; actorId?: string;
-            approvalBoundary?: ProposalReviewObservation }[];
+            /** Sanitized, durable Graph integration correlation only. */
+            actCycle?: number; observationTraceId?: string;
+            approvalBoundary?: ProposalReviewObservation;
+            proposalReference?: GraphPurchaseReference; purchaseRequestId?: string }[];
         /** Sanitized observation, never a local approval grant. */
         approvalBoundary?: ProposalReviewObservation;
+        /** Verified immutable reference persisted before any approved PR WRITE. */
+        purchaseProposal?: GraphPurchaseReference;
+        purchaseRequestId?: string;
         /** Immutable verified source snapshot for safe terminal Graph replay. */
         sourceFingerprint?: string;
         completedSourceAt?: string;

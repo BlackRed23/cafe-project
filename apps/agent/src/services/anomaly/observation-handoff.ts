@@ -170,7 +170,7 @@ const supported = new Set(['getIngredientAvailability', 'getIngredientBatches',
 
 /** Safe bridge entrypoint: no mutation, checkpoint writer, network or Graph. */
 export async function evaluateObservationHandoff(
-    rawObservation: unknown, rawScope: unknown, port: ObsAnmPort, now = new Date()
+    rawObservation: unknown, rawScope: unknown, port: ObsAnmPort, now?: Date
 ): Promise<HandoffResult> {
     const scopeParse = handoffScopeSchema.safeParse(rawScope);
     const scope = scopeParse.success ? scopeParse.data : null;
@@ -181,7 +181,7 @@ export async function evaluateObservationHandoff(
         graphId: scope?.graphId ?? null, runId: scope?.runId ?? null,
         observationId, traceRef
     });
-    if (!scope || !Number.isFinite(now.getTime())) return result('HOLD', 'INVALID_SCOPE');
+    if (!scope || (now && !Number.isFinite(now.getTime()))) return result('HOLD', 'INVALID_SCOPE');
     const obs = observationSchema.safeParse(rawObservation);
     if (!obs.success) return result('HOLD', 'INVALID_OBS_DECISION');
     const d = obs.data, proposal = d.stateUpdateProposal;
@@ -219,13 +219,16 @@ export async function evaluateObservationHandoff(
     const snapshot = persistedSourceSchema.safeParse(source);
     if (!snapshot.success) return result('HOLD', 'UNVERIFIED_SOURCE');
     const p = snapshot.data;
+    // Sample NOW after an asynchronous authoritative source read; never use
+    // a timestamp captured before the data existed as a freshness bound.
+    const validatedAt = now ?? new Date();
     if (p.graphId !== scope.graphId || p.runId !== scope.runId ||
         p.actorId !== scope.actorId || p.invocationId !== scope.invocationId ||
         p.toolName !== scope.toolName || p.observationAuditTraceId !== d.auditTraceId ||
         p.persistedObservationDigest !== digestObservation(d)) {
         return result('HOLD', 'OBS_SCOPE_MISMATCH');
     }
-    if (ageInvalid(p.terminalAt, now) || ageInvalid(p.source.readAt, now)) {
+    if (ageInvalid(p.terminalAt, validatedAt) || ageInvalid(p.source.readAt, validatedAt)) {
         return result('HOLD', 'STALE_SNAPSHOT', [], p.observationId, p.source.traceRef);
     }
     const comparison = validateToolEvidence(scope.toolName, d.trustedResult, p);

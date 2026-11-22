@@ -9,7 +9,7 @@ export type ReorderSupplier = { supplierId: string; purchaseUnit: string; conver
     minOrderQuantity: number; leadTimeDays: number; pricePerBaseUnit: number; updatedAt: Date };
 export type ReorderStock = { id: string; baseUnit: string; quantity: Prisma.Decimal; reserved: Prisma.Decimal;
     minThreshold: Prisma.Decimal; rowVersion: number; batches: { id: string; quantityRemaining: Prisma.Decimal;
-        expirationDate: Date | null; receivedAt: Date }[] };
+        expirationDate: Date | null; receivedAt: Date; qualityStatus: string }[] };
 
 /** Read-only conservative planning. All demand/threshold/lead-time/pack inputs supplied by backend. */
 export function calculateIngredientReorder(stock: ReorderStock, consumption: { quantity: Prisma.Decimal }[], supplier: ReorderSupplier,
@@ -20,14 +20,20 @@ export function calculateIngredientReorder(stock: ReorderStock, consumption: { q
         if (!n.isFinite() || n.lt(0) || n.decimalPlaces() > 3) blocked('Invalid stock/pack precision.');
         return n;
     };
-    if (!['g', 'ml', 'piece'].includes(stock.baseUnit) || stock.batches.length > 10000 || consumption.length > 10000) blocked('Unsupported planning snapshot.');
+    // Ingredient CRUD and the authoritative unit-conversion table also accept
+    // `gram` as a 1:1 spelling of `g`. Rejecting it makes valid ingredient
+    // purchasing impossible even with verified, consistent supplier terms.
+    if (!['g', 'gram', 'ml', 'piece'].includes(stock.baseUnit) || stock.batches.length > 10000 || consumption.length > 10000) blocked('Unsupported planning snapshot.');
     const quantity = decimal(stock.quantity), reserved = decimal(stock.reserved), threshold = decimal(stock.minThreshold);
     const total = stock.batches.reduce((sum, b) => sum.add(decimal(b.quantityRemaining)), new Prisma.Decimal(0));
     if (!total.eq(quantity) || reserved.gt(quantity)) blocked('Batch/aggregate/reservation mismatch.');
     if (stock.baseUnit === 'piece' && [quantity, reserved, threshold, ...stock.batches.map(b => b.quantityRemaining)].some(n => !n.isInteger())) {
         blocked('Fractional piece balance.');
     }
-    const eligible = rankEligibleBatches(stock.batches, now).filter(b => b.receivedAt <= now)
+    // FEFO alone validates expiry/order, NOT lot quality. Quarantined/recalled
+    // material is physical but never supply available for purchasing decisions.
+    const eligible = rankEligibleBatches(stock.batches, now)
+        .filter(b => b.receivedAt <= now && b.qualityStatus === 'AVAILABLE')
         .reduce((sum, b) => sum.add(b.quantityRemaining), new Prisma.Decimal(0));
     const unknown = stock.batches.filter(b => b.expirationDate === null).reduce((sum, b) => sum.add(b.quantityRemaining), new Prisma.Decimal(0));
     // Reservations exist only at Ingredient level. Subtract ALL once; conservative lower bound, no invented batch allocation.

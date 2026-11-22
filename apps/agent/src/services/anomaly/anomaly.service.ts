@@ -39,12 +39,12 @@ const staleness = (date: string, now: Date): boolean => {
  * This function has no Backend, Graph, approval, procurement or write access.
  */
 export async function evaluateAnomalies(
-    raw: unknown, authority?: AnomalyAuthority, now = new Date()
+    raw: unknown, authority?: AnomalyAuthority, now?: Date
 ): Promise<AnomalyResult> {
     const parsed = anomalyInputSchema.safeParse(raw);
-    if (!parsed.success || !Number.isFinite(now.getTime())) throw new Error('ANM_INPUT_REJECTED');
+    if (!parsed.success || (now && !Number.isFinite(now.getTime()))) throw new Error('ANM_INPUT_REJECTED');
     const input = parsed.data;
-    let proof: AuthorityProof | undefined;
+    let candidateProof: AuthorityProof | undefined;
     if (authority) {
         try {
             const candidate = authorityProofSchema.safeParse(await authority.verify(input));
@@ -53,14 +53,21 @@ export async function evaluateAnomalies(
                 if (p.actorId === input.actorId && p.runId === input.runId &&
                     p.observationId === input.observationId && p.sourceId === input.source.sourceId &&
                     p.sourceVersion === input.source.sourceVersion &&
-                    p.evidenceHash === hashAnomalyEvidence(input) && !staleness(p.recordedAt, now)) {
-                    proof = p;
+                    p.evidenceHash === hashAnomalyEvidence(input)) {
+                    candidateProof = p;
                 }
             }
         } catch {
             // Failed verification is a HOLD, never a fallback to caller claims.
         }
     }
+    // With a real async authority provider, reference time MUST be sampled
+    // after its independent read. A fixed test clock remains exact when given.
+    // This is not tolerance for future timestamps: staleness still rejects
+    // even one millisecond in the future relative to the chosen time.
+    const verifiedAt = now ?? new Date();
+    const proof = candidateProof && !staleness(candidateProof.recordedAt, verifiedAt)
+        ? candidateProof : undefined;
     const verified = proof !== undefined;
     const findings: Finding[] = [];
     const seen = new Set(proof?.priorEventIds ?? []);
@@ -96,7 +103,7 @@ export async function evaluateAnomalies(
         add('NO_BUSINESS_EVIDENCE', 'INSUFFICIENT', {}, input.source.sourceId, true);
     }
     // ANM-08: Both timestamps and the authority revision must be current.
-    if (staleness(input.source.readAt, now)) {
+    if (staleness(input.source.readAt, verifiedAt)) {
         add('STALE_CONTEXT', 'CRITICAL', { readAt: input.source.readAt }, input.source.sourceId, true);
     }
     if (proof && ((input.source.rowVersion !== undefined &&

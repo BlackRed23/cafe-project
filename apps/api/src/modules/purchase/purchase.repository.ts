@@ -22,6 +22,7 @@ import type {
 import { duplicateReceiptItemIndex } from './purchase.receipt-validation';
 import { HttpError } from '../../common/http-error';
 import { createHash } from 'node:crypto';
+import { verifyAndLockAutomaticNeed, type VerifiedPurchaseNeed } from './purchase-need.guard';
 
 export const purchaseInclude = {
     supplier: { include: { products: true, ingredients: true } },
@@ -148,12 +149,21 @@ export const purchaseRepository = {
             }
 
             if (ingredientIds.length > 0) {
-                // Serialize demand creation per ingredient: two proposals for the
-                // same active shortage must not race past the active-item check.
+                const verifiedAutomaticNeeds: VerifiedPurchaseNeed[] = [];
+                // Run every verified auto-shortage read under the SAME ingredient
+                // advisory lock held by the proposal execute writer. A caller
+                // choosing a different demandSourceKey cannot create a second
+                // active PR for the same Backend-attested LOW_STOCK need.
+                const automaticNeed = input.aiGenerated ||
+                    Boolean(input.demandSourceKey?.startsWith('ai-ln-agent-'));
                 for (const ingId of [...new Set(ingredientIds)].sort()) {
-                    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'purchasing-demand:' + ingId}))::text`;
+                    if (automaticNeed) {
+                        verifiedAutomaticNeeds.push(await verifyAndLockAutomaticNeed(tx, ingId));
+                    } else {
+                        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'purchasing-demand:' + ingId}))::text`;
+                    }
                 }
-                const activeIngItem = !input.demandSourceKey ? await tx.purchaseRequestItem.findFirst({
+                const activeIngItem = !automaticNeed && !input.demandSourceKey ? await tx.purchaseRequestItem.findFirst({
                     where: {
                         ingredientId: { in: ingredientIds },
                         request: { status: { in: [...ACTIVE_PURCHASE_REQUEST_STATUSES] } }
@@ -161,8 +171,30 @@ export const purchaseRepository = {
                     select: { id: true }
                 }) : null;
                 if (activeIngItem) throw new Error(ACTIVE_PURCHASE_REQUEST_MESSAGE);
+                // Keep this validated attestation local to the transaction.
+                // It must never be reconstructed from a caller hash or note.
+                if (verifiedAutomaticNeeds.length) {
+                    const request = await createRequest(tx);
+                    await tx.agentLog.create({ data: {
+                        action: 'AI_LN_AUTOMATIC_SHORTAGE_PR_CREATED',
+                        result: 'SUCCESS',
+                        reference_type: 'PurchaseRequest', reference_id: request.id,
+                        createdBy: userId, fallback_used: false,
+                        input: JSON.stringify({
+                            needIdentities: verifiedAutomaticNeeds.map(need => need.identity),
+                            sourceKeysSha256: input.demandSourceKey
+                                ? createHash('sha256').update(input.demandSourceKey).digest('hex') : null,
+                            attested: verifiedAutomaticNeeds
+                        }),
+                        output: JSON.stringify({ purchaseRequestId: request.id, status: request.status }),
+                        reasoning: 'Current Backend lot, stocktake, inbound and active PR evidence verified under shared ingredient transaction lock.'
+                    } });
+                    return request;
+                }
             }
 
+            return createRequest(tx);
+            async function createRequest(tx: Prisma.TransactionClient): Promise<PurchaseRequestRecord> {
             let totalAmount = new Prisma.Decimal(0);
             const createItemsData: Prisma.PurchaseRequestItemCreateWithoutRequestInput[] = [];
 
@@ -224,6 +256,7 @@ export const purchaseRepository = {
                 },
                 include: purchaseInclude
             });
+            }
         }, { timeout: 20000 });
     },
 

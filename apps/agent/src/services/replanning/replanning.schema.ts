@@ -44,6 +44,8 @@ export const replanObsSchema = z.strictObject({
     status: z.enum(['SUCCESS', 'FAILED', 'INSUFFICIENT_DATA', 'INVALID_OUTPUT',
         'STALE', 'PARTIAL', 'REJECTED', 'DUPLICATE']),
     dataQuality: z.enum(['VERIFIED_SCHEMA', 'TEST_FIXTURE', 'INSUFFICIENT', 'INVALID', 'STALE', 'UNTRUSTED']),
+    /** Independent committed OBS row identity, distinct from its trace when assigned. */
+    observationId: id.optional(),
     auditTraceId: id, runId: id, actorId: id, invocationId: id,
     toolName: id, verifiedForBusiness: z.boolean(),
     errorCode: reason.optional(), requiresFreshRead: z.boolean()

@@ -19,6 +19,7 @@ const TITLE_MAP: Record<string, string> = {
   "/admin/purchase-requests": "Yêu cầu nhập nguyên liệu",
   "/admin/purchasing": "Mua hàng & đối soát chứng từ",
   "/admin/agent-logs": "Nhật ký AI Agent",
+  "/admin/agent": "Trung tâm AI Agent",
   "/admin/system-settings": "Cài đặt hệ thống",
 };
 

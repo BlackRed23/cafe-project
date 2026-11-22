@@ -4,6 +4,46 @@ import type {
     DynamicToolName,
     DynamicToolPlan
 } from '../workflows/agent-workflow';
+import { validateDynamicPlan } from '../workflows/dynamic-plan';
+import { TOOL_CONTRACTS } from '../workflows/tool-contracts';
+
+/** Validate untrusted Gemini output before a workflow sees any proposed tool. */
+export function validateGeminiPlannerProposal(
+    raw: unknown,
+    allowedTools: readonly { name: DynamicToolName; purpose: string }[]
+): DynamicToolPlan {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        throw new Error('INVALID_DYNAMIC_PLAN');
+    }
+    const data = raw as Record<string, unknown>;
+    if (Object.keys(data).length === 1 && data.error === 'INSUFFICIENT_CONTEXT') {
+        throw new Error('INSUFFICIENT_CONTEXT');
+    }
+    try {
+        const proposal = data as DynamicToolPlan;
+        validateDynamicPlan(proposal);
+        if (proposal.steps.some(step =>
+            !allowedTools.some(tool => tool.name === step.tool) ||
+            !Object.prototype.hasOwnProperty.call(TOOL_CONTRACTS, step.tool) ||
+            !['READ', 'CALCULATION'].includes(TOOL_CONTRACTS[step.tool].category))) {
+            throw new Error('INVALID_DYNAMIC_PLAN');
+        }
+        return proposal;
+    } catch {
+        throw new Error('INVALID_DYNAMIC_PLAN');
+    }
+}
+
+/** Preserve a useful provider failure class without exposing raw SDK errors or keys. */
+export function classifyGeminiPlannerFailure(error: unknown): string {
+    const data = error && typeof error === 'object' ? error as { status?: unknown; statusCode?: unknown } : {};
+    const status = typeof data.status === 'number' ? data.status : data.statusCode;
+    if (status === 401 || status === 403) return 'LLM_AUTH_FAILED';
+    if (status === 429) return 'LLM_RATE_LIMITED';
+    if (status === 404) return 'LLM_MODEL_NOT_FOUND';
+    if (typeof status === 'number' && status >= 500 && status <= 599) return 'LLM_SERVICE_UNAVAILABLE';
+    return 'GEMINI_PLANNING_FAILED';
+}
 
 
 export type GeminiRecommendation = {
@@ -136,7 +176,8 @@ export const geminiService = {
         tools: {
             name: DynamicToolName;
             purpose: string;
-        }[]
+        }[],
+        llmConfig?: { key: string; model: string }
     ): Promise<DynamicToolPlan> {
         if (
             !prompt.trim() ||
@@ -147,7 +188,7 @@ export const geminiService = {
         }
 
         const apiKey =
-            env.GEMINI_API_KEY ||
+            llmConfig?.key || env.GEMINI_API_KEY ||
             process.env.GEMINI_API_KEY1 ||
             process.env.GEMINI_API_KEY2 ||
             process.env.GEMINI_API_KEY3;
@@ -156,7 +197,7 @@ export const geminiService = {
             throw new Error('GEMINI_NOT_CONFIGURED');
         }
 
-        const modelName = env.GEMINI_MODEL || 'gemini-1.5-flash';
+        const modelName = llmConfig?.model || env.GEMINI_MODEL || 'gemini-1.5-flash';
 
         const systemPrompt = `
     You are a planning assistant for cafe inventory management.
@@ -210,8 +251,8 @@ export const geminiService = {
 
             responseText = result.response.text();
 
-        } catch {
-            throw new Error('GEMINI_PLANNING_FAILED');
+        } catch (error) {
+            throw new Error(classifyGeminiPlannerFailure(error));
         }
 
         try {
@@ -223,28 +264,7 @@ export const geminiService = {
                 this.cleanJsonText(responseText)
             );
 
-            if (
-                !parsed ||
-                typeof parsed !== 'object' ||
-                Array.isArray(parsed)
-            ) {
-                throw new Error('INVALID_DYNAMIC_PLAN');
-            }
-
-            const data = parsed as Record<string, unknown>;
-
-            if (data.error === 'INSUFFICIENT_CONTEXT') {
-                throw new Error('INSUFFICIENT_CONTEXT');
-            }
-
-            if (
-                typeof data.goal !== 'string' ||
-                !Array.isArray(data.steps)
-            ) {
-                throw new Error('INVALID_DYNAMIC_PLAN');
-            }
-
-            return data as DynamicToolPlan;
+            return validateGeminiPlannerProposal(parsed, tools);
 
         } catch (error) {
             if (

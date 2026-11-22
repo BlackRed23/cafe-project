@@ -28,6 +28,11 @@ import type { InventoryRow, StockRecommendation } from './replenishment';
 import { analyzeInventoryPerception } from './inventory-perception';
 import { perceptionHoldReason } from './perception-hold-reason';
 import { verifiedIsolatedActFault } from '../services/execution/act-isolated-fault';
+import { createSessionD4LiveAuthority } from './integration/session-d4-live-authority';
+import { readPendingStocktakeScenarioSource } from './integration/stocktake-scenario-live-source';
+import { readD4LivePlanningEvidence } from './integration/d4-live-planning-evidence';
+import { createVerifiedGraphD4Proposal, executeVerifiedGraphD4Proposal } from './agent-graph-purchasing';
+import type { D4Context } from './integration/d4-purchasing-intelligence';
 
 export type ReadOnlyGraphScope = {
     scope?: 'ALL' | 'PRODUCT' | 'INGREDIENT';
@@ -144,7 +149,7 @@ const cleanError = (error: unknown) => {
 
 export async function runLiveReadOnlyGraph(
     scope: ReadOnlyGraphScope, actorId: string, scanSessionId: string,
-    joint?: JointReadOnlyReview
+    joint?: JointReadOnlyReview, resumePurchase = false
 ) {
     await requireAgentUser(actorId, ['ADMIN']);
     const ZERO = new Prisma.Decimal(0);
@@ -169,6 +174,33 @@ export async function runLiveReadOnlyGraph(
         return rows.sort((a, b) => a.id.localeCompare(b.id));
     };
     const durableReadOnly = process.env.AGENT_GRAPH_PG_READONLY === 'YES';
+    const d4PurchasingIntelligence = process.env.AGENT_D4_PURCHASING_INTELLIGENCE === 'YES';
+    const purchaseFlow = process.env.AGENT_GRAPH_PURCHASING === 'YES';
+    if (resumePurchase && !purchaseFlow) throw new Error('GRAPH_PURCHASING_DISABLED');
+    if (purchaseFlow && (!durableReadOnly || !d4PurchasingIntelligence ||
+        process.env.AGENT_GRAPH_READONLY !== 'YES' ||
+        process.env.AGENT_GRAPH_BACKEND_RISK !== 'YES' || joint)) {
+        throw new Error('GRAPH_PURCHASING_DISABLED');
+    }
+    const liveLlmReadPlanner = process.env.AGENT_GRAPH_LLM_READ_PLANNER === 'YES';
+    if (liveLlmReadPlanner && (!durableReadOnly || !d4PurchasingIntelligence ||
+        process.env.AGENT_GRAPH_READONLY !== 'YES')) {
+        throw new Error('LLM_GRAPH_READ_MODE_DISABLED');
+    }
+    if (d4PurchasingIntelligence && (!durableReadOnly ||
+        process.env.AGENT_GRAPH_READONLY !== 'YES' ||
+        process.env.AGENT_GRAPH_BACKEND_RISK !== 'YES')) {
+        throw new Error('D4_READ_ONLY_INTELLIGENCE_DISABLED');
+    }
+    // D4 source attestation is a separate explicit opt-in. Never silently
+    // substitute fixture or ephemeral repository authority for real PostgreSQL.
+    const d4SourceEnabled = process.env.AGENT_SESSION_D4_LIVE_AUTHORITY === 'YES';
+    if (d4SourceEnabled && (!durableReadOnly ||
+        process.env.AGENT_GRAPH_READONLY !== 'YES' ||
+        process.env.AGENT_ACT_READ_EXECUTION !== 'YES' ||
+        process.env.AGENT_SESSION_D_INTEGRATION !== 'YES')) {
+        throw new Error('D4_READ_ONLY_AUTHORITY_DISABLED');
+    }
     if (joint && (!durableReadOnly || process.env.AGENT_GRAPH_READONLY !== 'YES' ||
         process.env.AGENT_GRAPH_BACKEND_RISK !== 'YES' ||
         process.env.AGENT_GRAPH_AI18_REVIEW !== 'YES' ||
@@ -180,7 +212,13 @@ export async function runLiveReadOnlyGraph(
     if (durableReadOnly && ingredientIds.length > 4) throw new Error('INVALID_INVENTORY_SCOPE');
     const port: BusinessPort = {
         authorize: (actor, permission) => {
-            if (!['agent.run', 'inventory.read'].includes(permission)) throw new Error('FORBIDDEN');
+            // D4 SELECTOR authorization must agree with the real Registry's
+            // strictly read-only permissions. This grants no purchase WRITE or
+            // approval capability and is unavailable in legacy graph mode.
+            if (!['agent.run', 'inventory.read', 'supplier.read'].includes(permission) &&
+                !(d4PurchasingIntelligence && ['purchase.plan', 'purchase.read'].includes(permission))) {
+                throw new Error('FORBIDDEN');
+            }
             return requireAgentUser(actor, ['ADMIN']);
         },
         inventory: async actor => {
@@ -282,10 +320,21 @@ export async function runLiveReadOnlyGraph(
             } finally { finish?.(); }
         }
     };
-    const readOnlyPlan: LLMProvider = { plan: async () => [
-        { tool: 'inventory.read', input: null },
-        { tool: 'inventory.recommend', input: null }
-    ] };
+    const readOnlyPlan: LLMProvider = {
+        plan: async () => [
+            { tool: 'inventory.read', input: null },
+            { tool: 'inventory.recommend', input: null }
+        ],
+        ...(liveLlmReadPlanner ? {
+            planDynamic: async (prompt: string,
+                tools: { name: import('./dynamic-plan').DynamicToolName; purpose: string }[],
+                context: { toolChoicePolicy: import('./dynamic-plan').ToolChoicePolicy }) => {
+                const { generateConfiguredLlmPlan } = await import('../services/llm-planner.service');
+                return generateConfiguredLlmPlan(prompt, tools, process.env,
+                    context.toolChoicePolicy);
+            }
+        } : {})
+    };
     // Separate opt-in only: actual Postgres checkpoint on the existing
     // read-only graph. The default AGENT_GRAPH_READONLY mode stays unchanged.
     if (durableReadOnly) port.toolRegistry = createLiveBackendReadRegistry(ingredientIds);
@@ -294,7 +343,11 @@ export async function runLiveReadOnlyGraph(
     if (durableReadOnly && process.env.AGENT_GRAPH_BACKEND_RISK === 'YES') {
         port.demandRisk = readBackendPerceptionRisk;
     }
-    if (joint) port.inspectProposal = inspectBackendProposalRevision;
+    if (joint || purchaseFlow) port.inspectProposal = inspectBackendProposalRevision;
+    if (purchaseFlow) {
+        port.createD4Proposal = createVerifiedGraphD4Proposal;
+        port.executeD4ApprovedProposal = executeVerifiedGraphD4Proposal;
+    }
     // Optional namespaced checkpoint for isolated acceptance runs. Namespace
     // validation also lives in the repository and prevents arbitrary DB keys.
     const checkpointKey = process.env.AGENT_GRAPH_PG_CHECKPOINT_KEY || 'agent.workflow.checkpoint.v1';
@@ -306,7 +359,54 @@ export async function runLiveReadOnlyGraph(
         state.permissions[actorId] = ['agent.run', 'inventory.read'];
     });
     const workflow = new AgentWorkflow(readStore, port, readOnlyPlan,
-        ['inventory.read', 'inventory.recommend'], () => new Date(), durableReadOnly);
+        ['inventory.read', 'inventory.recommend'], () => new Date(), durableReadOnly,
+        d4SourceEnabled ? createSessionD4LiveAuthority(readStore) : undefined,
+        durableReadOnly && process.env.AGENT_GRAPH_STOCKTAKE_SCENARIOS === 'YES'
+            ? readPendingStocktakeScenarioSource : undefined,
+        d4PurchasingIntelligence ? async (actor: string, p: import('./inventory-perception').PerceptionContext):
+            Promise<D4Context> => {
+            const live = await readD4LivePlanningEvidence(actor, p, purchaseFlow);
+            const preferred = [...live.supplierTerms].sort((a, b) =>
+                Number(b.isPreferred) - Number(a.isPreferred) ||
+                Number(a.pricePerBaseUnit) - Number(b.pricePerBaseUnit) ||
+                a.leadTimeDays - b.leadTimeDays || a.supplierId.localeCompare(b.supplierId))[0];
+            const stocktake = live.pendingStocktakes
+                ? await readPendingStocktakeScenarioSource(actor, p) : null;
+            const verifiedAt = new Date().toISOString();
+            // Neither an ingredient threshold nor an LLM forecast is an
+            // independently approved safety-stock setting. Missing facts are
+            // explicitly zero-valued placeholders ONLY in a HOLD context.
+            // No trusted provenance is emitted unless BOTH inputs are verified.
+            const trust = Boolean(live.demandDailyBase !== undefined &&
+                live.safetyStockBase !== undefined && live.reorderPolicy &&
+                (live.demandMovements ?? 0) > 0);
+            return {
+                actorId: actor, perception: { ...p, pendingStocktakes: live.pendingStocktakes },
+                demandDailyBase: live.demandDailyBase ?? '0',
+                leadTimeDays: preferred?.leadTimeDays ?? 0,
+                safetyStockBase: live.safetyStockBase ?? '0',
+                stocktake, incomingBase: live.incomingBase ?? '0',
+                activePurchaseRequests: live.activePurchaseRequests ?? 0,
+                ...(live.purchaseOrderIds?.length ?
+                    { purchaseOrderIds: live.purchaseOrderIds } : {}),
+                supplierShelfLifeDays: live.shelfLifeDays,
+                ...(live.supplierAvailability ? {
+                    supplierAvailability: live.supplierAvailability
+                } : {}),
+                ...(live.reorderPolicy ? { reorderPolicy: live.reorderPolicy } : {}),
+                supplierSnapshotDigest: live.supplierCatalogDigest ??
+                    createHash('sha256').update(JSON.stringify(live.supplierTerms)).digest('hex'),
+                ...(trust ? { provenance: {
+                    source: 'GRAPH_AUTHENTICATED_BACKEND' as const, verifiedAt,
+                    rowVersion: live.rowVersion, movementCursor: live.movementCursor,
+                    demandBasis: 'OBSERVED_ORDER_CONSUME' as const,
+                    demandRecords: live.demandMovements!,
+                    policyRef: 'reorder-' + createHash('sha256').update(JSON.stringify(
+                        live.reorderPolicy)).digest('hex').slice(0, 40)
+                } } : {}),
+                now: verifiedAt
+            };
+        } : undefined);
     // UUIDv5-shaped deterministic request identity scoped to the authenticated
     // actor and server scan session. Same session can safely replay after crash.
     const identityHash = createHash('sha256').update(JSON.stringify([actorId, scanSessionId])).digest('hex');
@@ -318,6 +418,24 @@ export async function runLiveReadOnlyGraph(
     ].join('-') : randomUUID();
     const graphId = createHash('sha256').update(JSON.stringify([actorId, requestId])).digest('hex');
     const existing = durableReadOnly ? await readStore.atomic(s => s.graphRuns?.[graphId]) : undefined;
+    // Backend may COMMIT deterministic proposal `graph-<graphId>` and the OS
+    // process can die BEFORE the Graph stores proposalReference. Such a run has
+    // durable pre-WRITE evidence but no reference yet. Replaying its original
+    // PLAN (after the lease expires) safely reuses the same Backend proposal ID
+    // and revalidates all inventory/policy inputs. Do not allow any unknown
+    // session, terminal HOLD, or unverified draft to mint a purchase via RESUME.
+    const lostProposalAck = Boolean(purchaseFlow && existing &&
+        existing.actorId === actorId && existing.requestId === requestId &&
+        existing.status === 'RUNNING' && !existing.purchaseProposal &&
+        existing.trace.some(event => event.node === 'd4_recommendation' &&
+            event.status === 'VERIFIED_DRAFT_CANDIDATE'));
+    // A RESUME endpoint must never become a way to mint a fresh purchase
+    // proposal by submitting a forged or unknown scan session identifier.
+    if (resumePurchase && (!existing ||
+        (!existing.purchaseProposal && !lostProposalAck) ||
+        existing.actorId !== actorId || existing.requestId !== requestId)) {
+        throw new Error('GRAPH_PURCHASING_RESUME_NOT_FOUND');
+    }
     const beforeEvidence = await lookup();
     const fingerprint = (rows: Awaited<ReturnType<typeof lookup>>) =>
         createHash('sha256').update(JSON.stringify(rows.map(row => [
@@ -339,9 +457,13 @@ export async function runLiveReadOnlyGraph(
     const result = await workflow.runLangGraph({
         requestId, actorId, prompt: 'Live inventory read-only analysis, scope=' +
             createHash('sha256').update(JSON.stringify(ingredientIds)).digest('hex'),
-        budget: 2, mode: joint?.mode ?? (existing?.executionId ? 'RESUME' : 'PLAN'),
+        budget: 2, mode: joint?.mode ??
+            (lostProposalAck ? 'PLAN' :
+                ((existing?.executionId || (d4PurchasingIntelligence && existing)) ? 'RESUME' : 'PLAN')),
+        ...(d4PurchasingIntelligence ? { d4Intelligence: true as const } : {}),
+        ...(purchaseFlow ? { purchaseFlow: true as const } : {}),
         ...(joint ? { jointReview: true as const, proposalReview: joint.reference } : {}),
-        ...(durableReadOnly ? { readTools: ingredientIds.flatMap(id => [
+        ...(durableReadOnly && !d4PurchasingIntelligence ? { readTools: ingredientIds.flatMap(id => [
             { name: 'getIngredientAvailability', input: { ingredientId: id }, version: '1.0.0' },
             { name: 'getIngredientBatches', input: { ingredientId: id }, version: '1.0.0' }
         ]) } : {})
@@ -406,6 +528,12 @@ export async function runLiveReadOnlyGraph(
         trace: durableRun?.trace ?? result.trace, classifications: [...new Set([...result.classifications,
             ...lotEvidence.filter(e => e.risk !== 'NONE').map(e => e.risk)])],
         ...(result.perception?.length ? { perception: result.perception } : {}),
+        ...(result.scenarioAnalysis ? { scenarioAnalysis: result.scenarioAnalysis } : {}),
+        ...(result.d4Plan ? { d4Plan: result.d4Plan } : {}),
+        ...(result.d4Recommendation ? { d4Recommendation: result.d4Recommendation } : {}),
+        ...(result.proposalReference ? { proposalReference: result.proposalReference } : {}),
+        ...(result.purchaseRequestId ? { purchaseRequestId: result.purchaseRequestId } : {}),
+        ...(result.d4ThresholdScenario ? { d4ThresholdScenario: result.d4ThresholdScenario } : {}),
         ...(joint ? { approvalBoundary: durableRun?.approvalBoundary ?? null } : {}),
         lotEvidence,
         toolEvidence: Object.values(executionTrace.toolCalls).filter(c => c.executionId === result.execution?.id).map(c => ({
@@ -416,17 +544,26 @@ export async function runLiveReadOnlyGraph(
             passed: e.passed, code: e.code
         })),
         registeredBackendReads: durableRun?.trace.filter(e =>
-            e.node === 'tool_registry' && e.status === 'BACKEND_READ_VALIDATED').length ?? 0,
-        count: ingredientIds.length, ingredientIds, readOnly: true,
+            ((e.node === 'tool_registry' || e.node === 'stocktake_scenario_tool_registry') &&
+                e.status === 'BACKEND_READ_VALIDATED') ||
+            (e.node === 'd4_registry_execution' && e.status === 'REGISTERED_READ_VERIFIED')).length ?? 0,
+        count: ingredientIds.length, ingredientIds, readOnly: !purchaseFlow,
         replayCached: Boolean(durableReadOnly && existing?.status === 'SUCCEEDED'),
-        checkpointDurable: Boolean(durableRun), auditDurable: true, approvalOrPurchaseAttempted: false,
+        checkpointDurable: Boolean(durableRun), auditDurable: true,
+        approvalOrPurchaseAttempted: Boolean(result.purchaseRequestId),
         scanSessionId
     };
     const log = await agentRepository.createLog({
-        action: result.status === 'SUCCEEDED' ? 'AGENT_LANGGRAPH_READONLY' : 'AGENT_LANGGRAPH_READONLY_HELD',
-        input: JSON.stringify({ scanSessionId, ingredientIds, readOnly: true }),
+        action: purchaseFlow
+            ? (result.status === 'SUCCEEDED' ? 'AGENT_LANGGRAPH_PURCHASING' :
+                'AGENT_LANGGRAPH_PURCHASING_PENDING_OR_HELD')
+            : (result.status === 'SUCCEEDED' ? 'AGENT_LANGGRAPH_READONLY' :
+                'AGENT_LANGGRAPH_READONLY_HELD'),
+        input: JSON.stringify({ scanSessionId, ingredientIds,
+            readOnly: !purchaseFlow, purchasingApprovalExternal: purchaseFlow }),
         output: JSON.stringify(audit),
-        reasoning: durableReadOnly ?
+        reasoning: purchaseFlow ?
+            'Actual production LangGraph purchasing workflow; any proposal/PR is independently Backend-authorized, with external ADMIN approval, versioned source, durable checkpoint and AgentLog.' : durableReadOnly ?
             'Actual LangGraph READ analysis with PostgreSQL checkpoint and independent AgentLog audit; no purchasing authority.' :
             'Actual LangGraph READ analysis with current Prisma; AgentLog audit only, no graph checkpoint.',
         result: result.status === 'SUCCEEDED' ? 'SUCCESS' : 'SKIPPED',

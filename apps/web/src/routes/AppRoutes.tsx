@@ -40,6 +40,7 @@ import { AdminPurchaseRequestsPage } from "../pages/admin/AdminPurchaseRequestsP
 import { AdminPurchaseRequestDetailPage } from "../pages/admin/AdminPurchaseRequestDetailPage";
 import { AdminPurchasingWorkspace } from "../pages/admin/AdminPurchasingWorkspace";
 import { AdminAgentLogsPage } from "../pages/admin/AdminAgentLogsPage";
+import { AdminAgentWorkspacePage } from "../pages/admin/AdminAgentWorkspacePage";
 import { AdminUsersPage } from "../pages/admin/AdminUsersPage";
 import { AdminNotificationsPage } from "../pages/admin/AdminNotificationsPage";
 import { AdminCategoriesPage } from "../pages/admin/AdminCategoriesPage";
@@ -155,6 +156,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="purchase-requests/:id" element={<AdminPurchaseRequestDetailPage />} />
           <Route path="purchasing" element={<AdminPurchasingWorkspace />} />
           <Route path="agent-logs" element={<AdminAgentLogsPage />} />
+          <Route path="agent" element={<AdminAgentWorkspacePage />} />
           <Route path="users" element={<AdminOnlyRoute><AdminUsersPage /></AdminOnlyRoute>} />
           <Route path="change-password" element={<ChangePasswordPage />} />
           <Route path="system-settings" element={<AdminOnlyRoute><AdminSystemSettingsPage /></AdminOnlyRoute>} />

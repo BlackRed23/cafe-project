@@ -5,6 +5,7 @@ import { asyncHandler } from '../../common/async-handler';
 import { HttpError } from '../../common/http-error';
 import { sendSuccess } from '../../common/response';
 import { authenticate, requireRole, type AuthenticatedRequest } from '../auth/auth.middleware';
+import { recordBackendDenial } from '../auth/security-denial-audit';
 
 /**
  * Frontend-safe projection of legacy AgentExecution records.
@@ -133,6 +134,7 @@ export function createAgentFrontendSummaryRouter(
         // Return the same 404 for missing and foreign run IDs to prevent enumeration.
         const actor = (req as AuthenticatedRequest).user;
         if (!execution || !actor?.id || execution.triggeredBy !== actor.id) {
+            await recordBackendDenial(req, 'RESOURCE_SCOPE_DENIED', actor?.id);
             throw new HttpError(404, 'AGENT_EXECUTION_NOT_FOUND', 'AGENT_EXECUTION_NOT_FOUND');
         }
         sendSuccess(res, 200, 'Đã lấy trạng thái thực thi Agent (chỉ đọc).',

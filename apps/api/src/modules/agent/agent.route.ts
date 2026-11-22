@@ -19,6 +19,7 @@ import { HttpError } from '../../common/http-error';
 import { prisma } from '@cafe-project/database';
 import { z } from 'zod';
 import { createAgentFrontendSummaryRouter } from './agent-frontend-summary.route';
+import { readIngredientSupplierEligibility } from '../supplier/supplier-eligibility.read';
 
 const router = Router();
 router.use(createAgentFrontendSummaryRouter());
@@ -50,6 +51,21 @@ router.get('/internal/demand-risk/:ingredientId', requireProposalService, asyncH
     sendSuccess(res, 200, 'Authorized service read-only demand evidence.',
         await readIngredientDemandRisk(req.params.ingredientId));
 }));
+
+// Independent service-to-Backend supplier catalog READ: the service token never
+// establishes ADMIN authority. Verify the current database principal each time.
+// The returned UNKNOWN supplier capacity must NEVER be promoted to CONFIRMED.
+router.get('/internal/ingredients/:ingredientId/supplier-eligibility', requireProposalService,
+    asyncHandler(async (req, res) => {
+        const parsed = z.strictObject({ actorId: z.string().trim().min(1).max(120) }).safeParse(req.query);
+        if (!parsed.success) throw new HttpError(400, 'INVALID_AGENT_READ_PRINCIPAL');
+        const actor = await prisma.user.findUnique({
+            where: { id: parsed.data.actorId }, select: { role: true, isActive: true }
+        });
+        if (!actor?.isActive || actor.role !== 'ADMIN') throw new HttpError(403, 'AGENT_READ_FORBIDDEN');
+        sendSuccess(res, 200, 'Current Backend supplier catalog; no availability attestation.',
+            await readIngredientSupplierEligibility(req.params.ingredientId));
+    }));
 
 // AI18/19: Bridge the persisted Backend decision into a resumed, read-only
 // Agent graph. The service token is never proof of ADMIN approval: an ACTIVE

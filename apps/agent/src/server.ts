@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import { requireInternalSecret, validInternalToken, requireAgentUser } from './internal-auth';
 import { agentService } from './services/agent.service';
 import { executeApprovedPurchaseProposal } from './services/purchase-proposal.client';
+import { recordAgentInternalDenial } from './services/security/agent-denial-audit';
+import { z } from 'zod';
 
 dotenv.config();
 
@@ -44,9 +46,10 @@ const readJsonBody = async (req: IncomingMessage): Promise<any> =>
 
 const getQuery = (url: URL) => Object.fromEntries(url.searchParams.entries());
 
-const requireInternalToken = (req: IncomingMessage, res: ServerResponse): boolean => {
+const requireInternalToken = async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const token = req.headers['x-agent-internal-token'];
     if (!validInternalToken(token)) {
+        await recordAgentInternalDenial('INVALID_INTERNAL_TOKEN', req.method);
         sendJson(res, 401, { message: 'Unauthorized' });
         return false;
     }
@@ -66,12 +69,18 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse) =
             return sendJson(res, 404, { message: 'Not found' });
         }
 
-        if (!requireInternalToken(req, res)) return;
+        if (!await requireInternalToken(req, res)) return;
         // Only the authenticated backend may assert identity; JSON is never an identity source.
         const systemLog = method === 'POST' && url.pathname === '/internal/agent/logs'
             && req.headers['x-agent-principal'] === 'system';
-        const userId = systemLog ? undefined : await requireAgentUser(req.headers['x-agent-user-id'],
-            method === 'GET' && url.pathname === '/internal/agent/logs' ? ['ADMIN', 'STAFF'] : ['ADMIN']);
+        let userId: string | undefined;
+        try {
+            userId = systemLog ? undefined : await requireAgentUser(req.headers['x-agent-user-id'],
+                method === 'GET' && url.pathname === '/internal/agent/logs' ? ['ADMIN', 'STAFF'] : ['ADMIN']);
+        } catch (error) {
+            await recordAgentInternalDenial('INTERNAL_PRINCIPAL_FORBIDDEN', method);
+            throw error;
+        }
 
         if (method === 'POST' && url.pathname === '/internal/agent/scan-inventory') {
             const body = await readJsonBody(req);
@@ -84,6 +93,23 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse) =
             // NOT from the supplied JSON or a forged ADMIN JWT.
             const { runLiveReadOnlyProposalReview } = await import('./workflows/agent-live-readonly');
             const data = await runLiveReadOnlyProposalReview(body.input, userId!);
+            return sendJson(res, 200, { data });
+        }
+        if (method === 'POST' && url.pathname === '/internal/agent/graph-purchasing-resume') {
+            const raw = await readJsonBody(req);
+            const parsed = z.strictObject({
+                scanSessionId: z.string().min(8).max(200),
+                ingredientIds: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9:_-]{0,119}$/))
+                    .min(1).max(4)
+            }).safeParse(raw);
+            if (!parsed.success || new Set(parsed.data.ingredientIds).size !== parsed.data.ingredientIds.length ||
+                process.env.AGENT_GRAPH_PURCHASING !== 'YES') {
+                return sendJson(res, 403, { message: 'Graph purchasing resume denied.' });
+            }
+            const { runLiveReadOnlyGraph } = await import('./workflows/agent-live-readonly');
+            const data = await runLiveReadOnlyGraph({ scope: 'INGREDIENT',
+                ingredientIds: parsed.data.ingredientIds }, userId!, parsed.data.scanSessionId,
+                undefined, true);
             return sendJson(res, 200, { data });
         }
         if (method === 'POST' && url.pathname === '/internal/agent/graph-proposal-risk-review') {
@@ -133,6 +159,13 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse) =
 
         return sendJson(res, 404, { message: 'Not found' });
     } catch (error) {
+        // A second authenticated RESUME against the same durable Graph lease
+        // is an ordinary concurrency conflict, not an internal HTTP 500.
+        // The first invocation may finish normally; never retry a purchasing
+        // WRITE here or expose internal checkpoint/credential details.
+        if (error instanceof Error && error.message === 'GRAPH_RESUME_IN_PROGRESS') {
+            return sendJson(res, 409, { message: 'Graph resume already in progress.' });
+        }
         const statusCode = typeof (error as any)?.statusCode === 'number' ? (error as any).statusCode : 500;
         const message = statusCode === 403 ? 'Forbidden' : 'Agent service error.';
         return sendJson(res, statusCode, { message });

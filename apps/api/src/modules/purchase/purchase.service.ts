@@ -13,6 +13,8 @@ const serializeAgentLogField = (value: unknown): string | null => {
 };
 
 import { ACTIVE_PURCHASE_REQUEST_MESSAGE, purchaseRepository, type PurchaseRequestRecord } from './purchase.repository';
+import { AI_LN_DUPLICATE_NEED, AI_LN_STALE_SOURCE,
+    automaticNeedIdentity } from './purchase-need.guard';
 import type { CreatePurchaseRequestInput, MarkPurchaseRequestPaidInput, PurchaseRequestFiltersInput, ReceivePurchaseRequestInput, RejectPurchaseRequestInput } from './purchase.validator';
 import { scanInventoryViaAgentService } from '../agent/agent.client';
 import { getOptionalSettingValue } from '../system-setting/system-setting.service';
@@ -348,6 +350,29 @@ export const purchaseService = {
         try {
             return await toDto(await purchaseRepository.create(input, userId, requestNumber()));
         } catch (error) {
+            // The rejected INSERT transaction rolls back. Persist its result
+            // separately so the losing Agent run is auditable as a *denial*,
+            // not accidentally shown as another successful PurchaseRequest.
+            if (error instanceof HttpError &&
+                (error.code === AI_LN_DUPLICATE_NEED || error.code === AI_LN_STALE_SOURCE)) {
+                await prisma.agentLog.create({ data: {
+                    action: 'AI_LN_AUTOMATIC_SHORTAGE_PR_HELD',
+                    result: 'SKIPPED', fallback_used: false, createdBy: userId,
+                    reference_type: 'VerifiedAutomaticPurchasingNeed',
+                    reference_id: automaticNeedIdentity(
+                        input.items.find(item => item.ingredientId)?.ingredientId ?? 'UNVERIFIED'
+                    ),
+                    input: serializeAgentLogField({
+                        sourceKeySha256: input.demandSourceKey
+                            ? createHash('sha256').update(input.demandSourceKey).digest('hex') : null,
+                        actorId: userId, ingredientIds: input.items.map(item => item.ingredientId)
+                    }),
+                    output: serializeAgentLogField({ code: error.code,
+                        nextAction: 'BACKEND_REVALIDATION_OR_ADMIN_REVIEW',
+                        purchaseRequestCreated: false }),
+                    reasoning: 'Verified current Backend shortage identity under PostgreSQL ingredient lock; duplicate or stale source held.'
+                } });
+            }
             if (error instanceof HttpError) throw error;
             throw new HttpError(400, error instanceof Error ? error.message : 'Unable to create purchase request.');
         }

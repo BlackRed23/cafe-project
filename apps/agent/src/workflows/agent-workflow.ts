@@ -6,6 +6,16 @@ import type { UnifiedToolRegistry } from './tool-registry';
 import { selectToolForTask } from '../services/tool-selection/tool-selection.service';
 import { TOOL_SELECTION_VERSION, type ToolSelectionInput } from '../services/tool-selection/tool-selection.schema';
 import { executeActReadStep } from '../services/execution/act-read-step';
+import { executeAndObserveActRead } from '../services/observation/act-observation-handoff';
+import { digestObservation } from '../services/anomaly/observation-handoff';
+import { handoffDurableObservationToAnomaly,
+    handoffDurableAnomalyToReplanning,
+    type DurableObsAnmPorts, type DurableAnmRepPorts,
+    type DurableAnomalyRecord, type DurableObservationRecord
+} from './integration/session-d-anm-rep-handoff';
+import type { HandoffScope } from '../services/anomaly/observation-handoff';
+import type { ReplanLedger } from '../services/replanning/replanning.service';
+import type { ObservationLedger } from '../services/observation/observation';
 export * from './tool-contracts';
 export * from './tool-registry';
 export * from './tool-policies';
@@ -252,6 +262,14 @@ const jointReadIdentityPlan = (): Plan => [
     { tool: 'inventory.read', input: null },
     { tool: 'inventory.recommend', input: null }
 ];
+/** Private, serializable Session D journal in the EXISTING Graph repository. */
+type SessionDStoredRun = NonNullable<AgentState['graphRuns']>[string] & {
+    sessionDObservations?: Record<string, DurableObservationRecord>;
+    sessionDAnomalies?: Record<string, DurableAnomalyRecord>;
+    sessionDReplanLedger?: ReplanLedger;
+    sessionDReplans?: Record<string, { eventFingerprint: string; status: string; auditTraceId: string }>;
+    sessionDUsedReplans?: number;
+};
 function validJointReadIdentity(execution: Execution | undefined, actorId: string): execution is Execution {
     const fixed = jointReadIdentityPlan();
     return Boolean(execution && execution.actorId === actorId &&
@@ -266,9 +284,28 @@ function validJointReadIdentity(execution: Execution | undefined, actorId: strin
 /** Planner/Executor/Verifier; purchasing and stock rules belong exclusively to BusinessPort. */
 export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
     private readonly allowlist: readonly ToolName[];
-    constructor(private readonly repository: AgentRepository | null, private readonly readBusiness: Pick<BusinessPort, 'authorize' | 'toolRegistry'> & Partial<BusinessPort>, private readonly llm: LLMProvider, allowlist: readonly ToolName[] = allowed, private readonly clock = () => new Date(), private readonly readOnlyGraphExecution = false) {
+    /** D-only verified Backend source ports. Absence is HOLD, not inferred authority. */
+    constructor(private readonly repository: AgentRepository | null, private readonly readBusiness: Pick<BusinessPort, 'authorize' | 'toolRegistry'> & Partial<BusinessPort>, private readonly llm: LLMProvider, allowlist: readonly ToolName[] = allowed, private readonly clock = () => new Date(), private readonly readOnlyGraphExecution = false,
+        private readonly sessionDSource?: Pick<DurableObsAnmPorts, 'loadPersistedSource' | 'anomalyAuthority'> &
+            Pick<DurableAnmRepPorts, 'loadPersistedReplanInput' | 'replanAuthority'> &
+            { verifyFixedReadIdentity?: (scope: HandoffScope) => Promise<{
+                status: 'REP_NOT_APPLICABLE'; reason: 'FIXED_READ_IDENTITY_NO_VERIFIED_PLN';
+                graphId: string; actorId: string; executionId: string; sourceAttested: true;
+            }> },
+        private readonly stocktakeScenarioSource?: (actorId: string,
+            context: import('./inventory-perception').PerceptionContext) =>
+            Promise<import('./integration/stocktake-scenario-continuation').StocktakeScenarioSource>,
+        private readonly d4ContextSource?: (actorId: string,
+            context: import('./inventory-perception').PerceptionContext) =>
+            Promise<import('./integration/d4-purchasing-intelligence').D4Context>) {
         if (readOnlyGraphExecution && allowlist.some(tool => tool !== 'inventory.read' && tool !== 'inventory.recommend')) {
             throw new Error('INVALID_READ_ONLY_ALLOWLIST');
+        }
+        if (stocktakeScenarioSource && !readOnlyGraphExecution) {
+            throw new Error('INVALID_READ_ONLY_SCENARIO_ADAPTER');
+        }
+        if (d4ContextSource && !readOnlyGraphExecution) {
+            throw new Error('INVALID_READ_ONLY_D4_ADAPTER');
         }
         this.allowlist = Object.freeze([...allowlist]);
     }
@@ -299,12 +336,28 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
                 version: z.number().int().positive().max(2147483647),
                 contentHash: z.string().regex(/^[a-f0-9]{64}$/)
             }).optional(),
-            jointReview: z.literal(true).optional()
+            jointReview: z.literal(true).optional(),
+            d4Intelligence: z.literal(true).optional(),
+            purchaseFlow: z.literal(true).optional()
         });
         const parsed = schema.safeParse(raw);
         if (!parsed.success) throw new Error('INVALID_GRAPH_REQUEST');
         const request = parsed.data as AgentGraphInput;
         if (!this.repository) throw new Error('POSTGRES_NOT_VERIFIED: Agent graph persistence adapter unavailable');
+        if (request.d4Intelligence && (!this.readOnlyGraphExecution ||
+            !this.d4ContextSource || !this.readBusiness.toolRegistry ||
+            !this.readBusiness.perceiveInventory || request.jointReview ||
+            request.proposalReview || request.replenishment || request.budget !== 2)) {
+            throw new Error('D4_READ_ONLY_INTELLIGENCE_DISABLED');
+        }
+        if (request.purchaseFlow && (!request.d4Intelligence ||
+            !this.readOnlyGraphExecution || !this.readBusiness.createD4Proposal ||
+            !this.readBusiness.executeD4ApprovedProposal ||
+            !this.readBusiness.inspectProposal || request.proposalReview ||
+            request.jointReview || process.env.AGENT_GRAPH_PURCHASING !== 'YES' ||
+            process.env.AGENT_GRAPH_PG_READONLY !== 'YES')) {
+            throw new Error('GRAPH_PURCHASING_DISABLED');
+        }
         if (request.jointReview && (!request.proposalReview || !this.readOnlyGraphExecution ||
             !this.readBusiness.inspectProposal || !this.readBusiness.demandRisk ||
             !this.readBusiness.toolRegistry || request.budget !== 2 ||
@@ -323,7 +376,9 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
             actorId: request.actorId, prompt: request.prompt, budget: request.budget,
             replenishment: request.replenishment ?? null, readTools: request.readTools ?? [],
             proposalReview: request.proposalReview ?? null,
-            ...(request.jointReview ? { jointReview: true } : {})
+            ...(request.jointReview ? { jointReview: true } : {}),
+            ...(request.d4Intelligence ? { d4Intelligence: true } : {}),
+            ...(request.purchaseFlow ? { purchaseFlow: true } : {})
         })).digest('hex');
         const invocationId = randomUUID();
         const leaseUntil = () => new Date(this.clock().getTime() + 60000).toISOString();
@@ -337,7 +392,8 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
             const existing = s.graphRuns[graphId];
             if (existing) {
                 if (existing.inputHash !== inputHash || existing.actorId !== request.actorId) throw new Error('INVALID_GRAPH_REPLAY');
-                if (request.mode === 'RESUME' && !existing.executionId && !request.proposalReview) {
+                if (request.mode === 'RESUME' && !existing.executionId &&
+                    !request.proposalReview && !request.d4Intelligence) {
                     throw new Error('INVALID_GRAPH_RESUME');
                 }
                 const active = existing.leaseOwner && Date.parse(existing.leaseUntil ?? '') > this.clock().getTime();
@@ -357,6 +413,8 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
                 existing.leaseUntil = leaseUntil();
                 if (request.mode === 'RESUME' && existing.status === 'HELD_POLICY') {
                     existing.actCycle = (existing.actCycle ?? 0) + 1;
+                    // A new authorized ACT cycle must not inherit previous OBS attempts.
+                    delete (existing as typeof existing & { observationLedger?: ObservationLedger }).observationLedger;
                 }
                 if (request.mode === 'RESUME' && request.proposalReview) {
                     // The prior decision remains in append-only trace, but is
@@ -381,14 +439,50 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
             if (!saved) throw new Error('INVALID_GRAPH_CHECKPOINT');
             await this.store.atomic(s => permit(s, request.actorId, 'agent.run'));
             const execution = saved.executionId ? await this.store.execution(saved.executionId) : undefined;
+            const storedScenario = ([...saved.trace] as import('./agent-langgraph').AgentGraphEvent[])
+                .reverse().find(e => e.scenarioAnalysis)?.scenarioAnalysis;
+            const storedD4Events = [...saved.trace] as import('./agent-langgraph').AgentGraphEvent[];
+            const storedD4Plan = storedD4Events.reverse().find(e => e.d4Plan)?.d4Plan;
+            const storedD4Recommendation = storedD4Events.find(e => e.d4Recommendation)?.d4Recommendation;
+            const storedD4Scenario = storedD4Events.find(e => e.d4ThresholdScenario)?.d4ThresholdScenario;
             return { graphId, requestId: saved.requestId, actorId: saved.actorId, status: saved.status,
                 source: 'LANGGRAPH_STATEGRAPH', trace: structuredClone(saved.trace),
                 classifications: [], toolResults: [], ...(execution ? { execution } : {}),
-                ...(saved.approvalBoundary ? { approvalBoundary: structuredClone(saved.approvalBoundary) } : {}) };
+                ...(storedScenario ? { scenarioAnalysis: structuredClone(storedScenario) } : {}),
+                ...(storedD4Plan ? { d4Plan: structuredClone(storedD4Plan) } : {}),
+                ...(storedD4Recommendation ? { d4Recommendation: structuredClone(storedD4Recommendation) } : {}),
+                ...(storedD4Scenario ? { d4ThresholdScenario: structuredClone(storedD4Scenario) } : {}),
+                ...(saved.approvalBoundary ? { approvalBoundary: structuredClone(saved.approvalBoundary) } : {}),
+                ...(saved.purchaseProposal ? { proposalReference: structuredClone(saved.purchaseProposal) } : {}),
+                ...(saved.purchaseRequestId ? { purchaseRequestId: saved.purchaseRequestId } : {}) };
         };
         // A duplicate PLAN cannot create a second execution, including when the
         // first attempt has not reached its final node. RESUME is a separate action.
         if (prior && !prior.claimed) return resultFromStored();
+        // Optional D2/D3 integration. Never enable by silently reinterpreting a
+        // schema-verified result as Backend-authoritative source proof.
+        const sessionDEnabled = this.readOnlyGraphExecution &&
+            process.env.AGENT_ACT_READ_EXECUTION === 'YES' &&
+            process.env.AGENT_SESSION_D_INTEGRATION === 'YES';
+        const checkSessionDScope = async (scope: HandoffScope): Promise<SessionDStoredRun> => {
+            if (scope.graphId !== graphId || scope.runId !== graphId ||
+                scope.actorId !== request.actorId || !/^act-[1-8]$/.test(scope.invocationId) ||
+                !request.readTools?.some((tool, index) =>
+                    `act-${index + 1}` === scope.invocationId && tool.name === scope.toolName)) {
+                throw new Error('INVALID_GRAPH_CHECKPOINT');
+            }
+            await this.business.authorize(scope.actorId, 'agent.run');
+            await this.business.authorize(scope.actorId, 'inventory.read');
+            return this.store.atomic(s => {
+                permit(s, scope.actorId, 'agent.run');
+                const run = s.graphRuns?.[graphId] as SessionDStoredRun | undefined;
+                if (!run || run.actorId !== scope.actorId ||
+                    run.inputHash !== inputHash || run.leaseOwner !== invocationId) {
+                    throw new Error('INVALID_GRAPH_CHECKPOINT');
+                }
+                return structuredClone(run);
+            });
+        };
         const graph = compileAgentLangGraph({
             now: () => this.clock().getTime(),
             authorize: (actor, permission) => this.business.authorize(actor, permission),
@@ -396,6 +490,63 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
             recommendations: (actor, inventory) => this.business.recommendInventory(actor, inventory) as Promise<import('./replenishment').StockRecommendation[]>,
             ...(this.business.perceiveInventory ? { perceive: (actor: string, rows: import('./replenishment').InventoryRow[]) =>
                 this.business.perceiveInventory!(actor, rows) } : {}),
+            ...(this.stocktakeScenarioSource ? { stocktakeScenarioSource: this.stocktakeScenarioSource } : {}),
+            ...(request.d4Intelligence && this.d4ContextSource
+                ? { d4Context: this.d4ContextSource } : {}),
+            ...(request.purchaseFlow && this.readBusiness.createD4Proposal &&
+                this.readBusiness.executeD4ApprovedProposal && this.readBusiness.inspectProposal
+                ? {
+                    createD4Proposal: (actor: string, currentGraph: string,
+                        context: import('./integration/d4-purchasing-intelligence').D4Context,
+                        recommendation: import('./integration/d4-purchasing-intelligence').D4Recommendation) => {
+                        if (currentGraph !== graphId) throw new Error('INVALID_GRAPH_CHECKPOINT');
+                        return this.readBusiness.createD4Proposal!(actor, currentGraph, context, recommendation);
+                    },
+                    executeD4ApprovedProposal: (actor: string, currentGraph: string,
+                        reference: import('./agent-langgraph').GraphPurchaseReference) => {
+                        if (currentGraph !== graphId) throw new Error('INVALID_GRAPH_CHECKPOINT');
+                        return this.readBusiness.executeD4ApprovedProposal!(actor, currentGraph, reference);
+                    },
+                    proposalReview: this.readBusiness.inspectProposal
+                } : {}),
+            ...(request.d4Intelligence && this.readOnlyGraphExecution &&
+                process.env.AGENT_GRAPH_LLM_READ_PLANNER === 'YES' && this.llm.planDynamic
+                ? { selectD4LlmRead: async (actor: string,
+                    steps: import('./integration/d4-purchasing-intelligence').D4PlanStep[]): Promise<string> => {
+                    await this.business.authorize(actor, 'agent.run');
+                    await this.business.authorize(actor, 'inventory.read');
+                    if (!steps.length || steps.length > 10 ||
+                        steps.some(step => step.dependsOn.length > 0 ||
+                            TOOL_CONTRACTS[step.tool]?.category === 'WRITE')) {
+                        throw new Error('LLM_READ_SELECTION_DENIED');
+                    }
+                    const allowed = [] as { name: DynamicToolName; purpose: string }[];
+                    for (const step of steps) {
+                        const contract = TOOL_CONTRACTS[step.tool];
+                        if (!contract || contract.status !== 'IMPLEMENTED' ||
+                            !['READ', 'CALCULATION'].includes(contract.category) ||
+                            !contract.input.safeParse(step.input).success) {
+                            throw new Error('LLM_READ_SELECTION_DENIED');
+                        }
+                        await this.business.authorize(actor, contract.permission);
+                        allowed.push({ name: step.tool as DynamicToolName, purpose: contract.purpose });
+                    }
+                    const prompt = 'Select exactly ONE available READ or CALCULATION tool. ' +
+                        'Do not invent business IDs or quantities; use exactly one listed tool input unchanged. ' +
+                        'This is analysis only: no purchase, approval, or writes. Allowed verified inputs: ' +
+                        JSON.stringify(steps.map(step => ({ tool: step.tool, input: step.input })));
+                    const proposal = await this.llm.planDynamic!(prompt, allowed,
+                        { toolChoicePolicy: 'REQUIRES_TOOL' });
+                    validateDynamicPlan(proposal);
+                    if (proposal.steps.length !== 1 || proposal.steps[0]!.dependsOn.length !== 0 ||
+                        !steps.some(step => step.tool === proposal.steps[0]!.tool &&
+                            isDeepStrictEqual(step.input, proposal.steps[0]!.input))) {
+                        throw new Error('LLM_READ_SELECTION_DENIED');
+                    }
+                    return proposal.steps[0]!.tool;
+                } } : {}),
+            ...(request.d4Intelligence && this.readBusiness.toolRegistry
+                ? { registryCapabilities: () => this.readBusiness.toolRegistry!.capabilities() } : {}),
             ...(this.business.demandRisk ? { risk: (actor: string, rows: import('./replenishment').InventoryRow[]) =>
                 this.business.demandRisk!(actor, rows) } : {}),
             ...(this.business.inspectProposal ? { proposalReview: (actor: string,
@@ -460,17 +611,35 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
             },
             ...(this.readOnlyGraphExecution &&
                 process.env.AGENT_ACT_READ_EXECUTION === 'YES' && this.readBusiness.toolRegistry
-                ? { executeActRead: async (step: import('../services/execution/act-read-step').ActReadStep) => {
+                ? { executeActRead: async (step: import('../services/execution/act-read-step').ActReadStep,
+                    trusted?: { expectedRowVersion?: number }) => {
                     const events: import('./agent-langgraph').AgentGraphEvent[] = [];
+                    const savedLedger = await this.store.atomic(s => {
+                        const run = s.graphRuns?.[graphId] as
+                            (NonNullable<AgentState['graphRuns']>[string] & { observationLedger?: ObservationLedger }) | undefined;
+                        if (!run || run.inputHash !== inputHash ||
+                            run.leaseOwner !== invocationId || run.actorId !== step.actorId ||
+                            step.runId !== graphId || !/^act-[1-8]$/.test(step.stepId)) {
+                            throw new Error('INVALID_GRAPH_CHECKPOINT');
+                        }
+                        // A crashed Graph must never re-dispatch a read with an
+                        // already journaled ACT attempt in the SAME cycle.
+                        if (run.trace.some(e => e.node === 'act_executor' && e.stepId === step.stepId &&
+                            ((e as typeof e & { actCycle?: number }).actCycle ?? 0) === (run.actCycle ?? 0))) {
+                            throw new Error('INVALID_ACT_REPLAY');
+                        }
+                        return structuredClone(run.observationLedger ?? {});
+                    });
                     const sourceVersion = this.readBusiness.actSourceVersion &&
                         typeof (step.input as { ingredientId?: unknown } | null)?.ingredientId === 'string'
                         ? () => this.readBusiness.actSourceVersion!(
                             step.actorId, (step.input as { ingredientId: string }).ingredientId)
                         : undefined;
-                    const result = await executeActReadStep(step, {
+                    const boundary: import('../services/execution/act-read-step').ActReadBoundary = {
                         registry: this.readBusiness.toolRegistry!,
                         authorize: (actor, permission) => this.business.authorize(actor, permission),
                         ...(sourceVersion ? { sourceVersion } : {}),
+                        now: () => this.clock(),
                         checkpoint: async event => {
                             const run = await this.store.atomic(s => s.graphRuns?.[graphId]);
                             if (!run || run.inputHash !== inputHash ||
@@ -482,6 +651,7 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
                                 status: 'ACT_' + event.status, at: event.at,
                                 tool: event.tool, stepId: event.stepId,
                                 attempt: event.attempt, actorId: event.actorId,
+                                actCycle: run.actCycle ?? 0,
                                 ...(event.code ? { code: event.code } : {}),
                                 ...(run.executionId ? { executionId: run.executionId } : {})
                             };
@@ -504,9 +674,264 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
                             }
                             events.push(item);
                         }
+                    };
+                    const catalog = Object.prototype.hasOwnProperty.call(TOOL_CONTRACTS, step.tool)
+                        ? TOOL_CONTRACTS[step.tool as keyof typeof TOOL_CONTRACTS] : undefined;
+                    // Preserve ACT's durable policy HOLD for invalid catalog versions;
+                    // OBS only accepts a contract-verified READ invocation.
+                    if (!catalog || catalog.category !== 'READ' || catalog.status !== 'IMPLEMENTED' ||
+                        (step.version && step.version !== catalog.version)) {
+                        return { result: await executeActReadStep(step, boundary), events };
+                    }
+                    const handoff = await executeAndObserveActRead(step, boundary, {
+                        runId: graphId, stepId: step.stepId, actorId: request.actorId,
+                        toolName: step.tool, completedDependencies: step.completedDependencies,
+                        ...(trusted?.expectedRowVersion !== undefined
+                            ? { expectedRowVersion: trusted.expectedRowVersion } : {})
+                    }, savedLedger);
+                    const observed = handoff.observation;
+                    const proposal = observed.stateUpdateProposal;
+                    const proof: import('./agent-langgraph').AgentGraphObservation = {
+                        runId: graphId, stepId: step.stepId, actorId: request.actorId,
+                        toolName: step.tool, attempt: proposal.attemptNumber,
+                        status: observed.observationStatus, quality: observed.dataQuality,
+                        verifiedForBusiness: proposal.verifiedForBusiness,
+                        traceId: observed.auditTraceId,
+                        ...(observed.errorCode ? { code: observed.errorCode } : {})
+                    };
+                    // This transaction is the OBS apply gate. The ACT terminal
+                    // checkpoint must already exist; only sanitized OBS proof and
+                    // replay ledger enter the same durable Graph repository.
+                    const obsEvent = await this.store.atomic(s => {
+                        const run = s.graphRuns?.[graphId] as
+                            (NonNullable<AgentState['graphRuns']>[string] & { observationLedger?: ObservationLedger }) | undefined;
+                        if (!run || run.inputHash !== inputHash || run.leaseOwner !== invocationId ||
+                            run.actorId !== request.actorId || !s.permissions[request.actorId]?.includes('agent.run') ||
+                            run.observationLedger?.[`${graphId}:${step.stepId}`]) {
+                            throw new Error('INVALID_GRAPH_CHECKPOINT');
+                        }
+                        const terminal = run.trace.filter(e => e.node === 'act_executor' &&
+                            e.stepId === step.stepId && e.actorId === step.actorId &&
+                            ((e as typeof e & { actCycle?: number }).actCycle ?? 0) === (run.actCycle ?? 0))
+                            .at(-1);
+                        if (!terminal || terminal.at !== handoff.terminalEvent.at ||
+                            terminal.attempt !== proof.attempt ||
+                            terminal.status !== (handoff.actResult.status === 'SUCCEEDED' ? 'ACT_SUCCEEDED' : 'ACT_HELD')) {
+                            throw new Error('INVALID_GRAPH_CHECKPOINT');
+                        }
+                        const entry: import('./agent-langgraph').AgentGraphEvent = {
+                            node: 'observation', edge: 'observation_validation',
+                            status: `OBS_${proof.status}`, at: this.clock().toISOString(),
+                            tool: proof.toolName, stepId: proof.stepId,
+                            attempt: proof.attempt, actorId: proof.actorId,
+                            observationTraceId: proof.traceId,
+                            ...(proof.code ? { code: proof.code } : {}),
+                            ...(run.executionId ? { executionId: run.executionId } : {})
+                        };
+                        run.observationLedger = structuredClone(handoff.ledger);
+                        // A full OBS decision is committed privately only for
+                        // registered inventory READ contracts; no raw Registry
+                        // failure, prompt, JWT or supplier information is stored.
+                        // D2 independently verifies source facts later.
+                        if (sessionDEnabled && (step.tool === 'getIngredientAvailability' ||
+                            step.tool === 'getIngredientBatches') &&
+                            observed.observationStatus === 'SUCCESS' &&
+                            observed.dataQuality === 'VERIFIED_SCHEMA' &&
+                            observed.stateUpdateProposal.verifiedForBusiness) {
+                            const bytes = Buffer.byteLength(JSON.stringify(observed), 'utf8');
+                            if (bytes > 65536) throw new Error('INVALID_GRAPH_CHECKPOINT');
+                            const journal = run as SessionDStoredRun;
+                            journal.sessionDObservations ??= {};
+                            const key = `${run.actCycle ?? 0}:${step.stepId}`;
+                            if (journal.sessionDObservations[key]) throw new Error('INVALID_ACT_REPLAY');
+                            const obsRecord: DurableObservationRecord = {
+                                graphId, runId: graphId, actorId: request.actorId,
+                                invocationId: step.stepId, toolName: step.tool,
+                                observationId: observed.auditTraceId,
+                                observationAuditTraceId: observed.auditTraceId,
+                                terminalCheckpointId: 'act-' + createHash('sha256')
+                                    .update(JSON.stringify([graphId, step.stepId, terminal.at, terminal.status,
+                                        terminal.attempt])).digest('hex').slice(0, 32),
+                                terminalAt: terminal.at, recordedAt: entry.at,
+                                persistedObservationDigest: digestObservation(observed),
+                                decision: structuredClone(observed)
+                            };
+                            journal.sessionDObservations[key] = obsRecord;
+                        }
+                        run.trace.push(structuredClone(entry));
+                        run.updatedAt = entry.at;
+                        return entry;
                     });
-                    return { result, events };
+                    events.push(obsEvent);
+                    return { result: handoff.actResult, events, observation: proof };
                 } } : {}),
+            ...(sessionDEnabled ? {
+                ...(this.sessionDSource?.verifyFixedReadIdentity ? {
+                    sessionDNoPlanProof: async (scope: HandoffScope) => {
+                        await checkSessionDScope(scope);
+                        return this.sessionDSource!.verifyFixedReadIdentity!(scope);
+                    }
+                } : {}),
+                sessionDAnomaly: async (scope: HandoffScope) => {
+                    const provider = this.sessionDSource;
+                    const handoff = await handoffDurableObservationToAnomaly(scope, {
+                        loadPersistedObservation: async scoped => {
+                            const run = await checkSessionDScope(scoped);
+                            const key = `${run.actCycle ?? 0}:${scoped.invocationId}`;
+                            const record = run.sessionDObservations?.[key];
+                            if (!record || !run.trace.some(e => e.node === 'observation' &&
+                                e.stepId === scoped.invocationId &&
+                                e.observationTraceId === record.observationAuditTraceId)) {
+                                throw new Error('OBS_DURABLE_CHECKPOINT_NOT_FOUND');
+                            }
+                            return record;
+                        },
+                        loadPersistedSource: async scoped => {
+                            await checkSessionDScope(scoped);
+                            if (!provider) throw new Error('ANM_SOURCE_UNVERIFIED');
+                            return provider.loadPersistedSource(scoped);
+                        },
+                        anomalyAuthority: { verify: async input => {
+                            await checkSessionDScope({
+                                graphId, runId: input.runId, actorId: input.actorId,
+                                invocationId: scope.invocationId, toolName: scope.toolName
+                            });
+                            if (!provider) throw new Error('ANM_SOURCE_UNVERIFIED');
+                            return provider.anomalyAuthority.verify(input);
+                        } }
+                    }, this.sessionDSource?.verifyFixedReadIdentity ? undefined : this.clock());
+                    if (handoff.status !== 'READY' || !handoff.analysis ||
+                        !handoff.analysis.sourceVerified || !handoff.observationId) {
+                        return handoff;
+                    }
+                    // Commit an independently source-attested analysis to the
+                    // SAME repository as ACT/OBS; no business writes.
+                    await this.store.atomic(s => {
+                        permit(s, request.actorId, 'agent.run');
+                        const run = s.graphRuns?.[graphId] as SessionDStoredRun | undefined;
+                        if (!run || run.actorId !== request.actorId ||
+                            run.inputHash !== inputHash || run.leaseOwner !== invocationId) {
+                            throw new Error('INVALID_GRAPH_CHECKPOINT');
+                        }
+                        const key = `${run.actCycle ?? 0}:${scope.invocationId}`;
+                        const observed = run.sessionDObservations?.[key];
+                        if (!observed || observed.observationId !== handoff.observationId ||
+                            handoff.analysis!.observationId !== observed.observationId) {
+                            throw new Error('INVALID_GRAPH_CHECKPOINT');
+                        }
+                        run.sessionDAnomalies ??= {};
+                        const analysis = structuredClone(handoff.analysis!);
+                        const item: DurableAnomalyRecord = {
+                            graphId, runId: graphId, actorId: request.actorId,
+                            invocationId: scope.invocationId, toolName: scope.toolName,
+                            observationId: observed.observationId,
+                            observationAuditTraceId: observed.observationAuditTraceId,
+                            checkpointId: 'anm-' + createHash('sha256').update(
+                                JSON.stringify([graphId, key, observed.persistedObservationDigest])
+                            ).digest('hex').slice(0, 32),
+                            recordedAt: this.clock().toISOString(),
+                            anomalyDigest: createHash('sha256').update(
+                                JSON.stringify(analysis)).digest('hex'),
+                            anomaly: analysis
+                        };
+                        const existing = run.sessionDAnomalies[key];
+                        if (existing && !isDeepStrictEqual(existing.anomaly, item.anomaly)) {
+                            throw new Error('INVALID_GRAPH_REPLAY');
+                        }
+                        run.sessionDAnomalies[key] = existing ?? item;
+                        run.updatedAt = this.clock().toISOString();
+                    });
+                    return handoff;
+                },
+                sessionDReplanning: async (scope: HandoffScope) => {
+                    const provider = this.sessionDSource;
+                    // The verification reference instant must be stable across
+                    // all independently loaded records. A later generated proof
+                    // timestamp must not silently be accepted as past evidence.
+                    const evaluationAt = this.clock();
+                    const handoff = await handoffDurableAnomalyToReplanning(scope, {
+                        loadPersistedAnomaly: async scoped => {
+                            const run = await checkSessionDScope(scoped);
+                            const key = `${run.actCycle ?? 0}:${scoped.invocationId}`;
+                            const item = run.sessionDAnomalies?.[key];
+                            if (!item) throw new Error('ANM_DURABLE_CHECKPOINT_NOT_FOUND');
+                            return item;
+                        },
+                        loadPersistedReplanInput: async scoped => {
+                            await checkSessionDScope(scoped);
+                            if (!provider) throw new Error('REP_SOURCE_UNVERIFIED');
+                            return provider.loadPersistedReplanInput(scoped);
+                        },
+                        loadPersistedReplanLedger: async scoped => {
+                            const run = await checkSessionDScope(scoped);
+                            return run.sessionDReplanLedger ?? {};
+                        },
+                        verifyPersistedAnomaly: async record => {
+                            const run = await checkSessionDScope({
+                                graphId: record.graphId, runId: record.runId, actorId: record.actorId,
+                                invocationId: record.invocationId, toolName: record.toolName
+                            });
+                            const key = `${run.actCycle ?? 0}:${record.invocationId}`;
+                            const saved = run.sessionDAnomalies?.[key];
+                            if (!saved || !isDeepStrictEqual(saved, record)) {
+                                throw new Error('ANM_RECORD_UNVERIFIED');
+                            }
+                            return {
+                                graphId: record.graphId, runId: record.runId, actorId: record.actorId,
+                                invocationId: record.invocationId, toolName: record.toolName,
+                                observationId: record.observationId,
+                                observationAuditTraceId: record.observationAuditTraceId,
+                                checkpointId: record.checkpointId,
+                                anomalyDigest: record.anomalyDigest,
+                                verifiedAt: evaluationAt.toISOString()
+                            };
+                        },
+                        replanAuthority: { verify: async input => {
+                            await checkSessionDScope({
+                                graphId: input.graphId, runId: input.runId, actorId: input.actorId,
+                                invocationId: scope.invocationId, toolName: scope.toolName
+                            });
+                            if (!provider) throw new Error('REP_SOURCE_UNVERIFIED');
+                            return provider.replanAuthority.verify(input);
+                        } }
+                    }, evaluationAt);
+                    if (handoff.status !== 'READY' || !handoff.decision ||
+                        !handoff.proposedLedger) return handoff;
+                    // Transactional CAS on both the durable decision and replan
+                    // budget. A replan remains proposal-only, never execution.
+                    await this.store.atomic(s => {
+                        permit(s, request.actorId, 'agent.run');
+                        const run = s.graphRuns?.[graphId] as SessionDStoredRun | undefined;
+                        if (!run || run.actorId !== request.actorId || run.inputHash !== inputHash ||
+                            run.leaseOwner !== invocationId) throw new Error('INVALID_GRAPH_CHECKPOINT');
+                        const key = `${run.actCycle ?? 0}:${scope.invocationId}`;
+                        if (!run.sessionDAnomalies?.[key]) throw new Error('INVALID_GRAPH_CHECKPOINT');
+                        const d = handoff.decision!;
+                        if (d.graphId !== graphId || d.runId !== graphId || d.actorId !== request.actorId ||
+                            !d.readOnly || d.authorizedToExecute || d.authorizedToPurchase ||
+                            d.authorizedToApprove) throw new Error('REP_POLICY_DENIED');
+                        run.sessionDReplans ??= {};
+                        const previous = run.sessionDReplans[key];
+                        if (previous) {
+                            if (previous.eventFingerprint !== d.eventFingerprint ||
+                                previous.auditTraceId !== d.auditTraceId) throw new Error('INVALID_GRAPH_REPLAY');
+                            return;
+                        }
+                        const increment = d.status === 'REPLAN_PROPOSED' ||
+                            d.status === 'REFRESH_REQUIRED' ? 1 : 0;
+                        if (d.usedReplans - increment !== (run.sessionDUsedReplans ?? 0) ||
+                            d.usedReplans > d.maxReplans) throw new Error('REPLAN_BUDGET_EXHAUSTED');
+                        run.sessionDReplans[key] = {
+                            eventFingerprint: d.eventFingerprint,
+                            auditTraceId: d.auditTraceId, status: d.status
+                        };
+                        run.sessionDReplanLedger = structuredClone(handoff.proposedLedger!);
+                        run.sessionDUsedReplans = d.usedReplans;
+                        run.updatedAt = this.clock().toISOString();
+                    });
+                    return handoff;
+                }
+            } : {}),
             ...(this.readBusiness.toolRegistry ? { selectRead: async (actor: string, name: string,
                 rawInput: unknown, hasTrustedPerception: boolean) => {
                 const objectiveByTool: Record<string, ToolSelectionInput['objective']> = {
@@ -540,12 +965,27 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
                     }
                     run.trace.push(structuredClone(event));
                     if (event.approvalBoundary) run.approvalBoundary = structuredClone(event.approvalBoundary);
+                    if (event.proposalReference) {
+                        if (run.purchaseProposal && !isDeepStrictEqual(run.purchaseProposal, event.proposalReference)) {
+                            throw new Error('INVALID_GRAPH_REPLAY');
+                        }
+                        run.purchaseProposal = structuredClone(event.proposalReference);
+                    }
+                    if (event.purchaseRequestId) {
+                        if (run.purchaseRequestId && run.purchaseRequestId !== event.purchaseRequestId) {
+                            throw new Error('INVALID_GRAPH_REPLAY');
+                        }
+                        run.purchaseRequestId = event.purchaseRequestId;
+                    }
                     run.updatedAt = this.clock().toISOString();
                 });
             }
         });
         try {
-            const snapshot = await graph.invoke({ graphId, request, status: 'RUNNING' }, { recursionLimit: 35 });
+            const snapshot = await graph.invoke({ graphId, request, status: 'RUNNING',
+                ...(prior?.state.purchaseProposal ?
+                    { proposalReference: structuredClone(prior.state.purchaseProposal) } : {})
+            }, { recursionLimit: 35 });
             const result = graphResult(snapshot);
             if (this.readOnlyGraphExecution && process.env.AGENT_ACT_READ_EXECUTION === 'YES' &&
                 this.store.finalizeActRun) {
@@ -563,6 +1003,20 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
                     delete run.leaseOwner;
                     delete run.leaseUntil;
                 });
+            }
+            if (request.purchaseFlow) {
+                const durable = await this.store.atomic(s => s.graphRuns?.[graphId]);
+                if (!durable || durable.status !== result.status ||
+                    !durable.purchaseProposal && result.status === 'SUCCEEDED') {
+                    throw new Error('INVALID_GRAPH_CHECKPOINT');
+                }
+                // A RESUME invokes only the next graph nodes; the permanent
+                // checkpoint is the full SAME-execution trace across invocations.
+                return { ...result, trace: structuredClone(durable.trace),
+                    ...(durable.purchaseProposal ?
+                        { proposalReference: structuredClone(durable.purchaseProposal) } : {}),
+                    ...(durable.purchaseRequestId ?
+                        { purchaseRequestId: durable.purchaseRequestId } : {}) };
             }
             return result;
         } catch {
@@ -1208,8 +1662,8 @@ export function createReadOnlyAgentRuntime(
     return new AgentWorkflow(null, business, {
         plan: async () => { throw new Error('READ_ONLY_WORKFLOW_LEGACY_DISABLED'); },
         planDynamic: async (prompt, tools, context) => {
-            const { generateNativeToolPlan } = await import('../services/openai-planner.service');
-            return generateNativeToolPlan(prompt, tools, config, { policy: context?.toolChoicePolicy });
+            const { generateConfiguredLlmPlan } = await import('../services/llm-planner.service');
+            return generateConfiguredLlmPlan(prompt, tools, config, context?.toolChoicePolicy);
         },
     });
 }
@@ -1271,7 +1725,7 @@ export function createAgentRuntime(
             ? 'openai'
             : requestedProvider;
 
-    if (!['mock', 'gemini', 'openai'].includes(providerName)) {
+    if (!['mock', 'gemini', 'openai', 'anthropic', 'openai-compatible'].includes(providerName)) {
         throw new Error('INVALID_LLM_PROVIDER');
     }
 
@@ -1281,26 +1735,18 @@ export function createAgentRuntime(
             new MockLLMProvider().plan(prompt, context),
 
         planDynamic: async (prompt, tools, context) => {
-            if (providerName === 'mock') {
+            if (providerName === 'mock' && !config.LLM_MODEL && !config.LLM_PROVIDER) {
                 throw new Error('DYNAMIC_PLANNER_NOT_CONFIGURED');
             }
 
-            if (providerName === 'gemini') {
-                const { geminiService } = await import(
-                    '../services/gemini.service'
-                );
-
-                return geminiService.generateDynamicPlan(
-                    prompt,
-                    tools
-                );
+            // Preserve historical Gemini configuration while unified LLM_MODEL is unset.
+            if (providerName === 'gemini' && !config.LLM_MODEL && !config.GEMINI_MODEL) {
+                const { geminiService } = await import('../services/gemini.service');
+                return geminiService.generateDynamicPlan(prompt, tools);
             }
 
-            const { generateNativeToolPlan } = await import(
-                '../services/openai-planner.service'
-            );
-
-            return generateNativeToolPlan(prompt, tools, config, { policy: context?.toolChoicePolicy });
+            const { generateConfiguredLlmPlan } = await import('../services/llm-planner.service');
+            return generateConfiguredLlmPlan(prompt, tools, config, context?.toolChoicePolicy);
         }
     };
 

@@ -2,6 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { prisma, Prisma, type PrismaClient } from '@cafe-project/database';
 import { z } from 'zod';
 import { HttpError } from '../../common/http-error';
+import { AI_LN_DUPLICATE_NEED, AI_LN_STALE_SOURCE,
+    lockAutomaticIngredientSource, verifyAndLockAutomaticNeed,
+    type VerifiedPurchaseNeed } from '../purchase/purchase-need.guard';
 
 const id = z.string().trim().min(1).max(200);
 const amount = z.string().regex(/^(0|[1-9]\d{0,9})(\.\d{1,2})?$/);
@@ -262,7 +265,9 @@ export class PurchaseProposalService {
         id.parse(proposalId);
         const input = proposalExecuteSchema.parse(raw);
         const requestHash = digest({ operation: 'agent.purchase.execute', proposalId, version: input.version, contentHash: input.contentHash });
-        return this.transaction(async tx => {
+        let checkedApprover: string | null = null;
+        try {
+        return await this.transaction(async tx => {
             const { revision, snapshot } = await this.current(tx, proposalId, input);
             if (revision.rejectedAt) return conflict('PROPOSAL_REJECTED');
             const receipt = await tx.agentPurchaseCommandReceipt.findUnique({ where: { key: input.idempotencyKey } });
@@ -272,8 +277,21 @@ export class PurchaseProposalService {
             if (!request) {
                 if (!revision.approvedById || !revision.approvedAt) throw new HttpError(403, 'APPROVAL_REQUIRED');
                 await this.admin(tx, revision.approvedById);
+                checkedApprover = revision.approvedById;
                 const stock = await this.terms(tx, snapshot);
+                if (snapshot.ingredientId) {
+                    // Same advisory-then-row lock order as regular automatic PR
+                    // writer. Prevents a concurrent stock import changing the
+                    // authoritative source between verification and INSERT.
+                    await lockAutomaticIngredientSource(tx, snapshot.ingredientId);
+                }
                 await this.stockStillCurrent(tx, snapshot, revision.createdAt);
+                // This is a SECOND, independent PR write boundary: direct
+                // approved proposals MUST obey the exact same Backend shortage
+                // guard as ordinary keyed Agent PRs. A different proposalId
+                // or idempotencyKey never establishes a new purchasing need.
+                const verifiedNeed: VerifiedPurchaseNeed | null = snapshot.ingredientId
+                    ? await verifyAndLockAutomaticNeed(tx, snapshot.ingredientId) : null;
                 const totalAmount = new Prisma.Decimal(snapshot.unitPrice).mul(snapshot.quantity);
                 if (totalAmount.gte('10000000000')) return conflict('TOTAL_AMOUNT_OUT_OF_RANGE');
                 request = await tx.purchaseRequest.create({ data: {
@@ -283,10 +301,39 @@ export class PurchaseProposalService {
                     totalAmount, agentProposalId: proposalId, agentProposalVersion: input.version,
                     items: { create: { ...stock, quantity: snapshot.quantity, unitPrice: snapshot.unitPrice, notes: snapshot.notes } },
                 }, include: includeRequest });
+                if (verifiedNeed) await tx.agentLog.create({ data: {
+                    action: 'AI_LN_APPROVED_PROPOSAL_PR_CREATED',
+                    result: 'SUCCESS', fallback_used: false,
+                    createdBy: revision.approvedById,
+                    reference_type: 'PurchaseRequest', reference_id: request.id,
+                    input: JSON.stringify({ proposalId, version: revision.version,
+                        contentHash: revision.contentHash, verifiedNeed }),
+                    output: JSON.stringify({ purchaseRequestId: request.id, status: request.status }),
+                    reasoning: 'Current ADMIN, exact immutable proposal, stock and canonical automatic need attested before atomic PR and receipt.'
+                } });
             }
             if (!receipt) await tx.agentPurchaseCommandReceipt.create({ data: { key: input.idempotencyKey, requestHash, purchaseRequestId: request.id } });
             return { proposalId, version: revision.version, contentHash: revision.contentHash, snapshot, purchaseRequest: request };
         });
+        } catch (error) {
+            if (checkedApprover && error instanceof HttpError &&
+                (error.code === AI_LN_DUPLICATE_NEED || error.code === AI_LN_STALE_SOURCE)) {
+                // The rejected serializable command rolled back. The separate,
+                // bounded denial audit MUST survive without creating a receipt.
+                await this.transaction(tx => tx.agentLog.create({ data: {
+                    action: 'AI_LN_APPROVED_PROPOSAL_PR_HELD',
+                    result: 'SKIPPED', fallback_used: false,
+                    createdBy: checkedApprover!,
+                    reference_type: 'AgentPurchaseProposal', reference_id: proposalId,
+                    input: JSON.stringify({ proposalId, version: input.version,
+                        contentHash: input.contentHash, actorId: checkedApprover }),
+                    output: JSON.stringify({ code: error.code, purchaseRequestCreated: false,
+                        nextAction: 'ADMIN_REVIEW_EXISTING_NEED_OR_SOURCE' }),
+                    reasoning: 'Distinct proposal ID cannot bypass Backend canonical shortage or stale source guard.'
+                } }));
+            }
+            throw error;
+        }
     }
 }
 

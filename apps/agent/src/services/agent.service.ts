@@ -2,6 +2,7 @@ import { requireAgentUser, requireInternalSecret } from '../internal-auth';
 import { prisma, InventoryTransactionType } from '@cafe-project/database';
 import { ACTIVE_PURCHASE_REQUEST_MESSAGE, agentRepository, type AgentInventoryRecord, type AgentIngredientRecord } from '../repositories/agent.repository';
 import { recommendationService } from './recommendation.service';
+import { sanitizePublicAgentLog } from './security/agent-log-redaction';
 import { AgentHttpError } from '../errors/http-error';
 import { logger } from '../utils/logger';
 import { fixAgentLogDisplayOutput, fixVietnameseMojibakeText } from '../utils/textEncoding';
@@ -269,7 +270,7 @@ const toLogDto = (log: any) => {
     const sourceId = asString(output?.sourceId) || asString(input?.sourceId);
     const sourceType = asString(output?.sourceType) || asString(input?.sourceType);
 
-    return {
+    return sanitizePublicAgentLog({
         id: log.id,
         action: log.action,
         status,
@@ -301,7 +302,7 @@ const toLogDto = (log: any) => {
         error_message: log.error_message,
         reference_type: log.reference_type,
         reference_id: log.reference_id
-    };
+    });
 };
 
 const ingredientReasoningText = (params: {
@@ -597,14 +598,23 @@ export const agentService = {
                     graphLog = await logLiveGraphHold(userId, scanSessionId, error);
                 }
                 const verified = Boolean(graph?.verified);
+                const purchasingGraph = process.env.AGENT_GRAPH_PURCHASING === 'YES';
+                const proposalReference = purchasingGraph ? graph?.proposalReference : undefined;
+                const purchaseRequestId = purchasingGraph ? graph?.purchaseRequestId : undefined;
+                const pendingHuman = purchasingGraph && graph?.status === 'AWAITING_APPROVAL' &&
+                    Boolean(proposalReference);
                 await agentRepository.updateLog(sessionLog.id, {
-                    result: verified ? 'SUCCESS' : 'SKIPPED',
-                    reasoning: verified ? 'Real LangGraph read-only preflight verified; writes disabled.' :
-                        'Real LangGraph read-only preflight held; no proposal or purchase writes.',
+                    result: verified || pendingHuman || purchaseRequestId ? 'SUCCESS' : 'SKIPPED',
+                    reasoning: purchasingGraph
+                        ? 'Live D4 Graph proposal/approval boundary; Backend alone authorizes PR after current ADMIN decision.'
+                        : verified ? 'Real LangGraph read-only preflight verified; writes disabled.' :
+                            'Real LangGraph read-only preflight held; no proposal or purchase writes.',
                     output: JSON.stringify({
                         scanSessionId, graphId: graph?.graphId ?? null,
-                        status: verified ? 'GRAPH_READONLY_VERIFIED' : 'GRAPH_READONLY_HELD',
-                        createdPurchaseRequestCount: 0, createdProposalCount: 0,
+                        status: purchasingGraph ? graph?.status ?? 'HELD_POLICY' :
+                            verified ? 'GRAPH_READONLY_VERIFIED' : 'GRAPH_READONLY_HELD',
+                        createdPurchaseRequestCount: purchaseRequestId ? 1 : 0,
+                        createdProposalCount: proposalReference ? 1 : 0,
                         graphCheckpointDurable: graph?.checkpointDurable === true
                     })
                 });
@@ -612,13 +622,24 @@ export const agentService = {
                 activeTriggerType = null;
                 activeScanStartedAt = null;
                 return {
-                    results: [toLogDto(graphLog)], createdPurchaseRequests: [],
-                    createdProposals: [], scanSessionId,
-                    sessionStatus: verified ? 'GRAPH_READONLY_VERIFIED' : 'GRAPH_READONLY_HELD',
+                    results: [toLogDto(graphLog)],
+                    createdPurchaseRequests: purchaseRequestId ? [{ id: purchaseRequestId }] : [],
+                    createdProposals: proposalReference ? [proposalReference] : [], scanSessionId,
+                    sessionStatus: purchasingGraph ? graph?.status ?? 'GRAPH_PURCHASING_HELD' :
+                        verified ? 'GRAPH_READONLY_VERIFIED' : 'GRAPH_READONLY_HELD',
                     graph: graph ? { id: graph.graphId, source: graph.source,
                         trace: graph.trace, classifications: graph.classifications,
-                        checkpointDurable: graph.checkpointDurable === true, auditDurable: true } : null,
-                    agentWarning: 'LangGraph READ_ONLY: PostgreSQL approval/checkpoint adapter not verified; no purchase created.'
+                        checkpointDurable: graph.checkpointDurable === true, auditDurable: true,
+                        ...(purchasingGraph ? { proposalReference, purchaseRequestId } : {}),
+                        ...(process.env.AGENT_D4_PURCHASING_INTELLIGENCE === 'YES' ? {
+                            registeredBackendReads: graph.registeredBackendReads,
+                            d4Plan: graph.d4Plan ?? null,
+                            d4Recommendation: graph.d4Recommendation ?? null,
+                            d4ThresholdScenario: graph.d4ThresholdScenario ?? null
+                        } : {}) } : null,
+                    agentWarning: purchasingGraph ?
+                        'LangGraph purchasing: proposal requires a separate current ADMIN decision; no autoapproval, PO or supplier dispatch.' :
+                        'LangGraph READ_ONLY: purchasing WRITE/approval is not authorized by this analysis; no purchase created.'
                 };
             }
 

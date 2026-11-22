@@ -96,7 +96,10 @@ export async function evaluateReplanning(raw: unknown, now: Date,
     if (sourceById.size !== input.sources.length ||
         [...sourceById.keys()].some(id => !ingredients.has(id)) ||
         input.anomaly.runId !== input.runId ||
-        input.anomaly.observationId !== input.observation.auditTraceId ||
+        // A durable OBS row may have a different ID from its audit trace.
+        // Legacy inputs without observationId preserve their original cross-scope check.
+        input.anomaly.observationId !== (input.observation.observationId ??
+            input.observation.auditTraceId) ||
         input.observation.runId !== input.runId || input.observation.actorId !== input.actorId ||
         input.observation.toolName !== input.act.toolName) reject('CROSS_SCOPE_EVIDENCE');
     const tool = Object.prototype.hasOwnProperty.call(TOOL_CONTRACTS, input.act.toolName)

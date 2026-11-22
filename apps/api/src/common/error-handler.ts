@@ -1,7 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { MulterError } from 'multer';
 import { Prisma } from '@cafe-project/database';
-import { env } from './env';
 import { HttpError } from './http-error';
 import { sendError } from './response';
 
@@ -58,9 +57,10 @@ export const errorHandler = (error: Error & { status?: number }, _req: Request, 
         return;
     }
 
-    console.error('[api]', error);
-    const message = env.nodeEnv === 'development'
-        ? `${error.message}\n${error.stack}`
-        : 'Lỗi máy chủ nội bộ.';
-    sendError(res, 500, message);
+    // Never echo a raw exception/stack to an HTTP client, including development.
+    // Unknown errors may contain SQL, provider responses, keys or private input.
+    const kind = error instanceof Error
+        ? error.name.replace(/[^A-Za-z]/g, '').slice(0, 40) : 'UnknownError';
+    console.error('[api] unexpected error', { kind: kind || 'UnknownError', status: 500 });
+    sendError(res, 500, 'Lỗi máy chủ nội bộ.');
 };

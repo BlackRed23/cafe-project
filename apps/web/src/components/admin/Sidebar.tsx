@@ -10,6 +10,7 @@ import {
   Receipt,
   FileSpreadsheet,
   Terminal,
+  Bot,
   X,
   ChevronRight,
   Users,
@@ -62,6 +63,7 @@ const MENU_GROUPS = [
     items: [
       { label: "Yêu cầu mua hàng", path: "/admin/purchase-requests", icon: FileSpreadsheet },
       { label: "Đơn mua & nhập hàng", path: "/admin/purchasing", icon: Truck },
+      { label: "Trung tâm AI Agent", path: "/admin/agent", icon: Bot },
       { label: "Nhật ký Agent", path: "/admin/agent-logs", icon: Terminal },
     ],
   },

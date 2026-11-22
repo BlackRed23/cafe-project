@@ -10,6 +10,7 @@ import { prisma, Prisma } from '@cafe-project/database';
 import { requireAgentUser } from '../internal-auth';
 import { createToolRegistry } from './tool-registry';
 import { verifiedIsolatedActFault } from '../services/execution/act-isolated-fault';
+import { createD4LiveToolBindings } from './integration/d4-live-tool-bindings';
 
 const bounded = (value: Prisma.Decimal | number): number => {
     const number = Number(value);
@@ -40,6 +41,7 @@ export function createLiveBackendReadRegistry(ingredientIds: readonly string[]) 
         return ingredient;
     };
     const counts = { availability: 0, batches: 0 };
+    const d4Reads = createD4LiveToolBindings(ingredientIds);
     const fault = async (type: 'availability' | 'batches', id: string) => {
         const requested = process.env.ACT_E2E_FAULT_CASE;
         if (!requested || !process.env.ACT_E2E_FAULT_INGREDIENT_ID ||
@@ -60,7 +62,9 @@ export function createLiveBackendReadRegistry(ingredientIds: readonly string[]) 
     };
     return createToolRegistry({
         authorize: async (actorId, permission) => {
-            if (permission !== 'inventory.read') throw Object.assign(new Error('FORBIDDEN'), { statusCode: 403 });
+            if (!['inventory.read', 'supplier.read', 'purchase.plan', 'purchase.read'].includes(permission)) {
+                throw Object.assign(new Error('FORBIDDEN'), { statusCode: 403 });
+            }
             return requireAgentUser(actorId, ['ADMIN']);
         },
         availability: async id => {
@@ -79,6 +83,21 @@ export function createLiveBackendReadRegistry(ingredientIds: readonly string[]) 
                 active: row.isActive, rowVersion: row.rowVersion
             };
         },
+        suppliers: async id => {
+            await read(id); // ingredient scope, live status and current role are all revalidated
+            const rows = await prisma.supplierIngredient.findMany({
+                where: { ingredientId: id, supplier: { status: 'ACTIVE', deletedAt: null } },
+                include: { supplier: { select: { status: true, deletedAt: true } } },
+                orderBy: [{ isPreferred: 'desc' }, { pricePerBaseUnit: 'asc' }, { supplierId: 'asc' }]
+            });
+            if (rows.length > 100) throw new Error('ANOMALOUS_INVENTORY');
+            return rows.map(row => ({
+                supplierId: row.supplierId, ingredientId: row.ingredientId,
+                purchaseUnit: row.purchaseUnit, conversionQuantity: bounded(row.conversionQuantity),
+                baseUnit: row.conversionTargetUnit, pricePerBaseUnit: bounded(row.pricePerBaseUnit)
+            }));
+        },
+        ...d4Reads,
         batches: async id => {
             await fault('batches', id);
             const row = await read(id);

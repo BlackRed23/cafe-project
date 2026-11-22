@@ -66,8 +66,14 @@ export function backendReadBaseUrl(): string {
 }
 /** Two bounded attempts for safe GET only; never retry auth, malformed data or arbitrary URLs. */
 export async function fetchBackendRiskJson(url: URL, token: string): Promise<unknown> {
+    // Bounded service-token READ allowlist: demand/risk plus the independent
+    // supplier catalog eligibility projection. Never allow arbitrary internal
+    // paths, proposals, approvals, purchasing writes or supplier dispatches.
+    const allowedRead =
+        /^\/api\/agent\/internal\/demand-risk\/[A-Za-z0-9][A-Za-z0-9:_-]{0,119}$/.test(url.pathname) ||
+        /^\/api\/agent\/internal\/ingredients\/[A-Za-z0-9][A-Za-z0-9:_-]{0,119}\/supplier-eligibility$/.test(url.pathname);
     if (!['127.0.0.1', 'localhost', 'api', 'cafe-api', 'host.docker.internal'].includes(url.hostname) ||
-        !['http:', 'https:'].includes(url.protocol) || !url.pathname.startsWith('/api/agent/internal/demand-risk/') ||
+        !['http:', 'https:'].includes(url.protocol) || !allowedRead ||
         url.username || url.password || url.hash || !token) throw new Error('BACKEND_RISK_UNVERIFIED');
     for (let attempt = 0; attempt < 2; attempt++) {
         try {
