@@ -1,6 +1,8 @@
+import { schedulePageLoad } from "../../utils/schedulePageLoad";
 import { mockEnabled } from '../../mock/config';
 import { MockWorkspace } from '../../mock/MockWorkspace';
-import { AdjustmentBatchSelect, eligibleAdjustmentBatches } from "../../components/admin/AdjustmentBatchSelect";
+import { AdjustmentBatchSelect } from "../../components/admin/AdjustmentBatchSelect";
+import { eligibleAdjustmentBatches } from "../../components/admin/eligibleAdjustmentBatches";
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { inventoryApi } from "../../api/inventory.api";
@@ -47,7 +49,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
   const [importMode, setImportMode] = useState<"internal" | "supplier">("internal");
   const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
   const [modalLoading, setModalLoading] = useState(false);
-  const [thresholdSuggestion, setThresholdSuggestion] = useState<any>(null);
+  const [thresholdSuggestion, setThresholdSuggestion] = useState<Awaited<ReturnType<typeof inventoryApi.getThresholdSuggestion>> | null>(null);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isScanningInventory, setIsScanningInventory] = useState(false);
 
@@ -55,7 +57,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
 
   const [scanResultModalOpen, setScanResultModalOpen] = useState(false);
   const [scanResults, setScanResults] = useState<AgentLog[]>([]);
-  const [scanSummary, setScanSummary] = useState<any>({});
+  const [scanSummary, setScanSummary] = useState<NonNullable<import("../../types/agentLog.types").ScanInventoryResponse["summary"]>>({});
 
   const getLogStatusText = (log: AgentLog) => {
     const result = log.result || "";
@@ -128,7 +130,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
       }
 
       await fetchInventories();
-    } catch (err: any) {
+    } catch {
       globalToast.error("AI Agent quét tồn kho thất bại. Vui lòng kiểm tra Nhật ký Agent.");
     } finally {
       setIsScanningInventory(false);
@@ -149,18 +151,20 @@ const LegacyAdminInventoryPage: React.FC = () => {
     }
   };
 
-  const fetchSupplierProducts = async () => {
-    try {
-      if (!isStaff) {
-        const data = await suppliersApi.getSupplierProducts();
-        setSupplierProducts(data);
-      }
-    } catch { }
-  };
+  useEffect(() => {
+    const fetchSupplierProducts = async () => {
+      try {
+        if (!isStaff) {
+          const data = await suppliersApi.getSupplierProducts();
+          setSupplierProducts(data);
+        }
+      } catch { /* Supplier options are optional on this screen. */ }
+    };
+    void fetchSupplierProducts();
+  }, [isStaff]);
 
   useEffect(() => {
-    fetchInventories();
-    fetchSupplierProducts();
+    return schedulePageLoad(fetchInventories);
   }, []);
 
   const getInventoryStatus = (availableStock: number, threshold?: number, recommendedThreshold?: number): "OUT_OF_STOCK" | "LOW_STOCK" | "AT_THRESHOLD" | "WARNING" | "IN_STOCK" | "OK" | "NEED_RESTOCK" => {
@@ -258,9 +262,9 @@ const LegacyAdminInventoryPage: React.FC = () => {
       setIsSuggesting(true);
       setThresholdSuggestion(null);
       try {
-        const suggestion = await inventoryApi.getThresholdSuggestion((inv as any).inventoryId ?? inv.id);
+        const suggestion = await inventoryApi.getThresholdSuggestion(inv.inventoryId ?? inv.id);
         setThresholdSuggestion(suggestion);
-      } catch (err) {
+      } catch {
         console.error("Failed to load suggestion");
       } finally {
         setIsSuggesting(false);
@@ -295,7 +299,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
       globalToast.success("Đã lưu ngưỡng đề xuất.");
       await fetchInventories();
       handleCloseModal();
-    } catch (err: any) {
+    } catch (err) {
       globalToast.error(getErrorMessage(err) || "Không thể lưu ngưỡng đề xuất.");
     } finally {
       setModalLoading(false);
@@ -335,12 +339,12 @@ const LegacyAdminInventoryPage: React.FC = () => {
           supplierId: prSupplierId,
           notes: inputNote.trim() || undefined,
           items: [{
-            inventoryId: (selectedInventory as any).inventoryId ?? selectedInventory.id,
+            inventoryId: selectedInventory.inventoryId ?? selectedInventory.id,
             quantity: prQuantity
           }]
         });
         
-        const createdRequest = (response as any)?.purchaseRequest || (response as any)?.data?.purchaseRequest || response;
+        const createdRequest = response;
         const createdRequestId = createdRequest?.id;
 
         if (createdRequestId) {
@@ -354,7 +358,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
           navigate("/admin/purchase-requests");
         }
         window.dispatchEvent(new CustomEvent("refresh-notifications"));
-      } catch (err: any) {
+      } catch (err) {
         globalToast.info(getErrorMessage(err) || "Không thể tạo yêu cầu nhập hàng, vui lòng thử lại.", "error");
       } finally {
         setModalLoading(false);
@@ -438,7 +442,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
           minThreshold: inputValue,
         });
         if (res.warnings?.length) {
-          globalToast.warning(res.warnings[0].message);
+          globalToast.warning(res.warnings[0].message || "Đã cập nhật ngưỡng tồn kho.");
         } else {
           globalToast.success(res.message || "Cập nhật ngưỡng tồn kho thành công.");
         }
@@ -446,7 +450,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
       await fetchInventories();
       handleCloseModal();
       window.dispatchEvent(new CustomEvent("refresh-notifications"));
-    } catch (err: any) {
+    } catch (err) {
       const msg = getErrorMessage(err);
       if (modalType === "import") {
         globalToast.error(msg || "Không thể nhập kho, vui lòng thử lại.");
@@ -481,7 +485,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
       return matchesSearch && (status === "AT_THRESHOLD" || status === "WARNING");
     }
     if (activeInventoryTab === "EXPIRING_SOON") {
-      const hasExpiringBatch = (inv as any).batches?.some((b: any) => {
+      const hasExpiringBatch = inv.batches?.some((b) => {
           const startOfToday = new Date();
           startOfToday.setHours(0, 0, 0, 0);
           const expDate = new Date(b.expirationDate);
@@ -509,7 +513,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
   }).length;
 
   const expiringCount = inventories.filter((inv) => {
-    return (inv as any).batches?.some((b: any) => {
+    return inv.batches?.some((b) => {
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);
         const expDate = new Date(b.expirationDate);
@@ -527,7 +531,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
         const status = getInventoryStatus(available, threshold);
         const isLow = status === "OUT_OF_STOCK" || status === "LOW_STOCK";
         
-        const expiringBatches = ((inv as any).batches || []).filter((b: any) => {
+        const expiringBatches = (inv.batches || []).filter((b) => {
             const startOfToday = new Date();
             startOfToday.setHours(0, 0, 0, 0);
             const expDate = new Date(b.expirationDate);
@@ -946,7 +950,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
                   supplierProduct?.conversionTargetUnit
                 );
                 // Lấy unit theo mức ưu tiên: selectedInventory.unit -> selectedInventory.product.unit -> inv.unit -> "đơn vị"
-                const inventoryUnit = (selectedInventory as any).unit || selectedInventory.product?.unit || "đơn vị";
+                const inventoryUnit = selectedInventory.unit || selectedInventory.product?.unit || "đơn vị";
                 const conversionWarning = hasSupplierConversion && supplierProduct?.conversionTargetUnit !== inventoryUnit;
                 const isSupplierMode = importMode === "supplier" && hasSupplierConversion && !conversionWarning;
 
@@ -1110,7 +1114,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
                   <span className="text-2xl font-bold">{scanSummary.lowStockCount || 0}</span>
                   <span className="text-xs font-medium text-center">Cần nhập</span>
                 </div>
-                {scanSummary.failedCount > 0 && (
+                {(scanSummary.failedCount ?? 0) > 0 && (
                   <div className="bg-red-50 text-red-800 p-3 rounded-xl border border-red-100 flex flex-col items-center justify-center">
                     <span className="text-2xl font-bold">{scanSummary.failedCount || 0}</span>
                     <span className="text-xs font-medium text-center">Lỗi</span>
@@ -1133,12 +1137,14 @@ const LegacyAdminInventoryPage: React.FC = () => {
                   <tbody className="divide-y divide-slate-100">
                     {scanResults.map((log, idx) => {
                       const statusText = getLogStatusText(log);
+                      const output = log.output as { suggestedSuppliers?: unknown[]; existingPurchaseRequestId?: string } | undefined;
+                      const alternativeCount = output?.suggestedSuppliers?.length ?? 0;
                       const isError = log.status === "FAILED" || log.result === "ERROR";
                       const isWarning = log.result === "NO_SUPPLIER" || log.reason === "NO_SUPPLIERS_MAPPED" || log.reason === "SUPPLIERS_INACTIVE" || log.reason === "EXISTING_PR_SUPPLIER_INACTIVE" || log.reason === "ACTIVE_PR_SUPPLIER_INACTIVE";
                       const isSuccess = log.result === "CREATED_PURCHASE_REQUEST";
                       const isInfo = log.result === "SKIPPED_DUPLICATE" || log.reason === "ACTIVE_PR_EXISTS";
 
-                      const inv = inventories.find(i => i.productId === log.productId) || (log.input as any)?.inventory;
+                      const inv = inventories.find(i => i.productId === log.productId) || (log.input as { inventory?: Inventory } | undefined)?.inventory;
                       const stock = inv?.quantity ?? "-";
                       const threshold = inv?.minThreshold ?? inv?.min_threshold ?? "-";
 
@@ -1164,9 +1170,9 @@ const LegacyAdminInventoryPage: React.FC = () => {
                               <div className="space-y-1">
                                 <div>Đã có yêu cầu nhập hàng nhưng nhà cung cấp đã bị tắt.</div>
                                 <div className="text-amber-700 font-medium">Admin cần mở lại nhà cung cấp, đổi nhà cung cấp hoặc huỷ yêu cầu cũ trước khi tạo yêu cầu mới.</div>
-                                {(log.output as any)?.suggestedSuppliers?.length > 0 ? (
+                                {alternativeCount > 0 ? (
                                   <div className="text-blue-600 font-medium text-[11px] mt-1">
-                                    Agent tìm thấy {(log.output as any).suggestedSuppliers.length} nhà cung cấp thay thế đang hoạt động.
+                                    Agent tìm thấy {alternativeCount} nhà cung cấp thay thế đang hoạt động.
                                   </div>
                                 ) : (
                                   <div className="text-rose-600 font-medium text-[11px] mt-1">
@@ -1192,7 +1198,7 @@ const LegacyAdminInventoryPage: React.FC = () => {
                               )}
                               {(log.reason === "EXISTING_PR_SUPPLIER_INACTIVE" || log.reason === "ACTIVE_PR_SUPPLIER_INACTIVE") && (
                                 <>
-                                  <Link to={`/admin/purchase-requests/${(log.output as any)?.existingPurchaseRequestId || (log.input as any)?.existingPurchaseRequestId}`} className="text-xs text-amber-700 hover:underline whitespace-nowrap font-medium">
+                                  <Link to={`/admin/purchase-requests/${output?.existingPurchaseRequestId || (log.input as { existingPurchaseRequestId?: string } | undefined)?.existingPurchaseRequestId}`} className="text-xs text-amber-700 hover:underline whitespace-nowrap font-medium">
                                     Xem yêu cầu nhập hàng
                                   </Link>
                                   <Link to={`/admin/suppliers`} className="text-xs text-indigo-600 hover:underline whitespace-nowrap">

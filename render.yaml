@@ -3,7 +3,7 @@ services:
     name: cafe-api
     runtime: node
     rootDir: .
-    buildCommand: npm install && npm run build -w @cafe-project/database && npm run generate -w @cafe-project/database && npm run build -w @cafe-project/api
+    buildCommand: npm ci --include=dev && npm run build -- --filter=@cafe-project/api
     startCommand: npx prisma db push --schema=packages/database/prisma/schema --skip-generate && npm run start -w @cafe-project/api
     envVars:
       - key: NODE_ENV
@@ -27,7 +27,7 @@ services:
     name: cafe-agent
     runtime: node
     rootDir: .
-    buildCommand: npm install && npm run build -w @cafe-project/database && npm run generate -w @cafe-project/database && npm run build -w @cafe-project/agent
+    buildCommand: npm ci --include=dev && npm run build -- --filter=@cafe-project/agent
     startCommand: npm run start:server -w @cafe-project/agent
     envVars:
       - key: NODE_ENV

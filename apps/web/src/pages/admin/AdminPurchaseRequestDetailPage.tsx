@@ -1,3 +1,6 @@
+import { schedulePageLoad } from "../../utils/schedulePageLoad";
+type SuggestedSupplier = { supplierId: string; supplierName?: string; isPreferred?: boolean; leadTimeDays?: number; moq?: number; purchasePrice?: number };
+
 import { mockEnabled } from '../../mock/config';
 import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -133,7 +136,7 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
   const [editEmailSubject, setEditEmailSubject] = useState("");
   const [editEmailBody, setEditEmailBody] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
-  const [suggestedSuppliers, setSuggestedSuppliers] = useState<any[]>([]);
+  const [suggestedSuppliers, setSuggestedSuppliers] = useState<SuggestedSupplier[]>([]);
 
   const fetchEmailPreview = useCallback(
     async (request: PurchaseRequest) => {
@@ -168,12 +171,12 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
             suppliersApi.getSupplierProducts(),
             suppliersApi.getSuppliers(),
           ]);
-          const altSp = supplierProducts.filter((sp: any) => (sp.ingredientId === primaryItemId || sp.productId === primaryItemId) && sp.supplierId !== data.supplier?.id);
-          const activeAltSp = altSp.filter((sp: any) => {
+          const altSp = supplierProducts.filter((sp) => (sp.ingredientId === primaryItemId || sp.productId === primaryItemId) && sp.supplierId !== data.supplier?.id);
+          const activeAltSp = altSp.filter((sp) => {
             const sup = activeSuppliers.find(s => s.id === sp.supplierId);
             return sup?.status === 'ACTIVE';
           });
-          const mappedAlt = activeAltSp.map((sp: any) => {
+          const mappedAlt = activeAltSp.map((sp) => {
             const sup = activeSuppliers.find(s => s.id === sp.supplierId);
             return {
               supplierId: sp.supplierId,
@@ -183,14 +186,14 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
               moq: sp.minOrderQuantity,
               purchasePrice: sp.price ?? sp.importPrice
             };
-          }).sort((a: any, b: any) => {
+          }).sort((a, b) => {
             if (a.isPreferred && !b.isPreferred) return -1;
             if (!a.isPreferred && b.isPreferred) return 1;
-            if (a.leadTimeDays !== b.leadTimeDays) return a.leadTimeDays - b.leadTimeDays;
-            return a.purchasePrice - b.purchasePrice;
+            if (a.leadTimeDays !== b.leadTimeDays) return Number(a.leadTimeDays) - Number(b.leadTimeDays);
+            return Number(a.purchasePrice) - Number(b.purchasePrice);
           });
           setSuggestedSuppliers(mappedAlt);
-        } catch (e) {
+        } catch {
           // Ignore error silently
         }
       }
@@ -201,10 +204,10 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [fetchEmailPreview, id, globalToast]);
+  }, [fetchEmailPreview, id, globalToast, isStaff]);
 
   useEffect(() => {
-    fetchPR();
+    const cancelLoad = schedulePageLoad(fetchPR);
     if (!isStaff) {
       systemSettingsApi.getSetting('store.name').then(setting => {
         if (setting && setting.value) {
@@ -212,6 +215,7 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
         }
       }).catch(console.error);
     }
+    return cancelLoad;
   }, [fetchPR, isStaff]);
 
   const emailDraft = useMemo(() => {
@@ -230,7 +234,7 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
       setPr(updated);
       globalToast.success("Đã duyệt yêu cầu nhập hàng. Bạn có thể gửi email cho nhà cung cấp.");
       await fetchEmailPreview(updated);
-    } catch (err: any) {
+    } catch (err) {
       globalToast.error(getErrorMessage(err) || "Không thể duyệt yêu cầu, vui lòng thử lại.");
     } finally {
       setIsApproving(false);
@@ -278,15 +282,15 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
 
     setIsReceiving(true);
     try {
-      const items = pr?.items?.map((item: any) => ({
+      const items = pr?.items?.map((item) => ({
         purchaseRequestItemId: item.id,
         receivedQuantity: receivedQuantities[item.id] || 0,
-        batches: (receivedBatches[item.id] || []).map((b: any) => ({
+        batches: (receivedBatches[item.id] || []).map((b) => ({
             batchCode: b.batchCode.trim() || undefined,
             expirationDate: new Date(b.expirationDate).toISOString(),
             quantity: b.quantity
         }))
-      })).filter((item: any) => item.receivedQuantity > 0) || [];
+      })).filter((item) => item.receivedQuantity > 0) || [];
 
       if (items.length === 0) {
         globalToast.error("Chưa có sản phẩm nào được nhập số lượng.");
@@ -317,7 +321,7 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
 
       fetchPR();
       setShowConfirmReceive(false);
-    } catch (err: any) {
+    } catch (err) {
       globalToast.error(getErrorMessage(err) || "Không thể nhận hàng.");
     } finally {
       setIsReceiving(false);
@@ -337,7 +341,7 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
       setPaymentNote("");
       setShowConfirmPayment(false);
       globalToast.success("Đã ghi nhận thanh toán nhà cung cấp.");
-    } catch (err: any) {
+    } catch (err) {
       globalToast.error(getErrorMessage(err) || "Không thể ghi nhận thanh toán nhà cung cấp.");
     } finally {
       setIsMarkingPaid(false);
@@ -357,7 +361,7 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
       setRejectReason("");
       setEmailPreview(null);
       globalToast.success(isPending ? "Từ chối yêu cầu thành công." : "Huỷ yêu cầu thành công.");
-    } catch (err: any) {
+    } catch (err) {
       globalToast.error(getErrorMessage(err) || (isPending ? "Không thể từ chối yêu cầu, vui lòng thử lại." : "Không thể huỷ yêu cầu, vui lòng thử lại."));
     } finally {
       setIsRejecting(false);
@@ -433,7 +437,7 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
       setShowEmailModal(false);
       globalToast.success("Gửi email đặt hàng thành công.");
       await fetchEmailPreview(updated);
-    } catch (err: any) {
+    } catch (err) {
       globalToast.error(getErrorMessage(err) || "Không thể gửi email đặt hàng, vui lòng thử lại.");
     } finally {
       setIsSendingEmail(false);
@@ -714,7 +718,7 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
             
             {suggestedSuppliers.length > 0 ? (
               <div className="space-y-3">
-                {suggestedSuppliers.map((sp: any, idx: number) => (
+                {suggestedSuppliers.map((sp, idx: number) => (
                   <div key={idx} className="flex items-center justify-between bg-white border border-blue-100 rounded-lg p-3">
                     <div>
                       <strong className="block text-sm text-slate-800 flex items-center gap-2">
@@ -722,9 +726,9 @@ const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
                         {sp.isPreferred && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded uppercase">Ưu tiên</span>}
                       </strong>
                       <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
-                        {sp.purchasePrice > 0 && <span>Giá nhập: <strong className="text-slate-700">{sp.purchasePrice.toLocaleString()}đ</strong></span>}
-                        {sp.leadTimeDays > 0 && <span>Giao hàng: <strong className="text-slate-700">{sp.leadTimeDays} ngày</strong></span>}
-                        {sp.moq > 0 && <span>MOQ: <strong className="text-slate-700">{sp.moq}</strong></span>}
+                        {sp.purchasePrice !== undefined && sp.purchasePrice > 0 && <span>Giá nhập: <strong className="text-slate-700">{sp.purchasePrice.toLocaleString()}đ</strong></span>}
+                        {sp.leadTimeDays !== undefined && sp.leadTimeDays > 0 && <span>Giao hàng: <strong className="text-slate-700">{sp.leadTimeDays} ngày</strong></span>}
+                        {sp.moq !== undefined && sp.moq > 0 && <span>MOQ: <strong className="text-slate-700">{sp.moq}</strong></span>}
                       </div>
                     </div>
                     <div className="text-right">

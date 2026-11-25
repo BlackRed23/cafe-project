@@ -70,13 +70,13 @@ const LegacyAdminDashboardPage: React.FC = () => {
         setIsLoading(true);
         
         if (isStaff) {
-          const statsData = await dashboardApi.getStaffStats().catch(() => ({} as any));
+          const statsData = await dashboardApi.getStaffStats().catch(() => null);
           setStats((prev) => ({
             ...prev,
             totalProducts: 0,
-            totalOrders: statsData.todayOrders || 0,
-            lowStockCount: statsData.lowStockCount || 0,
-            pendingPRsCount: statsData.pendingReceivePRsCount || 0,
+            totalOrders: statsData?.todayOrders || 0,
+            lowStockCount: statsData?.lowStockCount || 0,
+            pendingPRsCount: statsData?.pendingReceivePRsCount || 0,
           }));
           return;
         }
@@ -90,7 +90,7 @@ const LegacyAdminDashboardPage: React.FC = () => {
           profitData,
           marginsData,
         ] = await Promise.all([
-          dashboardApi.getStats().catch(() => ({} as any)),
+          dashboardApi.getStats().catch(() => null),
           ordersApi.getOrders().catch(() => [] as Order[]),
           productsApi.getProducts().catch(() => [] as Product[]),
           inventoryApi.getLowStockInventories().catch(() => []),
@@ -100,14 +100,14 @@ const LegacyAdminDashboardPage: React.FC = () => {
         ]);
 
         setStats({
-          totalProducts: allProducts.length || (statsData as any).totalProducts || 0,
-          totalOrders: allOrders.length || (statsData as any).totalOrders || 0,
-          lowStockCount: lowStock.length || (statsData as any).lowStockCount || 0,
-          pendingPRsCount: pendingPRs.length || (statsData as any).pendingPRsCount || 0,
-          totalRevenue: (statsData as any).totalRevenue || 0,
-          totalCogs: (statsData as any).totalCogs || 0,
-          grossProfit: (statsData as any).grossProfit || 0,
-          grossMarginPercent: (statsData as any).grossMarginPercent || 0,
+          totalProducts: allProducts.length || statsData?.totalProducts || 0,
+          totalOrders: allOrders.length || statsData?.totalOrders || 0,
+          lowStockCount: lowStock.length || statsData?.lowStockCount || 0,
+          pendingPRsCount: pendingPRs.length || statsData?.pendingPRsCount || 0,
+          totalRevenue: statsData?.totalRevenue || 0,
+          totalCogs: statsData?.totalCogs || 0,
+          grossProfit: statsData?.grossProfit || 0,
+          grossMarginPercent: statsData?.grossMarginPercent || 0,
         });
 
         setDailyProfit(profitData);
@@ -115,8 +115,8 @@ const LegacyAdminDashboardPage: React.FC = () => {
 
         const sortedOrders = allOrders
           .sort((a, b) => {
-            const d1 = a.createdAt || (a as any).created_at || "";
-            const d2 = b.createdAt || (b as any).created_at || "";
+            const d1 = a.createdAt || a.created_at || "";
+            const d2 = b.createdAt || b.created_at || "";
             return new Date(d2).getTime() - new Date(d1).getTime();
           })
           .slice(0, 5);
@@ -125,7 +125,7 @@ const LegacyAdminDashboardPage: React.FC = () => {
         const salesCount: Record<string, number> = {};
         allOrders.forEach((order) => {
           order.items?.forEach((item) => {
-            const pId = item.productId || (item as any).product_id || item.product?.id;
+            const pId = item.productId || item.product_id || item.product?.id;
             if (pId) salesCount[pId] = (salesCount[pId] || 0) + (item.quantity || 0);
           });
         });
@@ -603,7 +603,7 @@ const LegacyAdminDashboardPage: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100/60">
                   {recentOrders.map((order) => {
-                    const dateVal = order.createdAt || (order as any).created_at || "";
+                    const dateVal = order.createdAt || order.created_at || "";
                     const orderIdStr = order.id.slice(-8).toUpperCase();
                     return (
                       <tr
@@ -625,7 +625,7 @@ const LegacyAdminDashboardPage: React.FC = () => {
                           {formatCurrency(order.totalAmount)}
                         </td>
                         <td className="py-3.5">
-                          <Badge status={order.paymentStatus || (order as any).payment_status} />
+                          <Badge status={order.paymentStatus || order.payment_status} />
                         </td>
                         <td className="py-3.5">
                           <Badge status={order.status} />
@@ -661,7 +661,7 @@ const LegacyAdminDashboardPage: React.FC = () => {
               {trendingCoffee.map((prod, idx) => {
                 const img =
                   prod.imageUrl ||
-                  (prod as any).image_url ||
+                  prod.image_url ||
                   "/images/product-fallback.jpg";
                 return (
                   <div

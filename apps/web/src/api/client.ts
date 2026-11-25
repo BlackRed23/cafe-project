@@ -10,7 +10,7 @@ type ApiEnvelope<T> = {
   data?: T;
 };
 
-export function unwrapApiData<T = any>(payload: T | ApiEnvelope<T>): T {
+export function unwrapApiData<T = unknown>(payload: T | ApiEnvelope<T>): T {
   if (payload && typeof payload === "object" && "data" in payload) {
     return (payload as ApiEnvelope<T>).data as T;
   }
@@ -18,17 +18,17 @@ export function unwrapApiData<T = any>(payload: T | ApiEnvelope<T>): T {
   return payload as T;
 }
 
-export function unwrapApiField<T = any>(payload: any, field: string): T {
-  const data = unwrapApiData<any>(payload);
+export function unwrapApiField<T = unknown>(payload: unknown, field: string): T {
+  const data = unwrapApiData<unknown>(payload);
 
-  if (data && typeof data === "object" && field in data) {
-    return data[field] as T;
+  if (data && typeof data === "object" && Object.prototype.hasOwnProperty.call(data, field)) {
+    return Reflect.get(data, field) as T;
   }
 
   return data as T;
 }
 
-export function unwrapApiList<T = any>(payload: any, field: string): T[] {
+export function unwrapApiList<T = unknown>(payload: unknown, field: string): T[] {
   const value = unwrapApiField<T[] | T>(payload, field);
   return Array.isArray(value) ? value : [];
 }
@@ -61,14 +61,17 @@ apiClient.interceptors.response.use(
       "Đã có lỗi xảy ra. Vui lòng thử lại.";
 
     if (error && typeof error === "object") {
-      (error as any).friendlyMessage = message;
+      (error as { friendlyMessage?: string }).friendlyMessage = message;
     }
 
     return Promise.reject(error);
   }
 );
 
-export function getErrorMessage(error: any): string {
+export function getErrorMessage(error: unknown): string {
   if (!error) return "Đã có lỗi xảy ra.";
-  return error.friendlyMessage || error.response?.data?.message || error.response?.data?.error || error.message || "Đã có lỗi xảy ra.";
+  if (typeof error !== "object") return "Đã có lỗi xảy ra.";
+  const candidate = error as { friendlyMessage?: unknown; response?: { data?: { message?: unknown; error?: unknown } }; message?: unknown };
+  const messages = [candidate.friendlyMessage, candidate.response?.data?.message, candidate.response?.data?.error, candidate.message];
+  return messages.find((message): message is string => typeof message === "string" && message.length > 0) ?? "Đã có lỗi xảy ra.";
 }

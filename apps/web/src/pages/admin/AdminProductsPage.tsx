@@ -1,3 +1,4 @@
+import { schedulePageLoad } from "../../utils/schedulePageLoad";
 import { mockEnabled } from '../../mock/config';
 import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useState, useEffect, useRef } from "react";
@@ -71,7 +72,7 @@ const LegacyAdminProductsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    return schedulePageLoad(fetchData);
   }, []);
 
   const handleDelete = async () => {

@@ -1,6 +1,13 @@
 import * as fs from "fs";
 import * as path from "path";
 
+interface PexelsSearchResponse {
+  photos?: {
+    src: { medium?: string; large?: string; original: string };
+    url: string;
+  }[];
+}
+
 // Load env files
 function loadEnvFiles() {
   const envPaths = [
@@ -87,7 +94,7 @@ async function downloadImage(url: string, outputPath: string): Promise<boolean> 
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, buffer);
     return true;
-  } catch (err) {
+  } catch {
     return false;
   }
 }
@@ -138,7 +145,7 @@ async function main() {
         throw new Error(`Pexels HTTP ${apiRes.status}: ${errText}`);
       }
 
-      const data: any = await apiRes.json();
+      const data: PexelsSearchResponse = await apiRes.json();
 
       if (!data.photos || data.photos.length === 0) {
         throw new Error(`Không tìm thấy ảnh trên Pexels cho "${item.searchKeyword}"`);
@@ -163,15 +170,16 @@ async function main() {
         status: "Thành công",
         pexelsUrl: photo.url
       });
-    } catch (err: any) {
-      console.log(`  ❌ Thất bại: ${err.message}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.log(`  ❌ Thất bại: ${message}`);
       mappingResults.push({
         sku: item.sku,
         name: item.name,
         keyword: item.searchKeyword,
         fileName,
         imageUrl: localPath,
-        status: `Lỗi: ${err.message}`
+        status: `Lỗi: ${message}`
       });
     }
 

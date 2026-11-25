@@ -73,35 +73,43 @@ export const actions: Record<Area, Action[]> = {
     { label: 'Forget memory', path: '/agent/memory/forget', fields: [text('memoryId', 'Memory', '', 'memories')] },
   ],
 };
-export type Values = Record<string, any>;
+export type Values = Record<string, unknown>;
 export const defaults = (fields: Field[]): Values => Object.fromEntries(fields.map(f => [f.key, f.fields ? (isFieldGroup(f) ? defaults(f.fields) : f.optional ? [] : [defaults(f.fields)]) : f.value ?? '']));
 export function payload(fields: Field[], values: Values): Values {
   return Object.fromEntries(fields.flatMap(f => {
     const v = values[f.key];
     if (f.fields) {
-      if (isFieldGroup(f)) return [[f.key, payload(f.fields, v)]];
+      if (isFieldGroup(f)) return [[f.key, payload(f.fields, v as Values)]];
       if (f.key === 'unitCosts') {
         const entries = (v as Values[]).map(row => [row.ingredientId, row.unitCost] as const);
         if (new Set(entries.map(([id]) => id)).size !== entries.length) throw new Error('Enter one cost per ingredient.');
         return [[f.key, Object.fromEntries(entries)]];
       }
-      if (f.optional && !v.length && f.key === 'itemIds') return [];
-      return [[f.key, v.map((row: Values) => f.fields![0]?.key === 'value' ? row.value : payload(f.fields!, row))]];
+      const entries = v as Values[];
+      if (f.optional && !entries.length && f.key === 'itemIds') return [];
+      return [[f.key, entries.map((row) => f.fields![0]?.key === 'value' ? row.value : payload(f.fields!, row))]];
     }
     if (f.optional && v === '' && f.key !== 'selfApprovalReason') return [];
     if (f.kind === 'integer') return [[f.key, ['budget'].includes(f.key) ? Number(v) : String(v)]];
     return [[f.key, v]];
   }));
 }
+type VersionedRecord = { id: string; version: string; purchaseId?: string };
+const isVersionedRecord = (value: unknown): value is VersionedRecord => value !== null && typeof value === "object"
+  && "id" in value && typeof value.id === "string" && "version" in value && typeof value.version === "string";
+
 /** Use versions of records shown to operator, never refresh guards while submitting a form. */
 export function versionGuards(input: Values, data: Values): Record<string, string> {
   const result: Record<string, string> = {};
   for (const field of ['productId', 'ingredientId', 'orderId', 'purchaseId', 'receiptId', 'targetPurchaseId']) {
-    const id = input[field]; if (!id) continue;
-    const record = Object.values(data).flat().find((row: any) => row.id === id && row.version);
+    const id = input[field];
+    if (typeof id !== "string" || !id) continue;
+    const record = Object.values(data).flat().filter(isVersionedRecord).find(row => row.id === id && row.version);
     if (record) result[id] = record.version;
     if (field === 'receiptId' && record?.purchaseId) {
-      const purchase = data.purchases?.find((p: any) => p.id === record.purchaseId); if (purchase) result[purchase.id] = purchase.version;
+      const purchases = Array.isArray(data.purchases) ? data.purchases.filter(isVersionedRecord) : [];
+      const purchase = purchases.find(p => p.id === record.purchaseId);
+      if (purchase) result[purchase.id] = purchase.version;
     }
   }
   return result;

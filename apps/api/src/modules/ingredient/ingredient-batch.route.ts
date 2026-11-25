@@ -4,13 +4,13 @@ import { asyncHandler } from '../../common/async-handler';
 import { HttpError } from '../../common/http-error';
 import { sendSuccess } from '../../common/response';
 import { authMiddleware, roleMiddleware } from '../auth/auth.middleware';
-import { UserRole } from '@cafe-project/database';
+import { UserRole, type Ingredient, type IngredientBatch } from '@cafe-project/database';
 
 /** Read-only IngredientBatch APIs. Quality holds/recalls require a schema migration and are NOT inferred here. */
 export const ingredientBatchRoutes = Router();
 ingredientBatchRoutes.use(authMiddleware, roleMiddleware(UserRole.ADMIN, UserRole.STAFF));
 
-const view = (batch: any, now: Date, warningDays: number) => {
+const view = (batch: IngredientBatch & { ingredient?: Pick<Ingredient, 'id' | 'name' | 'baseUnit'> }, now: Date, warningDays: number) => {
     const remaining = Number(batch.quantityRemaining);
     const expiry = batch.expirationDate ? new Date(batch.expirationDate) : null;
     const expired = !!expiry && expiry.getTime() <= now.getTime();

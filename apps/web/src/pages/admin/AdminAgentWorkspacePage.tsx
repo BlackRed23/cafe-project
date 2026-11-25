@@ -9,6 +9,7 @@ import type { PurchaseRequest } from '../../types/purchaseRequest.types';
 import type { AgentRunSummary, AuditPage } from '../../features/agent/agentWorkspace.types';
 import { AGENT_PHASES, EMPTY_EVIDENCE, phaseEvidence } from '../../features/agent/agentWorkspace.presentation';
 import { AgentStatusPill } from '../../features/agent/AgentStatusPill';
+import { GraphPurchasingPanel } from '../../features/agent/GraphPurchasingPanel';
 import './agent-workspace.css';
 
 const dateText = (value?: string | null): string => {
@@ -42,6 +43,7 @@ export const AdminAgentWorkspacePage: React.FC = () => {
   const { isAdmin, isStaff } = useAuth();
   const [params, setParams] = useSearchParams();
   const selectedId = params.get('runId') || '';
+  const selectedGraph = params.get('proposalGraph') || '';
   const [runInput, setRunInput] = useState(selectedId);
   const [runResult, setRunResult] = useState<{
     id: string; revision: number; value: AgentRunSummary | null; error: string | null
@@ -127,6 +129,12 @@ export const AdminAgentWorkspacePage: React.FC = () => {
         </div>
         <div className="agent-hero-mark" aria-hidden="true"><Workflow size={66} strokeWidth={1} /><span>Evidence first.</span></div>
       </header>
+
+      {isAdmin && <GraphPurchasingPanel selectedId={selectedGraph} select={graphId => {
+        const next = new URLSearchParams(params);
+        next.set('proposalGraph', graphId);
+        setParams(next);
+      }} />}
 
       <div className="agent-stat-grid" aria-label="Tổng quan khả năng">
         <div className="agent-stat"><span>QUYỀN HIỆN TẠI</span><strong>{isAdmin ? 'ADMIN' : isStaff ? 'STAFF' : 'Không xác định'}</strong><small>Backend kiểm tra quyền độc lập</small></div>

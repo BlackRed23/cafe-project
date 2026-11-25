@@ -22,6 +22,9 @@ const VALID_PAYMENT_STATUSES = new Set([
   "REFUNDED",
 ]);
 
+const isOrderPaymentStatus = (value: string): value is Order["paymentStatus"] =>
+  VALID_PAYMENT_STATUSES.has(value);
+
 type OrderFilters = {
   status?: string | null;
   paymentStatus?: string | null;
@@ -68,10 +71,15 @@ const orderList = (data: unknown): Order[] => {
 
 const normalizeOrder = (order: Order): Order => {
   if (!order?.id) throw new Error("Order response not confirmed");
+  const attemptStatus = order.payment?.status;
   return {
     ...order,
     paymentMethod: order?.paymentMethod ?? order?.payment?.method ?? "CASH",
-    paymentStatus: order?.paymentStatus ?? order?.payment?.status ?? "PENDING",
+    paymentStatus:
+      order?.paymentStatus ??
+      (attemptStatus && isOrderPaymentStatus(attemptStatus)
+        ? attemptStatus
+        : "PENDING"),
     items: order?.items?.map((item: NonNullable<Order["items"]>[number]) => ({
       ...item,
       price: item?.price ?? item?.unitPrice ?? 0,

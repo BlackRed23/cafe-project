@@ -1,3 +1,4 @@
+import { errorMessage, errorStatus } from '../../common/error-fields';
 import * as cron from 'node-cron';
 import { productRepository } from '../product/product.repository';
 import { purge } from '../product/product.service';
@@ -12,8 +13,8 @@ export const runInventoryScan = async () => {
   try {
     await scanInventoryViaAgentService({ triggerType: "SCHEDULED_CRON_SCAN" });
     console.log('Inventory scan completed.');
-  } catch (error: any) {
-    console.error(`Inventory scan failed: ${error.message}`);
+  } catch (error) {
+    console.error(`Inventory scan failed: ${errorMessage(error)}`);
   }
 };
 
@@ -30,8 +31,8 @@ export const runProductPurge = async () => {
       try {
         await purge(product.id);
         purgedCount++;
-      } catch (error: any) {
-        if (error.statusCode === 409 || error.status === 409 || error.message?.includes('đã phát sinh')) {
+      } catch (error) {
+        if (errorStatus(error, 'statusCode') === 409 || errorStatus(error, 'status') === 409 || errorMessage(error)?.includes('đã phát sinh')) {
           blockedCount++;
           blockedIds.push(product.id);
         } else {
@@ -49,8 +50,8 @@ export const runProductPurge = async () => {
     if (blockedIds.length > 0) {
       console.log(`Blocked product ids: ${blockedIds.join(', ')}`);
     }
-  } catch (error: any) {
-    console.error(`Product purge cron failed unexpectedly: ${error.message}`);
+  } catch (error) {
+    console.error(`Product purge cron failed unexpectedly: ${errorMessage(error)}`);
   }
 };
 
@@ -74,8 +75,8 @@ export const runPaymentExpiration = async (): Promise<number> => {
     }
 
     return expiredCount;
-  } catch (error: any) {
-    console.error(`[PAYMENT][CRON] Payment expiration job failed: ${error.message}`);
+  } catch (error) {
+    console.error(`[PAYMENT][CRON] Payment expiration job failed: ${errorMessage(error)}`);
     return 0;
   }
 };

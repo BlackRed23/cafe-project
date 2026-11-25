@@ -100,7 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen })
       mounted = false;
       window.removeEventListener("system-settings-updated", handleSettingsUpdated);
     };
-  }, []);
+  }, [isStaff]);
 
   const isActive = (path: string) => {
     if (path === "/admin/inventory" && location.pathname.startsWith("/admin/inventory/transactions")) {

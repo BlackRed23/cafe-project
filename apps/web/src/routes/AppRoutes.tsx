@@ -133,8 +133,8 @@ export const AppRoutes: React.FC = () => {
           <Route index element={<Navigate to="/admin/dashboard" replace />} />
           <Route path="dashboard" element={<AdminDashboardPage />} />
           <Route path="products" element={<AdminProductsPage />} />
-          <Route path="products/create" element={<AdminProductFormPage />} />
-          <Route path="products/:id/edit" element={<AdminProductFormPage />} />
+          <Route path="products/create" element={<AdminOnlyRoute><AdminProductFormPage /></AdminOnlyRoute>} />
+          <Route path="products/:id/edit" element={<AdminOnlyRoute><AdminProductFormPage /></AdminOnlyRoute>} />
           <Route path="ingredients" element={<AdminIngredientsPage />} />
           <Route path="ingredients/:id" element={<AdminIngredientDetailPage />} />
           <Route path="stocktakes" element={<AdminStocktakesPage />} />
@@ -177,8 +177,8 @@ function MockRoutes() {
       <Route index element={<Navigate to="/admin/dashboard" replace />} />
       <Route path="dashboard" element={<AdminDashboardPage />} />
       <Route path="products" element={<AdminProductsPage />} />
-      <Route path="products/create" element={<AdminProductFormPage />} />
-      <Route path="products/:id/edit" element={<AdminProductFormPage />} />
+      <Route path="products/create" element={<AdminOnlyRoute><AdminProductFormPage /></AdminOnlyRoute>} />
+      <Route path="products/:id/edit" element={<AdminOnlyRoute><AdminProductFormPage /></AdminOnlyRoute>} />
       <Route path="inventory" element={<AdminInventoryPage />} />
       <Route path="inventory/transactions" element={<AdminInventoryTransactionsPage />} />
       <Route path="inventory/:inventoryId" element={<AdminInventoryDetailPage />} />

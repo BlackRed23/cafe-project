@@ -3,6 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
+        "lint": "eslint --config ../../packages/eslint-config/node-eslint.config.js .",
         "dev:mock": "ts-node src/workflows/server.ts",
         "predev:mock": "npm run build --workspace @cafe-project/agent",
         "start:mock": "node dist/workflows/server.js",
@@ -27,8 +28,8 @@
         "jsonwebtoken": "^9.0.3",
         "multer": "^2.1.1",
         "node-cron": "^4.4.1",
-        "nodemailer": "^9.0.1",
-        "zod": "^4.4.3"
+        "nodemailer": "^10.6.1",
+        "zod": "^4.6.7"
     },
     "devDependencies": {
         "@types/bcrypt": "^6.0.0",

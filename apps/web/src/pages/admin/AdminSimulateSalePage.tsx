@@ -1,3 +1,38 @@
+import { schedulePageLoad } from "../../utils/schedulePageLoad";
+import type { SimulationAgentLog, SimulationPurchaseRequest } from "../../api/simulateSale.api";
+
+type PendingRestoreGroup = {
+  productId: string;
+  productName?: string;
+  unit: string;
+  totalDecreasedQuantity: number;
+  transactionIds: string[];
+  stockAfter?: number;
+};
+
+type SimulationProductResult = {
+  productId: string;
+  productName: string;
+  unit: string;
+  simulatedQuantity: number;
+  stockBefore?: number;
+  stockAfter?: number;
+  reservedStock: number;
+  availableBefore?: number;
+  availableAfter?: number;
+  decreasedQuantity: number;
+  minThreshold: number;
+  agentStatus: string;
+  agentMessage: string;
+  agentLogs: SimulationAgentLog[];
+  purchaseRequest?: SimulationPurchaseRequest;
+  transactionId?: string;
+  inventoryId?: string;
+  ingredientIds: string[];
+  scanSessionId?: string;
+};
+
+import { isAxiosError } from "axios";
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { productsApi } from "../../api/products.api";
@@ -40,40 +75,10 @@ export const AdminSimulateSalePage: React.FC = () => {
 
   const toast = useToast();
 
-  // Result state (legacy single-product)
-  const [_result, setResult] = useState<{
-    success: boolean;
-    productId?: string;
-    inventoryId?: string;
-    transactionId?: string;
-    productName?: string;
-    stockBefore: number;
-    stockAfter: number;
-    decreasedQuantity: number;
-    restored?: boolean;
-    restoredStock?: number;
-    restoreTransactionId?: string;
-    statusAfter: "OK" | "WARNING" | "NEED_RESTOCK";
-    minThreshold: number;
-    prCreated: boolean;
-    prId?: string;
-    prNumber?: string;
-    hasNoSupplierSkip?: boolean;
-    hasDuplicateSkip?: boolean;
-    hasAgentWarning?: boolean;
-    hasAgentFailed?: boolean;
-    scanSessionId?: string;
-    agentWarning?: string;
-    cooldownRemainingSeconds?: number;
-    activeScanSessionId?: string;
-    agentLogs?: any[];
-  } | null>(null);
-
   // Multi-product simulation results
-  const [simulationProductResults, setSimulationProductResults] = useState<any[]>([]);
-  const [_lastSubmittedItems, setLastSubmittedItems] = useState<Array<{ productId: string; quantity: number }>>([]);
+  const [simulationProductResults, setSimulationProductResults] = useState<SimulationProductResult[]>([]);
 
-  const [pendingRestores, setPendingRestores] = useState<any[]>([]);
+  const [pendingRestores, setPendingRestores] = useState<PendingRestoreGroup[]>([]);
   const [selectedRestoreId, setSelectedRestoreId] = useState("");
 
   const loadData = async (hydratePendingRestore = false) => {
@@ -89,7 +94,7 @@ export const AdminSimulateSalePage: React.FC = () => {
 
       const pendingList = pendingResponse?.pendingRestores || [];
       if (pendingList.length > 0) {
-        const grouped = new Map<string, any>();
+        const grouped = new Map<string, PendingRestoreGroup>();
         for (const t of pendingList) {
           if (!grouped.has(t.productId)) {
             grouped.set(t.productId, {
@@ -101,7 +106,7 @@ export const AdminSimulateSalePage: React.FC = () => {
               stockAfter: t.stockAfter,
             });
           }
-          const g = grouped.get(t.productId);
+          const g = grouped.get(t.productId)!;
           g.totalDecreasedQuantity += t.decreasedQuantity;
           g.transactionIds.push(t.transactionId);
         }
@@ -113,7 +118,7 @@ export const AdminSimulateSalePage: React.FC = () => {
           localStorage.removeItem(LAST_SIMULATION_TRANSACTION_KEY);
         }
       }
-    } catch (err) {
+    } catch {
       setApiError("Không thể tải thông tin sản phẩm và kho.");
     } finally {
       setIsLoading(false);
@@ -121,21 +126,21 @@ export const AdminSimulateSalePage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadData(true);
+    return schedulePageLoad(() => loadData(true));
   }, []);
 
   const getProductAvailableStock = (productId: string): number => {
     const inv = inventories.find((i) => i.productId === productId);
     if (inv && typeof inv.sellableQuantity === "number") return inv.sellableQuantity;
-    const prod = products.find((p) => p.id === productId) as any;
+    const prod = products.find((p) => p.id === productId);
     return Number(prod?.availableStock ?? prod?.inventory?.quantity ?? 0);
   };
 
   const selectedInventory = inventories.find((inv) => inv.productId === selectedProductId);
   const selectedProduct = products.find((p) => p.id === selectedProductId);
 
-  const currentQty = selectedInventory?.quantity ?? (selectedProduct as any)?.inventory?.quantity ?? (selectedProduct as any)?.availableStock ?? 0;
-  const threshold = selectedInventory?.minThreshold ?? selectedInventory?.min_threshold ?? (selectedProduct as any)?.inventory?.min_threshold ?? 5;
+  const currentQty = selectedInventory?.quantity ?? selectedProduct?.inventory?.quantity ?? selectedProduct?.availableStock ?? 0;
+  const threshold = selectedInventory?.minThreshold ?? selectedInventory?.min_threshold ?? selectedProduct?.inventory?.min_threshold ?? 5;
   // Compute availableStock per rules
   const availableStock = getProductAvailableStock(selectedProductId);
   const unit = selectedProduct?.unit || "Ly";
@@ -197,7 +202,6 @@ export const AdminSimulateSalePage: React.FC = () => {
     }
     setIsSimulating(true);
     setApiError(null);
-    setResult(null);
     setSimulationProductResults([]);
 
     try {
@@ -209,19 +213,21 @@ export const AdminSimulateSalePage: React.FC = () => {
       // Call simulate sale API
       const res = await simulateSaleApi.simulateSale(payload);
 
-      const affectedProducts: any[] = res?.affectedProducts ?? (res?.affectedProduct ? [res.affectedProduct] : []);
-      const allLogs: any[] = res?.agentLogs ?? res?.agentResults ?? [];
-      const createdPRs: any[] = res?.createdPurchaseRequests ?? [];
+      const affectedProducts = res?.affectedProducts ?? (res?.affectedProduct ? [res.affectedProduct] : []);
+      const allLogs = res?.agentLogs ?? res?.agentResults ?? [];
+      const createdPRs = res?.createdPurchaseRequests ?? [];
       const scanSessionId = res?.scanSessionId;
 
       // Helper to parse JSON safely
-      const parseJson = (val: any) => {
-        if (typeof val === 'string') { try { return JSON.parse(val); } catch { return null; } }
-        return val;
+      const parseJson = (value: unknown): Record<string, unknown> => {
+        if (typeof value === 'string') {
+          try { value = JSON.parse(value); } catch { return {}; }
+        }
+        return value && typeof value === 'object' ? value as Record<string, unknown> : {};
       };
 
       // Helper to resolve agent status from logs
-      const resolveAgentStatus = (logs: any[]): string => {
+      const resolveAgentStatus = (logs: SimulationAgentLog[]): string => {
         for (const log of logs) {
           const output = parseJson(log.output);
           if (log.result === 'CREATED_PURCHASE_REQUEST' || log.action === 'CREATE_PURCHASE_REQUEST' || output?.action === 'CREATE_PURCHASE_REQUEST') return 'CREATED_PURCHASE_REQUEST';
@@ -264,12 +270,12 @@ export const AdminSimulateSalePage: React.FC = () => {
       // Build per-product results
       const productResults = submittedItems.map((item) => {
         const product = products.find(p => p.id === item.productId);
-        const affected = affectedProducts.find((x: any) => x.productId === item.productId);
+        const affected = affectedProducts.find((x) => x.productId === item.productId);
         const inv = inventories.find(i => i.productId === item.productId);
 
         // Filter agent logs for this product (including its recipe ingredient logs)
         const productIngredientIds: string[] = Array.isArray(affected?.ingredientIds) ? affected.ingredientIds : [];
-        const productLogs = allLogs.filter((log: any) => {
+        const productLogs = allLogs.filter((log) => {
           const input = parseJson(log.input);
           const output = parseJson(log.output);
           const logIngId = log.ingredientId || input?.ingredientId || output?.ingredientId;
@@ -280,15 +286,15 @@ export const AdminSimulateSalePage: React.FC = () => {
             log.productName === product?.name ||
             input?.productName === product?.name ||
             output?.productName === product?.name ||
-            (logIngId && productIngredientIds.includes(logIngId))
+            (typeof logIngId === "string" && productIngredientIds.includes(logIngId))
           );
         });
 
         // Find purchase request for this product (or any of its recipe ingredients)
-        const pr = createdPRs.find((p: any) =>
+        const pr = createdPRs.find((p) =>
           p.productId === item.productId ||
           p.inventory?.productId === item.productId ||
-          p.items?.some((prItem: any) =>
+          p.items?.some((prItem) =>
             prItem.inventory?.productId === item.productId ||
             (prItem.ingredientId && productIngredientIds.includes(prItem.ingredientId))
           )
@@ -327,40 +333,6 @@ export const AdminSimulateSalePage: React.FC = () => {
       });
 
       setSimulationProductResults(productResults);
-      setLastSubmittedItems(submittedItems);
-
-      // Also set the legacy single-product result for backward compat
-      if (!multiMode && productResults.length === 1) {
-        const pr = productResults[0];
-        let status: "OK" | "WARNING" | "NEED_RESTOCK" = "OK";
-        if ((pr.stockAfter ?? 0) < (pr.minThreshold ?? 0)) status = "NEED_RESTOCK";
-        else if ((pr.stockAfter ?? 0) === (pr.minThreshold ?? 0)) status = "WARNING";
-
-        setResult({
-          success: true,
-          productId: pr.productId,
-          inventoryId: pr.inventoryId,
-          transactionId: pr.transactionId,
-          productName: pr.productName,
-          stockBefore: pr.stockBefore ?? 0,
-          stockAfter: pr.stockAfter ?? 0,
-          decreasedQuantity: pr.decreasedQuantity,
-          statusAfter: status,
-          minThreshold: pr.minThreshold ?? 0,
-          prCreated: !!pr.purchaseRequest,
-          prId: pr.purchaseRequest?.id,
-          prNumber: pr.purchaseRequest?.requestNumber || pr.purchaseRequest?.id,
-          hasNoSupplierSkip: pr.agentStatus === 'NO_SUPPLIER',
-          hasDuplicateSkip: pr.agentStatus === 'SKIPPED_DUPLICATE',
-          hasAgentWarning: !!res?.agentWarning || res?.cooldownRemainingSeconds > 0 || !!res?.activeScanSessionId,
-          hasAgentFailed: pr.agentStatus === 'FAILED',
-          scanSessionId,
-          agentWarning: res?.agentWarning,
-          cooldownRemainingSeconds: res?.cooldownRemainingSeconds,
-          activeScanSessionId: res?.activeScanSessionId,
-          agentLogs: pr.agentLogs,
-        });
-      }
 
       /* ─── Toast notifications based on response ─── */
       if (multiMode) {
@@ -406,10 +378,11 @@ export const AdminSimulateSalePage: React.FC = () => {
         localStorage.setItem(LAST_SIMULATION_TRANSACTION_KEY, firstTransactionId);
       }
       await loadData(true);
-    } catch (err: any) {
+    } catch (err) {
       // Case Error toasts
-      const status = err.response?.status;
-      const message = err.response?.data?.message || err.message || "";
+      const response = isAxiosError<{ message?: string }>(err) ? err.response : undefined;
+      const status = response?.status;
+      const message = response?.data?.message || (err instanceof Error ? err.message : undefined) || "";
 
       if (status === 400 && (message.toLowerCase().includes("not enough") || message.toLowerCase().includes("inventory") || message.toLowerCase().includes("stock") || message.toLowerCase().includes("không đủ"))) {
         toast.error("Không đủ tồn kho", message || `Không đủ tồn kho để mô phỏng bán hàng. Tồn kho hiện tại: ${currentQty} ${unit}, yêu cầu: ${localSimulatedDemand} ${unit}.`);
@@ -442,9 +415,10 @@ export const AdminSimulateSalePage: React.FC = () => {
       setSelectedRestoreId("");
       localStorage.removeItem(LAST_SIMULATION_TRANSACTION_KEY);
       await loadData(true);
-    } catch (err: any) {
-      const status = err.response?.status;
-      const message = err.response?.data?.message || err.message || "Không thể khôi phục mô phỏng.";
+    } catch (err) {
+      const response = isAxiosError<{ message?: string }>(err) ? err.response : undefined;
+      const status = response?.status;
+      const message = response?.data?.message || (err instanceof Error ? err.message : undefined) || "Không thể khôi phục mô phỏng.";
       if (status === 409) {
         toast.warning("Mô phỏng đã được khôi phục", message);
       } else {
@@ -814,7 +788,7 @@ export const AdminSimulateSalePage: React.FC = () => {
                     <label className="block text-sm font-medium text-slate-750 mb-1.5 font-semibold">Thời gian mô phỏng</label>
                     <select
                       value={simulationMode}
-                      onChange={(e) => { setSimulationMode(e.target.value as any); }}
+                      onChange={(e) => { setSimulationMode(e.target.value as typeof simulationMode); }}
                       className="block w-full px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-700/20 focus:border-amber-700"
                     >
                       <option value="ONE_DAY">1 Ngày</option>

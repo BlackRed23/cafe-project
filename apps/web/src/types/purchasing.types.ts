@@ -14,12 +14,42 @@ export interface PurchasingOrder {
   supplierReturns: Array<{id:string;goodsReceiptId:string;batchId:string;quantity:string;createdAt:string}>;
   invoices: Array<{id:string;invoiceNumber:string;status:string;differences:unknown;createdAt:string}>;
 }
+
+/** Backend allowlisted STAFF DTO; no supplier, prices, invoices, or audit details. */
+export interface PurchasingReceiptContext {
+  orderId: string; status: string; canReceive: boolean;
+  items: Array<{
+    purchaseOrderItemId: string; ingredientId: string;
+    quantityOrdered: number; quantityReceived: number;
+    remainingQuantity: number; unit: string; conversionToBase: string;
+  }>;
+  receiptRequirements: {
+    requestId: string; items: string[]; batches: string[];
+    expirationDateFormat: string; batchQuantityMustEqualReceived: boolean;
+  };
+  discrepancyRequirements: {
+    requestId: string; categories: string[];
+    observedQuantityMustEqualAcceptedPlusRejected: boolean;
+  };
+  receiptRequestIds?: string[];
+  discrepancyRequestIds?: string[];
+}
 export interface ReceiptLine {
   purchaseOrderItemId: string; receivedQuantity: number;
   batches: Array<{batchCode:string;expirationDate:string;quantity:number}>;
 }
 export interface PurchasingReceipt {
   requestId:string; supplierInvoiceNo?:string; note?:string; items:ReceiptLine[];
+}
+/** STAFF confirmation is intentionally narrower than ADMIN's full PO response. */
+export interface StaffPurchaseReceiptResult {
+  orderId:string; status:string; receiptId:string|null; receiptRequestId:string;
+  replayed:boolean; isStockSafe:boolean;
+  items:Array<{purchaseOrderItemId:string;ingredientId:string;quantityOrdered:number;quantityReceived:number;remainingQuantity:number;unit:string}>;
+}
+export interface StaffPurchaseDiscrepancyResult {
+  discrepancyId:string; discrepancyRequestId:string; status:string; purchaseOrderItemId:string;
+  observedQuantity:string; acceptedQuantity:string; rejectedQuantity:string; replayed:boolean;
 }
 export interface PurchasingDiscrepancy {
   requestId:string;purchaseOrderItemId:string;

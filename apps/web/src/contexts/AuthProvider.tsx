@@ -1,32 +1,27 @@
+import { schedulePageLoad } from "../utils/schedulePageLoad";
 import { mockEnabled, mockApi, mockTokenKey, mockUserKey } from '../mock/config';
 const tokenStorageKey = mockEnabled ? mockTokenKey : 'access_token';
 const userStorageKey = mockEnabled ? mockUserKey : 'user';
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { authApi } from "../api/auth.api";
 import type { User, LoginPayload, RegisterPayload } from "../types/auth.types";
 
-interface AuthContextType {
-  user: User | null;
-  token: string | null;
-  isAuthenticated: boolean;
-  isAdmin: boolean;
-  isStaff: boolean;
-  loading: boolean;
-  login: (payload: LoginPayload) => Promise<void>;
-  register: (payload: RegisterPayload) => Promise<void>;
-  loginWithGoogle: (accessToken: string) => Promise<void>;
-  logout: () => void;
-  loadMe: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import { AuthContext } from "./AuthContextState";
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem(tokenStorageKey));
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(() => Boolean(token));
 
-  const loadMe = async () => {
+  const logout = useCallback(() => {
+    localStorage.removeItem(tokenStorageKey);
+    localStorage.removeItem(userStorageKey);
+    setUser(null);
+    setToken(null);
+    window.location.href = "/login";
+  }, []);
+
+  const loadMe = useCallback(async () => {
     try {
       setLoading(true);
       const data = mockEnabled ? { user: await mockApi!.request<User>('/session') } : await authApi.getMe();
@@ -36,20 +31,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         logout();
       }
-    } catch (error) {
+    } catch {
       logout();
     } finally {
       setLoading(false);
     }
-  };
+  }, [logout]);
 
   useEffect(() => {
-    if (token) {
-      loadMe();
-    } else {
-      setLoading(false);
-    }
-  }, [token]);
+    if (token) return schedulePageLoad(loadMe);
+  }, [token, loadMe]);
 
   const persistAuth = (data: { accessToken?: string; token?: string; user?: User }) => {
     const receivedToken = data.accessToken || data.token;
@@ -120,14 +111,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem(tokenStorageKey);
-    localStorage.removeItem(userStorageKey);
-    setUser(null);
-    setToken(null);
-    window.location.href = "/login";
-  };
-
   const isAuthenticated = !!user;
   const isAdmin = user?.role === "ADMIN";
   const isStaff = user?.role === "STAFF";
@@ -151,12 +134,4 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
 };

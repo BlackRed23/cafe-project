@@ -1,23 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
 import type { Product } from "../types/product.types";
 
-export interface CartItem {
-  product: Product;
-  quantity: number;
-}
-
-interface CartContextType {
-  items: CartItem[];
-  totalItems: number;
-  totalAmount: number;
-  addToCart: (product: Product, quantity: number) => boolean;
-  removeFromCart: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => boolean;
-  clearCart: () => void;
-}
-
-const CartContext = createContext<CartContextType | undefined>(undefined);
+import type { CartItem } from "./CartContextState";
+import { CartContext } from "./CartContextState";
 
 const getInventoryQuantity = (product: Product): number | undefined => {
   const quantity = product.inventory?.quantity;
@@ -28,27 +14,22 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { user } = useAuth();
   const CART_STORAGE_KEY = user ? `cart_${user.id}` : null;
 
-  const [items, setItems] = useState<CartItem[]>([]);
-
-  // Load cart when user changes
-  useEffect(() => {
-    if (CART_STORAGE_KEY) {
-      try {
-        const saved = localStorage.getItem(CART_STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          setItems(Array.isArray(parsed) ? parsed : []);
-        } else {
-          setItems([]);
-        }
-      } catch {
-        setItems([]);
-      }
-    } else {
-      // Clear cart on logout
-      setItems([]);
+  const readItems = (): CartItem[] => {
+    if (!CART_STORAGE_KEY) return [];
+    try {
+      const saved = localStorage.getItem(CART_STORAGE_KEY);
+      const parsed: unknown = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
     }
-  }, [CART_STORAGE_KEY]);
+  };
+  const [items, setItems] = useState(readItems);
+  const [previousStorageKey, setPreviousStorageKey] = useState(CART_STORAGE_KEY);
+  if (CART_STORAGE_KEY !== previousStorageKey) {
+    setPreviousStorageKey(CART_STORAGE_KEY);
+    setItems(readItems());
+  }
 
   // Save cart when items change
   useEffect(() => {
@@ -132,12 +113,4 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
     </CartContext.Provider>
   );
-};
-
-export const useCart = () => {
-  const context = useContext(CartContext);
-  if (context === undefined) {
-    throw new Error("useCart must be used within a CartProvider");
-  }
-  return context;
 };

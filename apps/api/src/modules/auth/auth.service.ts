@@ -6,7 +6,8 @@ import { type User } from '@cafe-project/database';
 import { env } from '../../common/env';
 import { HttpError } from '../../common/http-error';
 import { authRepository, type UserRecord } from './auth.repository';
-import { verifySignedToken } from './auth.tokens';
+import { verifyGoogleCredential } from './auth.google';
+import { ACCESS_TOKEN_ALGORITHM, verifySignedToken } from './auth.tokens';
 import type { ForgotPasswordInput, GoogleAuthInput, LoginInput, RegisterInput, ResetPasswordInput } from './auth.validation';
 
 import type { AuthUser, AuthResponse, JwtUserPayload } from './auth.types';
@@ -15,13 +16,6 @@ export type { AuthUser, AuthResponse, JwtUserPayload } from './auth.types';
 const PASSWORD_SALT_ROUNDS = 10;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const RESET_PASSWORD_SUCCESS_MESSAGE = 'If this email exists, a reset password link has been sent.';
-
-type GoogleUserInfo = {
-    sub: string;
-    email: string;
-    name?: string;
-    picture?: string;
-};
 
 const toAuthUser = (user: Pick<User, 'id' | 'email' | 'name' | 'phone' | 'avatar' | 'role'>): AuthUser => ({
     id: user.id,
@@ -40,6 +34,7 @@ const signAccessToken = (user: UserRecord): string => {
     };
 
     const options: SignOptions = {
+        algorithm: ACCESS_TOKEN_ALGORITHM,
         expiresIn: env.jwtExpiresIn as SignOptions['expiresIn']
     };
 
@@ -80,39 +75,6 @@ const sendResetPasswordEmail = async (email: string, token: string): Promise<voi
             <p>This link expires in 1 hour.</p>
         `
     });
-};
-
-const fetchGoogleUserInfo = async (accessToken: string): Promise<GoogleUserInfo> => {
-    try {
-        const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: {
-                Authorization: `Bearer ${accessToken}`
-            }
-        });
-
-        if (!response.ok) {
-            throw new HttpError(401, 'Token Google không hợp lệ.');
-        }
-
-        const data = await response.json() as Partial<GoogleUserInfo>;
-
-        if (!data.sub || !data.email) {
-            throw new HttpError(401, 'Thông tin tài khoản Google không đầy đủ.');
-        }
-
-        return {
-            sub: data.sub,
-            email: data.email.toLowerCase(),
-            name: data.name,
-            picture: data.picture
-        };
-    } catch (error) {
-        if (error instanceof HttpError) {
-            throw error;
-        }
-        console.error('Error fetching Google user info:', error);
-        throw new HttpError(503, 'Không thể kết nối với dịch vụ xác thực Google. Vui lòng kiểm tra kết nối internet và thử lại.');
-    }
 };
 
 export const registerUser = async (input: RegisterInput): Promise<AuthUser> => {
@@ -208,30 +170,36 @@ export const loginUser = async (input: LoginInput): Promise<AuthResponse> => {
 };
 
 export const loginWithGoogle = async (input: GoogleAuthInput): Promise<AuthResponse> => {
-    const googleUser = await fetchGoogleUserInfo(input.access_token);
-    const existingUser = await authRepository.findByEmail(googleUser.email);
+    const googleUser = 'id_token' in input
+        ? await verifyGoogleCredential(input.id_token, 'id')
+        : await verifyGoogleCredential(input.access_token, 'access');
+    let user = await authRepository.findByGoogleId(googleUser.sub);
 
-    let user: UserRecord;
-
-    if (!existingUser) {
-        user = await authRepository.create({
-            email: googleUser.email,
-            name: googleUser.name || googleUser.email,
-            password: null,
-            googleId: googleUser.sub,
-            provider: 'google',
-            avatar: googleUser.picture
-        });
+    if (user) {
+        if (!user.isActive || user.provider !== 'google' || user.role !== 'CUSTOMER') {
+            throw new HttpError(403, 'Google sign-in is unavailable for this account.');
+        }
     } else {
-        if (!existingUser.isActive) {
-            throw new HttpError(403, 'Tài khoản đã bị khóa.');
+        if (!googleUser.authoritativeEmail || await authRepository.findByEmail(googleUser.email)) {
+            throw new HttpError(403, 'Google sign-in is unavailable for this account.');
         }
 
-        user = await authRepository.updateGoogleProfile(existingUser.id, {
-            googleId: existingUser.googleId || googleUser.sub,
-            avatar: existingUser.avatar || googleUser.picture,
-            provider: existingUser.provider || 'google'
-        });
+        try {
+            user = await authRepository.create({
+                email: googleUser.email,
+                name: googleUser.name || googleUser.email,
+                password: null,
+                googleId: googleUser.sub,
+                provider: 'google',
+                role: 'CUSTOMER',
+                avatar: googleUser.picture
+            });
+        } catch (error) {
+            if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') {
+                throw new HttpError(409, 'Google account could not be registered. Please retry sign-in.');
+            }
+            throw error;
+        }
     }
 
     await authRepository.updateLastLoginAt(user.id);
@@ -245,7 +213,7 @@ export const loginWithGoogle = async (input: GoogleAuthInput): Promise<AuthRespo
 export const forgotPassword = async (input: ForgotPasswordInput): Promise<{ message: string }> => {
     const user = await authRepository.findByEmail(input.email);
 
-    if (!user) {
+    if (!user?.isActive) {
         return { message: RESET_PASSWORD_SUCCESS_MESSAGE };
     }
 
@@ -266,7 +234,10 @@ export const resetPassword = async (input: ResetPasswordInput): Promise<void> =>
     }
 
     const hashedPassword = await bcrypt.hash(input.newPassword.trim(), PASSWORD_SALT_ROUNDS);
-    await authRepository.updatePassword(user.id, hashedPassword);
+    const consumed = await authRepository.consumeResetToken(user.id, input.token, hashedPassword);
+    if (!consumed) {
+        throw new HttpError(400, 'Invalid or expired password reset token.');
+    }
 };
 
 export const getCurrentUser = async (userId: string): Promise<AuthUser> => {

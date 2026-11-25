@@ -8,7 +8,7 @@ export type CategoryDto = Pick<Category, 'id' | 'name' | 'description' | 'create
     products?: { id: string; name: string; sku: string }[];
 };
 
-const toCategoryDto = (category: any): CategoryDto => ({
+const toCategoryDto = (category: Category & { _count?: { products: number }; products?: CategoryDto['products'] }): CategoryDto => ({
     id: category.id,
     name: category.name,
     description: category.description,

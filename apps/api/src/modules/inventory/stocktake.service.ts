@@ -4,6 +4,12 @@ import { HttpError } from '../../common/http-error';
 import { isIngredientBatchUsable } from '../../common/ingredient-batch-availability';
 import type { StocktakeCreateInput, StocktakeEntryInput, StocktakeSubmitInput, StocktakeDecisionInput } from './stocktake.validator';
 
+export class StocktakeScopeDenied extends HttpError {
+    constructor(message: string) {
+        super(403, message);
+    }
+}
+
 type Actor = { id: string; role: UserRole };
 type DB = Prisma.TransactionClient;
 const zero = new Prisma.Decimal(0);
@@ -29,11 +35,11 @@ const readSession = async (tx: DB, id: string) => {
 };
 const see = (session: { createdById: string; assignedCounterId: string | null }, actor: Actor) => {
     if (actor.role !== UserRole.ADMIN && actor.id !== session.createdById && actor.id !== session.assignedCounterId) {
-        throw new HttpError(403, 'Bạn không được truy cập phiên kiểm kê này.');
+        throw new StocktakeScopeDenied('Bạn không được truy cập phiên kiểm kê này.');
     }
 };
 const countPermission = (session: { assignedCounterId: string | null }, actor: Actor) => {
-    if (session.assignedCounterId !== actor.id) throw new HttpError(403, 'Chỉ nhân viên được phân công mới được ghi nhận kiểm kê.');
+    if (session.assignedCounterId !== actor.id) throw new StocktakeScopeDenied('Chỉ nhân viên được phân công mới được ghi nhận kiểm kê.');
 };
 const admin = (actor: Actor) => {
     if (actor.role !== UserRole.ADMIN) throw new HttpError(403, 'Chỉ ADMIN được ra quyết định kiểm kê.');
@@ -52,7 +58,7 @@ const action = async (tx: DB, requestId: string, stockCountId: string, operation
         actorId: actor.id, payloadHash: hash } });
     return false;
 };
-const dtoEntry = (entry: any) => ({
+const dtoEntry = (entry: Prisma.StocktakeEntryGetPayload<{ include: { history: true } }>) => ({
     id: entry.id, ingredientId: entry.ingredientId, batchId: entry.batchId,
     openingQty: entry.openingQty.toString(), openingCursor: entry.openingCursor.toString(),
     openingQualityStatus: entry.openingQualityStatus, openingExpirationDate: entry.openingExpirationDate,
@@ -62,11 +68,11 @@ const dtoEntry = (entry: any) => ({
     observedCursor: entry.observedCursor?.toString() ?? null,
     countedAt: entry.countedAt, countedById: entry.countedById, reason: entry.reason,
     reasonCategory: entry.reasonCategory, revision: entry.revision,
-    history: entry.history?.map((h: any) => ({ id: h.id, revision: h.revision,
+    history: entry.history?.map((h) => ({ id: h.id, revision: h.revision,
         previousQty: h.previousQty?.toString() ?? null, newQty: h.newQty.toString(),
         actorId: h.actorId, reason: h.reason, createdAt: h.createdAt })) ?? []
 });
-const dtoSession = (session: any) => ({
+const dtoSession = (session: Awaited<ReturnType<typeof readSession>>) => ({
     id: session.id, code: session.code, status: session.status, scope: asScope(session.scope),
     createdById: session.createdById, assignedCounterId: session.assignedCounterId,
     approvedById: session.approvedById, approvedAt: session.approvedAt,
@@ -269,7 +275,7 @@ export const stocktakeService = {
                 if (replay) return { ...await details(tx, id, actor), replayed: true };
                 if (current.status !== StockCountStatus.PENDING_APPROVAL) throw new HttpError(409, 'Phiếu chưa đủ điều kiện phê duyệt.');
                 if (current.assignedCounterId === actor.id) {
-                    throw new HttpError(403, 'Người trực tiếp kiểm đếm không được tự phê duyệt kết quả.');
+                    throw new StocktakeScopeDenied('Người trực tiếp kiểm đếm không được tự phê duyệt kết quả.');
                 }
                 const examination = await examine(tx, id, asScope(current.scope));
                 if (examination.missing.length || examination.ambiguous.length) {

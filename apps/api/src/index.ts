@@ -18,10 +18,13 @@ import dashboardRoutes from './modules/dashboard/dashboard.route';
 import uploadRoutes from './modules/upload/upload.route';
 import { env } from './common/env';
 import { errorHandler } from './common/error-handler';
+import { observeHttp } from './common/http-observability';
 import { sendSuccess } from './common/response';
 import { scheduleJobs } from './modules/cron/cron.service';
 import { ingredientBatchRoutes } from './modules/ingredient/ingredient-batch.route';
 import { stocktakeRoutes } from './modules/inventory/stocktake.route';
+import { startGraphPurchasingContinuations } from './modules/agent/graph-purchasing-admin';
+
 const app = express();
 // PostgreSQL per-ingredient movement cursors are 64-bit. JSON has no BigInt;
 // publish these exact values as decimal strings without losing precision.
@@ -40,6 +43,7 @@ const allowedOrigins = Array.from(new Set([
     ...(process.env.FRONTEND_URL || "").split(",")
 ].map((origin) => origin.trim()).filter(Boolean)));
 
+app.use(observeHttp);
 app.use(cors({
     origin: (origin, callback) => {
         if (!origin || allowedOrigins.includes(origin)) {
@@ -49,24 +53,10 @@ app.use(cors({
 
         callback(new Error(`CORS blocked origin: ${origin}`));
     },
-    credentials: true
+    credentials: true,
+    exposedHeaders: ['X-Request-Id']
 }));
 app.use(express.json());
-
-// HTTP Request & Response Logging Middleware
-app.use((req, res, next) => {
-    const start = Date.now();
-    const { method, originalUrl } = req;
-
-    res.on('finish', () => {
-        const duration = Date.now() - start;
-        const status = res.statusCode;
-        const icon = status < 400 ? '✅' : '❌';
-        console.log(`[HTTP] ${icon} ${method} ${originalUrl} -> Status ${status} (${duration}ms)`);
-    });
-
-    next();
-});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/agent', agentRoutes);
@@ -109,6 +99,8 @@ const server = app.listen(PORT, () => {
     }
 
     scheduleJobs();
+    const stopGraphPurchasing = startGraphPurchasingContinuations();
+    server.once('close', stopGraphPurchasing);
 });
 
 server.on('error', (error: NodeJS.ErrnoException) => {

@@ -1,4 +1,4 @@
-import { prisma } from '@cafe-project/database';
+import { prisma, type AgentLog, type Prisma } from '@cafe-project/database';
 
 type AgentFailureInput = {
     triggerType?: string;
@@ -9,7 +9,7 @@ type AgentFailureInput = {
     note?: string;
 };
 
-const safeJsonParse = (value?: string | null): any => {
+const safeJsonParse = (value?: string | null): unknown => {
     if (!value) return null;
     try {
         return JSON.parse(value);
@@ -32,11 +32,14 @@ const serializeAgentLogField = (value: unknown): string | null => {
 const asString = (value: unknown): string | undefined =>
     typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
-const toAgentLogDto = (log: any) => {
+const field = (value: unknown, key: string): unknown =>
+    value !== null && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined;
+
+const toAgentLogDto = (log: AgentLog) => {
     const input = safeJsonParse(log.input);
     const output = safeJsonParse(log.output);
     const result = log.result || '';
-    const reason = asString(output?.reason) || result || asString(log.action);
+    const reason = asString(field(output, 'reason')) || result || asString(log.action);
 
     return {
         id: log.id,
@@ -44,12 +47,12 @@ const toAgentLogDto = (log: any) => {
         status: log.error_message || result === 'FAILED' ? 'FAILED' : 'SUCCESS',
         result,
         reason,
-        message: asString(output?.message) || 'Agent xử lý thất bại.',
-        triggerType: asString(input?.triggerType),
-        productId: asString(output?.productId) || asString(input?.productId),
-        productName: asString(output?.productName) || asString(input?.productName),
-        inventoryId: asString(output?.inventoryId) || asString(input?.inventoryId),
-        purchaseRequestId: asString(output?.purchaseRequestId),
+        message: asString(field(output, 'message')) || 'Agent xử lý thất bại.',
+        triggerType: asString(field(input, 'triggerType')),
+        productId: asString(field(output, 'productId')) || asString(field(input, 'productId')),
+        productName: asString(field(output, 'productName')) || asString(field(input, 'productName')),
+        inventoryId: asString(field(output, 'inventoryId')) || asString(field(input, 'inventoryId')),
+        purchaseRequestId: asString(field(output, 'purchaseRequestId')),
         referenceType: log.reference_type,
         referenceId: log.reference_id,
         input,
@@ -127,7 +130,7 @@ export const agentFailureLogService = {
         const status = asString(query.status)?.toUpperCase();
         const action = asString(query.action);
         const productId = asString(query.productId);
-        const and: any[] = [];
+        const and: Prisma.AgentLogWhereInput[] = [];
         if (action) and.push({ action });
         if (status === 'FAILED') and.push({ OR: [{ result: 'FAILED' }, { error_message: { not: null } }] });
         if (productId) {
@@ -139,7 +142,7 @@ export const agentFailureLogService = {
                 ]
             });
         }
-        const where: any = and.length ? { AND: and } : {};
+        const where: Prisma.AgentLogWhereInput = and.length ? { AND: and } : {};
         const [total, logs] = await Promise.all([
             prisma.agentLog.count({ where }),
             prisma.agentLog.findMany({

@@ -99,7 +99,7 @@ async function main() {
   log("\n--------------------------------------------------");
   log("2️⃣ DANH SÁCH SẢN PHẨM CÀ PHÊ THẬT SẼ TẠO:");
   log("--------------------------------------------------");
-  console.table(products.map((p: any) => ({
+  console.table(products.map((p) => ({
     SKU: p.sku,
     "Tên Sản Phẩm": p.name,
     "Danh Mục": p.categoryName,
@@ -232,8 +232,8 @@ async function main() {
     const logFilePath = path.join(__dirname, "../../../SEED_LOG.md");
     fs.appendFileSync(logFilePath, logLines.join("\n") + "\n", "utf-8");
     log(`\n📝 Đã ghi lịch sử vào SEED_LOG.md`);
-  } catch (err: any) {
-    console.error("Không thể ghi log:", err.message);
+  } catch (err) {
+    console.error("Không thể ghi log:", err instanceof Error ? err.message : String(err));
   }
 
   await prisma.$disconnect();

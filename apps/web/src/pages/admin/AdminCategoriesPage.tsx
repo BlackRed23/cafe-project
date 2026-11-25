@@ -1,3 +1,4 @@
+import { schedulePageLoad } from "../../utils/schedulePageLoad";
 import React, { useState, useEffect } from "react";
 import { Plus, Search, Edit2, Trash2, LayoutGrid, Info, AlertCircle, CheckCircle } from "lucide-react";
 import { categoriesApi } from "../../api/categories.api";
@@ -42,7 +43,7 @@ export const AdminCategoriesPage: React.FC = () => {
       setError(null);
       const data = await categoriesApi.getCategories();
       setCategories(data);
-    } catch (err) {
+    } catch {
       setError("Không thể tải danh sách danh mục.");
     } finally {
       setIsLoading(false);
@@ -50,7 +51,7 @@ export const AdminCategoriesPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchCategories();
+    return schedulePageLoad(fetchCategories);
   }, []);
 
   const handleOpenModal = (category?: Category) => {

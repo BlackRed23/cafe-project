@@ -291,6 +291,8 @@ export function createSessionD4AuthorityFromReaders(readers: D4ReadOnlyReaders) 
         });
         const { readAt: _ignored, ...sourceIdentity } = source.source;
         const { readAt: _proposed, ...proposedIdentity } = input.source;
+        void _ignored;
+        void _proposed;
         // The source timestamp is historical but must precede an independent
         // reread no older than the five-minute authority horizon.
         if (!fresh(input.source.readAt, readers.now()) ||
@@ -425,6 +427,8 @@ export function createSessionD4AuthorityFromReaders(readers: D4ReadOnlyReaders) 
         };
     };
 
+    const holdReplan: (input: unknown) => Promise<never> = async () =>
+        hold('D4_TRUSTED_PLN_PLAN_UNAVAILABLE');
     return {
         loadPersistedSource: buildSource,
         anomalyAuthority: { verify: verifyAnomaly },
@@ -432,10 +436,8 @@ export function createSessionD4AuthorityFromReaders(readers: D4ReadOnlyReaders) 
         // The existing Graph Execution is a fixed READ identity, NOT a trusted
         // PLN_PER_BACKEND_V1 plan. No signed plan/version/candidate source exists.
         // Returning a guessed plan here could cause an invented KEEP_PLAN.
-        loadPersistedReplanInput: async (_scope: HandoffScope): Promise<never> =>
-            hold('D4_TRUSTED_PLN_PLAN_UNAVAILABLE'),
-        replanAuthority: { verify: async (_input: unknown): Promise<never> =>
-            hold('D4_TRUSTED_PLN_PLAN_UNAVAILABLE') }
+        loadPersistedReplanInput: holdReplan,
+        replanAuthority: { verify: holdReplan }
     };
 }
 

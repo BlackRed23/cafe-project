@@ -290,7 +290,7 @@ export const purchaseRepository = {
             if (existingReceipt) throw new HttpError(409, 'Mã nhận hàng đã dùng với nội dung khác.');
         }
         let retries = 0;
-        let lastError: any = null;
+        let lastError: unknown = null;
 
         while (retries < 3) {
             try {
@@ -653,12 +653,15 @@ export const purchaseRepository = {
                         include: purchaseInclude
                     });
                 }, { timeout: 25000 });
-            } catch (error: any) {
+            } catch (error) {
                 lastError = error;
-                if (error.code === 'P2002' || error.message?.includes('Unique constraint failed')) {
+                const errorRecord = error !== null && typeof error === 'object' ? error : {};
+                const message = 'message' in errorRecord && typeof errorRecord.message === 'string' ? errorRecord.message : undefined;
+                const duplicate = 'code' in errorRecord && errorRecord.code === 'P2002';
+                if (duplicate || message?.includes('Unique constraint failed')) {
                     retries++;
                     if (retries >= 3) {
-                        throw new Error(`Đã thử tạo mã lô 3 lần nhưng vẫn bị trùng. Vui lòng thử lại sau. (Lỗi: ${error.message})`);
+                        throw new Error(`Đã thử tạo mã lô 3 lần nhưng vẫn bị trùng. Vui lòng thử lại sau. (Lỗi: ${message})`);
                     }
                     await new Promise((res) => setTimeout(res, 100 * retries));
                 } else {

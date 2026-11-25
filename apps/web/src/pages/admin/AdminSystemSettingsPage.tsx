@@ -1,3 +1,4 @@
+import { isAxiosError } from "axios";
 import React, { useEffect, useMemo, useState } from "react";
 import { systemSettingsApi, type SystemSetting } from "../../api/systemSettings.api";
 import { Button } from "../../components/common/Button";
@@ -99,7 +100,7 @@ export const AdminSystemSettingsPage: React.FC = () => {
         const nextValues = buildValues(settings);
         setValues(nextValues);
         setInitialValues(nextValues);
-      } catch (error) {
+      } catch {
         toast.error("Lỗi", "Không thể tải cài đặt hệ thống.");
       } finally {
         setIsLoading(false);
@@ -186,8 +187,8 @@ export const AdminSystemSettingsPage: React.FC = () => {
           },
         })
       );
-    } catch (error: any) {
-      toast.error(`Không thể lưu cài đặt: ${fieldLabel}`, error.response?.data?.message || "Lỗi hệ thống.");
+    } catch (error) {
+      toast.error(`Không thể lưu cài đặt: ${fieldLabel}`, (isAxiosError<{ message?: string }>(error) ? error.response : undefined)?.data?.message || "Lỗi hệ thống.");
     } finally {
       setSavingKey(null);
     }
@@ -233,8 +234,8 @@ export const AdminSystemSettingsPage: React.FC = () => {
           })
         );
       });
-    } catch (error: any) {
-      toast.error("Một số cài đặt chưa được lưu. Vui lòng kiểm tra lại.", error.response?.data?.message || "Lỗi hệ thống.");
+    } catch (error) {
+      toast.error("Một số cài đặt chưa được lưu. Vui lòng kiểm tra lại.", (isAxiosError<{ message?: string }>(error) ? error.response : undefined)?.data?.message || "Lỗi hệ thống.");
     } finally {
       setSavingKey(null);
     }
@@ -317,7 +318,7 @@ export const AdminSystemSettingsPage: React.FC = () => {
                           disabled={!!savingKey}
                           onClick={() => handleChange(field.key, values[field.key] === "true" ? "false" : "true")}
                           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-600 focus:ring-offset-2 ${values[field.key] === "true" ? "bg-amber-600" : "bg-slate-200"
-                            } ${!!savingKey ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                            } ${savingKey ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                         >
                           <span
                             className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${values[field.key] === "true" ? "translate-x-6" : "translate-x-1"

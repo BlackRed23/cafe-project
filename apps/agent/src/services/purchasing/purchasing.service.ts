@@ -199,7 +199,7 @@ export async function evaluatePurchasing(raw: unknown, now: Date,
         [candidates.length ? 'SUPPLIER_SELECTION_REQUIRED' : 'NO_ELIGIBLE_SUPPLIER'], common);
     const s = candidates[0]!;
     const conversion = scaled(s.conversionToBase);
-    let packs = max(BigInt(s.minOrderQuantity), (shortage + conversion - 1n) / conversion);
+    const packs = max(BigInt(s.minOrderQuantity), (shortage + conversion - 1n) / conversion);
     if (packs > 1_000_000_000n || packs * conversion >= 10n ** 18n) {
         return result('HOLD', ['PURCHASE_QUANTITY_OUT_OF_RANGE'], common);
     }

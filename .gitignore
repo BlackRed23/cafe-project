@@ -12,6 +12,7 @@ node_modules/
 
 
 dist/
+*.tsbuildinfo
 build/
 .next/
 out/
@@ -27,6 +28,7 @@ test-results/
 playwright-report/
 blob-report/
 coverage/
+.ci-test-assets/
 
 # Playwright videos/traces
 playwright-videos/
@@ -86,5 +88,9 @@ _archive/
 
 # Local rollback checkpoints, verification logs and screenshots
 .task-artifacts/
-
-AGENTS.md
+/.round2.tmp/
+/reports/
+*.key
+*.p12
+*.pfx
+*.dump

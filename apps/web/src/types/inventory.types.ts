@@ -18,6 +18,8 @@ export interface InventoryBatch {
 
 export interface Inventory {
   batches?: InventoryBatch[];
+  inventoryId?: string;
+  sku?: string;
   id: string;
   productId: string;
   product_id?: string;
@@ -30,6 +32,7 @@ export interface Inventory {
     name: string;
     unit?: string;
     imageUrl?: string;
+    sku?: string;
     image_url?: string;
   };
   quantity: number;

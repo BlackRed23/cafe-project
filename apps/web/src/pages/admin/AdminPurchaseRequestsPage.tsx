@@ -1,3 +1,5 @@
+import { schedulePageLoad } from "../../utils/schedulePageLoad";
+import { isAxiosError } from "axios";
 import { mockEnabled } from '../../mock/config';
 import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useEffect, useRef, useState } from "react";
@@ -42,8 +44,8 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
   const [search, setSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFormLoading, setIsFormLoading] = useState(false);
-  const [products, setProducts] = useState<any[]>([]);
-  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [products, setProducts] = useState<Awaited<ReturnType<typeof ingredientsApi.getIngredients>>>([]);
+  const [suppliers, setSuppliers] = useState<Awaited<ReturnType<typeof suppliersApi.getSuppliers>>>([]);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -60,8 +62,8 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
       setIsLoading(true);
       const data = await purchaseRequestsApi.getPurchaseRequests();
       const sorted = data.sort((a, b) => {
-        const t1 = a.createdAt || (a as any).created_at || "";
-        const t2 = b.createdAt || (b as any).created_at || "";
+        const t1 = a.createdAt || a.created_at || "";
+        const t2 = b.createdAt || b.created_at || "";
         return new Date(t2).getTime() - new Date(t1).getTime();
       });
       setPurchaseRequests(sorted);
@@ -73,7 +75,7 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchPRs();
+    return schedulePageLoad(fetchPRs);
   }, []);
 
   const handleOpenModal = async () => {
@@ -141,10 +143,11 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
       setStatusFilter(newPr.status || "PENDING");
       handleCloseModal();
       fetchPRs();
-    } catch (err: any) {
-      if (!err?.response?.status || err.response.status >= 500 || err.response.status === 408) setUncertainCreate(true);
+    } catch (err) {
+      const response = isAxiosError<{ message?: string }>(err) ? err.response : undefined;
+      if (!response?.status || response.status >= 500 || response.status === 408) setUncertainCreate(true);
       else {createIntent.current=null;setUncertainCreate(false);}
-      const msg = err.response?.data?.message || err.message || "Không thể tạo yêu cầu nhập hàng, vui lòng thử lại.";
+      const msg = response?.data?.message || (err instanceof Error ? err.message : undefined) || "Không thể tạo yêu cầu nhập hàng, vui lòng thử lại.";
       toast.error(msg);
     } finally {
       setIsFormLoading(false);
@@ -180,7 +183,7 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
       header: "Nguyên liệu đề xuất",
       render: (pr: PurchaseRequest) => {
         const isPending = pr.status === "PENDING";
-        const isPendingDelete = pr.items?.some((item: any) => !!item.productPendingDelete);
+        const isPendingDelete = pr.items?.some((item) => !!item.productPendingDelete);
         return (
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
@@ -212,7 +215,7 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
     {
       header: "SL đề xuất",
       render: (pr: PurchaseRequest) => {
-        const qty = pr.suggestedQuantity ?? (pr as any).suggested_quantity ?? 0;
+        const qty = pr.suggestedQuantity ?? pr.suggested_quantity ?? 0;
         const purchaseQty = pr.purchaseQuantity;
         const purchaseUnit = pr.purchaseUnit;
         const convertedQty = pr.convertedQuantity ?? qty;
@@ -259,7 +262,7 @@ const LegacyAdminPurchaseRequestsPage: React.FC = () => {
     {
       header: "Ngày tạo",
       render: (pr: PurchaseRequest) => {
-        const dateStr = pr.createdAt || (pr as any).created_at || "";
+        const dateStr = pr.createdAt || pr.created_at || "";
         return <span className="text-xs text-slate-500">{dateStr ? formatDate(dateStr) : ""}</span>;
       },
     },

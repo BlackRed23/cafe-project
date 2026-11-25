@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "type": "module",
   "private": true,
+  "scripts": {
+    "lint": "eslint --config node-eslint.config.js ."
+  },
   "exports": {
     "./base": "./base.js",
     "./next-js": "./next.js",
@@ -20,8 +23,5 @@
     "globals": "^16.5.0",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.50.0"
-  },
-  "dependencies": {
-    "react-router-dom": "7.11.0"
   }
 }

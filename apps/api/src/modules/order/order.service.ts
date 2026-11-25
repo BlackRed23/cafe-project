@@ -413,9 +413,9 @@ export const autoCancelStaleUnpaidOnlineOrders = async (
                     cancelMinutes
                 }
             }).catch(() => {});
-        } catch (error: any) {
+        } catch (error) {
             failedCount++;
-            console.error(`[ORDER][CRON] Không thể tự động hủy đơn quá hạn ${order.id}: ${error?.message ?? error}`);
+            console.error(`[ORDER][CRON] Không thể tự động hủy đơn quá hạn ${order.id}: ${error instanceof Error ? error.message : error}`);
         }
     }
 

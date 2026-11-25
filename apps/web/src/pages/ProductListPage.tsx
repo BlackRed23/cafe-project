@@ -1,3 +1,4 @@
+import { schedulePageLoad } from "../utils/schedulePageLoad";
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { productsApi } from "../api/products.api";
@@ -53,7 +54,7 @@ export const ProductListPage: React.FC = () => {
         { id: "all", name: "Tất cả" },
         ...categoriesData.map(c => ({ id: c.id, name: c.name }))
       ]);
-    } catch (err: any) {
+    } catch {
       setError("Không thể tải dữ liệu. Vui lòng kiểm tra lại kết nối.");
     } finally {
       setIsLoading(false);
@@ -62,13 +63,8 @@ export const ProductListPage: React.FC = () => {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    fetchData();
+    return schedulePageLoad(fetchData);
   }, []);
-
-  // Reset page when any filter changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, selectedCategory, selectedPriceRange, sortBy]);
 
   const handleAddToCart = (product: Product) => {
     if (!isAuthenticated) {
@@ -200,7 +196,7 @@ export const ProductListPage: React.FC = () => {
                 type="text"
                 placeholder="Tìm kiếm sản phẩm theo tên, hương vị..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
                 className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-205 rounded-xl text-[14px] focus:bg-white focus:border-amber-700 focus:ring-2 focus:ring-amber-500/15 outline-none transition-all"
               />
               <Search className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
@@ -212,7 +208,7 @@ export const ProductListPage: React.FC = () => {
                 <span className="text-[13.5px] text-slate-500 whitespace-nowrap">Sắp xếp:</span>
                 <select
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
+                  onChange={(e) => { setSortBy(e.target.value); setCurrentPage(1); }}
                   className="bg-slate-50 border border-slate-205 rounded-xl px-3 py-2 text-[14px] font-medium text-slate-750 outline-none focus:bg-white focus:border-amber-700 focus:ring-2 focus:ring-amber-500/15 transition-all"
                 >
                   <option value="default">Mặc định</option>
@@ -240,7 +236,7 @@ export const ProductListPage: React.FC = () => {
                   return (
                     <button
                       key={cat.id}
-                      onClick={() => setSelectedCategory(cat.id)}
+                      onClick={() => { setSelectedCategory(cat.id); setCurrentPage(1); }}
                       className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all ${
                         isActive
                           ? "bg-amber-800 text-white shadow-sm hover:bg-amber-900"
@@ -265,7 +261,7 @@ export const ProductListPage: React.FC = () => {
                   return (
                     <button
                       key={range.id}
-                      onClick={() => setSelectedPriceRange(range.id)}
+                      onClick={() => { setSelectedPriceRange(range.id); setCurrentPage(1); }}
                       className={`px-3 py-1 rounded-lg text-[12.5px] font-medium transition-all border ${
                         isActive
                           ? "bg-amber-50 text-amber-900 border-amber-300"

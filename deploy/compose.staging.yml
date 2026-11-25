@@ -1,0 +1,60 @@
+# This Compose project intentionally contains NO PostgreSQL container.
+# A user-managed staging DATABASE_URL is supplied via .env on staging host.
+# No Prisma migration, reset, seed, supplier notification or payment is run.
+services:
+  agent:
+    image: ghcr.io/${IMAGE_OWNER:?IMAGE_OWNER_required}/cafe-agent:${IMAGE_TAG:?IMAGE_TAG_required}
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: '5055'
+      AGENT_GRAPH_READONLY: '${STAGING_GRAPH_READONLY:-YES}'
+      AGENT_GRAPH_PURCHASING: '${STAGING_GRAPH_PURCHASING:-NO}'
+    ports:
+      - '127.0.0.1:5155:5055'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:5055/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  api:
+    image: ghcr.io/${IMAGE_OWNER:?IMAGE_OWNER_required}/cafe-api:${IMAGE_TAG:?IMAGE_TAG_required}
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: '5000'
+      AGENT_BASE_URL: http://agent:5055
+    # Override Dockerfile CMD, which otherwise automatically calls migrate deploy.
+    command: ['npm', 'run', 'start', '-w', '@cafe-project/api']
+    ports:
+      - '127.0.0.1:5100:5000'
+    depends_on:
+      agent:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'node', '-e', "require('http').get('http://127.0.0.1:5000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  web:
+    image: ghcr.io/${IMAGE_OWNER:?IMAGE_OWNER_required}/cafe-web:${IMAGE_TAG:?IMAGE_TAG_required}
+    ports:
+      - '127.0.0.1:8081:80'
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/']
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

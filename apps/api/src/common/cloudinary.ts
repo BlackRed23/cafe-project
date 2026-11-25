@@ -1,3 +1,4 @@
+import { errorMessage } from './error-fields';
 import { v2 as cloudinary } from 'cloudinary';
 
 const PRODUCT_IMAGE_FOLDER = 'cafe-products';
@@ -61,8 +62,8 @@ export const deleteCloudinaryImage = async (publicId: string): Promise<{ result:
         }
 
         return { result: destroyResult };
-    } catch (error: any) {
-        throw new Error(`Failed to delete Cloudinary image "${publicId}": ${error.message || 'Unknown error.'}`);
+    } catch (error) {
+        throw new Error(`Failed to delete Cloudinary image "${publicId}": ${errorMessage(error) || 'Unknown error.'}`);
     }
 };
 

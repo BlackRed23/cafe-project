@@ -68,7 +68,7 @@ export const AdminLayout: React.FC = () => {
       mounted = false;
       window.removeEventListener("system-settings-updated", handleSettingsUpdated);
     };
-  }, []);
+  }, [isStaff]);
 
   return (
     <div className="admin-root flex h-screen overflow-hidden">

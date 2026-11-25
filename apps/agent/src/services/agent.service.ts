@@ -75,7 +75,13 @@ const planningPeriodText = (period: ReorderPlanningPeriod): string => {
     return 'chu ky nhap hang hang tuan';
 };
 
-const safeJsonParse = (value?: string | null): any => {
+type LogFields = Record<string, unknown>;
+type AgentLogRecord = Awaited<ReturnType<typeof agentRepository.findLogs>>[number];
+
+const logFields = (value: unknown): LogFields | undefined =>
+    value && typeof value === 'object' ? value as LogFields : undefined;
+
+const safeJsonParse = (value?: string | null): unknown => {
     if (!value) return null;
     try {
         return JSON.parse(value);
@@ -145,7 +151,7 @@ const statusFromResult = (result?: string | null, errorMessage?: string | null):
     return 'SUCCESS';
 };
 
-const reasonFromLog = (action?: string | null, result?: string | null, input?: any, output?: any): string | undefined => {
+const reasonFromLog = (action?: string | null, result?: string | null, input?: LogFields, output?: LogFields): string | undefined => {
     const outputReason = asString(output?.reason);
     if (outputReason) return outputReason;
     const inputReason = asString(input?.reason);
@@ -158,7 +164,7 @@ const reasonFromLog = (action?: string | null, result?: string | null, input?: a
     return asString(action);
 };
 
-const messageFromLog = (action?: string | null, result?: string | null, reason?: string, errorMessage?: string | null, output?: any): string => {
+const messageFromLog = (action?: string | null, result?: string | null, reason?: string, errorMessage?: string | null, output?: LogFields): string => {
     const outputMessage = asString(output?.message);
     if (outputMessage) return outputMessage;
 
@@ -220,7 +226,7 @@ const messageFromLog = (action?: string | null, result?: string | null, reason?:
     return 'Agent đã ghi nhận một sự kiện xử lý.';
 };
 
-const derivePurchaseRequestId = (log: any, output: any): string | undefined => {
+const derivePurchaseRequestId = (log: AgentLogRecord, output?: LogFields): string | undefined => {
     const fromOutput = asString(output?.purchaseRequestId);
     if (fromOutput) return fromOutput;
     const referenceType = (log.reference_type || '').toLowerCase();
@@ -252,9 +258,9 @@ const getAgentSettings = async () => {
     };
 };
 
-const toLogDto = (log: any) => {
-    const input = safeJsonParse(log.input);
-    const output = fixAgentLogDisplayOutput(safeJsonParse(log.output)) as any;
+const toLogDto = (log: AgentLogRecord) => {
+    const input = logFields(safeJsonParse(log.input));
+    const output = logFields(fixAgentLogDisplayOutput(safeJsonParse(log.output)));
     const result = log.result || '';
     const reason = reasonFromLog(log.action, result, input, output);
     const status = statusFromResult(result, log.error_message);
@@ -383,14 +389,6 @@ type AgentNotification = {
     actionUrl?: string;
 };
 
-const notificationForCreatedPurchaseRequest = (productName: string, purchaseRequestId: string): AgentNotification => ({
-    type: 'success',
-    title: 'Đã tạo yêu cầu nhập hàng',
-    description: `Sản phẩm "${productName}" còn thấp hơn ngưỡng. AI Agent đã tạo yêu cầu nhập hàng chờ admin xác nhận.`,
-    actionLabel: 'Xem yêu cầu nhập hàng',
-    actionUrl: `/admin/purchase-requests/${purchaseRequestId}`
-});
-
 const notificationForDuplicatePurchaseRequest = (productName: string, purchaseRequestId?: string): AgentNotification => ({
     type: 'info',
     title: 'Đã có yêu cầu nhập hàng chờ bạn xác nhận',
@@ -423,7 +421,7 @@ const notificationForAiDisabled = (): AgentNotification => ({
     actionUrl: '/admin/settings'
 });
 
-const notificationForAgentFailed = (productName?: string): AgentNotification => ({
+const notificationForAgentFailed = (): AgentNotification => ({
     type: 'error',
     title: 'AI Agent service không khả dụng',
     description: `Không kết nối được AI Agent service. Vui lòng kiểm tra tiến trình apps/agent.`,
@@ -672,7 +670,7 @@ export const agentService = {
 
                     // Dùng calculateReorderPoint chung — đồng bộ tiêu chí với recommendationService
                     const leadTimeDays = supplierProduct?.leadTimeDays && supplierProduct.leadTimeDays > 0 ? supplierProduct.leadTimeDays : 0;
-                    const { baseDailySales, effectiveLeadTimeDays, safetyStock, leadTimeDemand, reorderPoint } = calculateReorderPoint(averageDailySales, leadTimeDays);
+                    const { baseDailySales, effectiveLeadTimeDays, safetyStock, reorderPoint } = calculateReorderPoint(averageDailySales, leadTimeDays);
                     const delayBufferDays = DELAY_BUFFER_DAYS;
                     const bufferDays = SAFETY_BUFFER_DAYS;
 
@@ -751,7 +749,6 @@ export const agentService = {
                     const startOfToday = new Date();
                     startOfToday.setHours(0, 0, 0, 0);
                     const activeBatches = inventory.batches?.filter(b => b.quantity > 0) || [];
-                    let hasBatchWarning = false;
 
                     for (const batch of activeBatches) {
                         const expDate = new Date(batch.expirationDate);
@@ -785,7 +782,6 @@ export const agentService = {
                         }
 
                         if (warningType !== 'SAFE') {
-                            hasBatchWarning = true;
                             const dedupeKey = `batch_expiry_${inventory.productId}_${batch.id}_${warningType}_${startOfToday.toISOString().split('T')[0]}`;
 
                             const existingLog = await prisma.agentLog.findFirst({
@@ -1099,7 +1095,7 @@ export const agentService = {
                         productId: inventory.productId,
                         productName: product.name,
                         inventoryId: inventory.id,
-                        notification: notificationForAgentFailed(product.name)
+                        notification: notificationForAgentFailed()
                     };
                     logger.error(`[AgentScan] FAILED | product="${product.name}" (${inventory.productId}) | error="${errorMessage}"`, { input: failureInput, output: failureOutput });
                     const log = await agentRepository.createLog({
@@ -1444,8 +1440,8 @@ export const agentService = {
                         continue;
                     }
 
-                    // Build replenishment plan via workflows/replenishment.ts
-                    const plan = replenishmentPlan({
+                    // Validate purchase inputs against the shared replenishment contract.
+                    replenishmentPlan({
                         supplierId: activeSupplierLink.supplierId,
                         unitCosts: {
                             [ingredient.id]: Number(activeSupplierLink.pricePerBaseUnit || 0).toFixed(4).replace(/\.?0+$/, '') || '0'
@@ -1548,7 +1544,7 @@ export const agentService = {
                         reason: 'SERVER_ERROR',
                         message: 'AI Agent không thể kiểm tra tồn kho cho nguyên liệu này.',
                         errorMessage,
-                        notification: notificationForAgentFailed(ingredient.name)
+                        notification: notificationForAgentFailed()
                     };
                     const log = await agentRepository.createLog({
                         action: 'SCAN_INGREDIENT_FAILED',
@@ -1692,12 +1688,12 @@ export const agentService = {
                         ...res.recommendation
                     });
                 }
-            } catch (err: any) {
+            } catch (err) {
                 logger.error(`Recommendation failed for product ${id}:`, err);
             }
         }
 
-        if ((recommendationService as any).generateForIngredient) {
+        if (recommendationService.generateForIngredient) {
             for (const ingId of ingredientIds) {
                 try {
                     const res = await recommendationService.generateForIngredient(ingId, input.force, userId);
@@ -1708,7 +1704,7 @@ export const agentService = {
                             ...res.recommendation
                         });
                     }
-                } catch (err: any) {
+                } catch (err) {
                     logger.error(`Recommendation failed for ingredient ${ingId}:`, err);
                 }
             }
@@ -1725,9 +1721,9 @@ export const agentService = {
 
     async getRecommendations() {
         const logs = await agentRepository.findLogs({
-            action: { in: ['RECOMMEND_REORDER', 'RECOMMEND_REORDER_INGREDIENT'] } as any
+            action: { in: ['RECOMMEND_REORDER', 'RECOMMEND_REORDER_INGREDIENT'] }
         });
-        return logs.map((log: any /* Dùng any do Prisma model type không được infer đầy đủ qua findLogs */) => {
+        return logs.map((log) => {
             const output = log.output ? JSON.parse(log.output) : null;
             return {
                 logId: log.id,

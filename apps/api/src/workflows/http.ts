@@ -137,6 +137,7 @@ export function createMockHttpApp(options: MockHttpOptions) {
     app.get('/api/mock/agent/memory', wrap(async (req, res) => { await business.authorize(actor(req), 'memory'); sendSuccess(res, 200, 'MOCK_VERIFIED', await agent.retrieve(actor(req), z.string().max(4000).parse(req.query.q ?? ''))); }));
     app.use((_req, res) => sendError(res, 404, 'NOT_FOUND'));
     app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+        void _next;
         if ((error as { type?: string })?.type === 'entity.too.large') { sendError(res, 413, 'PAYLOAD_TOO_LARGE'); return; }
         if (error instanceof z.ZodError || (error as { type?: string })?.type === 'entity.parse.failed') { sendError(res, 400, 'INVALID_INPUT'); return; }
         if (error instanceof BusinessError) { sendError(res, error.status, error.code); return; }

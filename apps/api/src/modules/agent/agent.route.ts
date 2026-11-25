@@ -20,10 +20,12 @@ import { prisma } from '@cafe-project/database';
 import { z } from 'zod';
 import { createAgentFrontendSummaryRouter } from './agent-frontend-summary.route';
 import { readIngredientSupplierEligibility } from '../supplier/supplier-eligibility.read';
+import { createGraphPurchasingAdminRouter } from './graph-purchasing-admin';
 
 const router = Router();
 router.use(createAgentFrontendSummaryRouter());
 router.use(createPurchaseProposalRouter());
+router.use(createGraphPurchasingAdminRouter());
 const canView = [authenticate, requireRole(['ADMIN', 'STAFF'])];
 const adminOnly = [authenticate, requireRole(['ADMIN'])];
 

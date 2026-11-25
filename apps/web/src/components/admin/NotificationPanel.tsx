@@ -360,7 +360,7 @@ export const NotificationPanel: React.FC = () => {
                 const reason = log.reason || "";
                 const result = log.result || "";
                 const action = log.action || "";
-                const output = (log.output as any) || {};
+                const output = (log.output as { notification?: { title?: string; description?: string; productName?: string; batchCode?: string; daysLeft?: number } } | undefined) || {};
                 const notification = output.notification || {};
                 const pName = notification.productName || log.productName || "sản phẩm";
                 
@@ -424,7 +424,7 @@ export const NotificationPanel: React.FC = () => {
       window.removeEventListener("refresh-notifications", handleRefresh);
       window.removeEventListener("agent-logs-updated", handleRefresh);
     };
-  }, []);
+  }, [globalToast]);
 
   const notifications = apiNotifications;
   const unreadCount = notifications.filter((notification) => !readIds.has(notification.id)).length;

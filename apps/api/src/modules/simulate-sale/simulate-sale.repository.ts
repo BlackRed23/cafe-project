@@ -37,7 +37,7 @@ export const simulateSaleRepository = {
                 orderBy: { expirationDate: 'asc' }
             });
 
-            const totalSellable = batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
+            const totalSellable = batches.reduce((sum: number, b) => sum + b.quantity, 0);
             if (totalSellable < quantity) {
                 throw new HttpError(400, `Không đủ lô hàng còn hạn để mô phỏng. Yêu cầu: ${quantity}, Có thể xuất: ${totalSellable}.`);
             }
@@ -98,7 +98,7 @@ export const simulateSaleRepository = {
                     orderBy: { expirationDate: 'asc' }
                 });
 
-                const totalSellable = batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
+                const totalSellable = batches.reduce((sum: number, b) => sum + b.quantity, 0);
                 if (totalSellable < decreaseQuantity) {
                     throw new HttpError(400, `Không đủ lô hàng còn hạn. Yêu cầu: ${decreaseQuantity}, Có thể xuất: ${totalSellable}.`);
                 }
@@ -226,7 +226,7 @@ export const simulateSaleRepository = {
                         ? Math.max(
                               0,
                               Math.min(
-                                  ...activeRecipe.ingredients.map((ri: any) => {
+                                  ...activeRecipe.ingredients.map((ri) => {
                                       const req = Number(ri.quantityBase || 0);
                                       if (req <= 0) return 999999;
                                       const avail = Math.max(0, Number(ri.ingredient?.quantity || 0) - Number(ri.ingredient?.reserved || 0));
@@ -363,9 +363,9 @@ export const simulateSaleRepository = {
                 ingredientIds: string[];
             }> = [];
 
-            const computeDrinkAvailableCups = (recipe: any): number => {
+            const computeDrinkAvailableCups = (recipe: { ingredients: Array<{ quantityBase: Prisma.Decimal; ingredient?: { quantity: Prisma.Decimal; reserved: Prisma.Decimal } | null }> } | null | undefined): number => {
                 if (!recipe || !Array.isArray(recipe.ingredients) || recipe.ingredients.length === 0) return 0;
-                const capacities = recipe.ingredients.map((ri: any) => {
+                const capacities = recipe.ingredients.map((ri) => {
                     const req = Number(ri.quantityBase || 0);
                     if (req <= 0) return 999999;
                     const avail = Math.max(0, Number(ri.ingredient?.quantity || 0) - Number(ri.ingredient?.reserved || 0));
@@ -574,13 +574,13 @@ export const simulateSaleRepository = {
             if (!existingRestore) {
                 const cupsMatch = /\[sim-cups:(\d+)\]/.exec(transaction.reason || '');
                 const effectiveDecreased = cupsMatch ? Number(cupsMatch[1]) : decreasedQuantity;
-                const activeRecipe = (product as any).recipes?.[0];
+                const activeRecipe = product.recipes?.[0];
                 const recipeCupsAfter =
                     activeRecipe && activeRecipe.ingredients?.length > 0
                         ? Math.max(
                               0,
                               Math.min(
-                                  ...activeRecipe.ingredients.map((ri: any) => {
+                                  ...activeRecipe.ingredients.map((ri) => {
                                       const req = Number(ri.quantityBase || 0);
                                       if (req <= 0) return 999999;
                                       const avail = Math.max(0, Number(ri.ingredient?.quantity || 0) - Number(ri.ingredient?.reserved || 0));

@@ -1,3 +1,4 @@
+import { schedulePageLoad } from "../../utils/schedulePageLoad";
 import React, { useState, useEffect } from "react";
 import { usersApi } from "../../api/users.api";
 import type { User } from "../../types/auth.types";
@@ -39,7 +40,7 @@ export const AdminUsersPage: React.FC = () => {
       setIsLoading(true);
       const data = await usersApi.getUsers();
       setUsers(data);
-    } catch (err: any) {
+    } catch {
       setError("Không thể tải danh sách thành viên.");
     } finally {
       setIsLoading(false);
@@ -47,7 +48,7 @@ export const AdminUsersPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchUsers();
+    return schedulePageLoad(fetchUsers);
   }, []);
 
   const handleOpenModal = (user?: User) => {
@@ -55,7 +56,7 @@ export const AdminUsersPage: React.FC = () => {
       setSelectedUser(user);
       setName(user.name);
       setEmail(user.email);
-      setRole(user.role as any);
+      setRole(user.role as typeof role);
       setPhone(user.phone || "");
       setIsActiveUser(user.is_active !== false && user.isActive !== false);
       setPassword("");
@@ -111,7 +112,7 @@ export const AdminUsersPage: React.FC = () => {
       handleCloseModal();
       // Reload từ DB để đồng bộ chính xác
       await fetchUsers();
-    } catch (err) {
+    } catch {
       toast.error("Thao tác thất bại", "Đã xảy ra lỗi khi lưu thông tin.");
     } finally {
       setModalLoading(false);
@@ -126,7 +127,7 @@ export const AdminUsersPage: React.FC = () => {
       setUsers((prev) => prev.filter((u) => u.id !== deleteId));
       setDeleteId(null);
       toast.success("Xóa thành công", "Nhân viên đã được xóa khỏi hệ thống.");
-    } catch (err) {
+    } catch {
       toast.error("Xóa thất bại", "Đã xảy ra lỗi khi xóa nhân viên.");
     } finally {
       setIsDeleting(false);
@@ -318,7 +319,7 @@ export const AdminUsersPage: React.FC = () => {
               { value: "ADMIN", label: "Quản trị viên (ADMIN)" },
             ]}
             value={role}
-            onChange={(e: any) => setRole(e.target.value)}
+            onChange={(e) => setRole(e.target.value as typeof role)}
             disabled={modalLoading}
           />
           <Select
@@ -328,7 +329,7 @@ export const AdminUsersPage: React.FC = () => {
               { value: "false", label: "Khóa tài khoản (Inactive)" },
             ]}
             value={isActiveUser ? "true" : "false"}
-            onChange={(e: any) => setIsActiveUser(e.target.value === "true")}
+            onChange={(e) => setIsActiveUser(e.target.value === "true")}
             disabled={modalLoading}
           />
 

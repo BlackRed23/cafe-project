@@ -128,8 +128,9 @@ export async function seedSuppliers(isDryRun = false) {
           });
           log(`+ Đã liên kết: "${item.supplierName}" <-> "${product.name}" | Giá nhập: ${item.price}đ`);
           spCreated++;
-        } catch (e: any) {
-          log(`! Lỗi liên kết "${item.supplierName}" <-> "${product.name}": ${e.message}`);
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          log(`! Lỗi liên kết "${item.supplierName}" <-> "${product.name}": ${message}`);
           spErrors++;
         }
       }

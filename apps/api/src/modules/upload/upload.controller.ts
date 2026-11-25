@@ -1,3 +1,4 @@
+import { errorMessage } from '../../common/error-fields';
 import type { Response } from 'express';
 import { sendError, sendSuccess } from '../../common/response';
 import type { AuthenticatedRequest } from '../auth/auth.middleware';
@@ -47,8 +48,8 @@ export const uploadProductImage = async (req: AuthenticatedRequest, res: Respons
             imageUrl: result.secure_url,
             imagePublicId: result.public_id
         });
-    } catch (error: any) {
+    } catch (error) {
         console.error('[upload] Cloudinary upload error:', error);
-        sendError(res, 500, error.message || 'Failed to upload image to Cloudinary.');
+        sendError(res, 500, errorMessage(error) || 'Failed to upload image to Cloudinary.');
     }
 };

@@ -65,7 +65,7 @@ export const ChangePasswordPage: React.FC = () => {
       setTimeout(() => {
         logout();
       }, 3000);
-    } catch (err: any) {
+    } catch (err) {
       setIsLoading(false);
       setError(getErrorMessage(err) || "Đổi mật khẩu thất bại. Vui lòng thử lại.");
     }

@@ -34,10 +34,18 @@ export interface IngredientUsageStat {
   currentStockValue: number;
 }
 
+interface DashboardSummary {
+  products?: { total?: number };
+  orders?: { today?: number; pending?: number; completed?: number; totalRevenue?: number; totalCogs?: number; grossProfit?: number; grossMarginPercent?: number };
+  inventory?: { lowStockCount?: number; outOfStockCount?: number };
+  purchaseRequests?: { pending?: number; pendingReceive?: number };
+  [key: string]: unknown;
+}
+
 export const dashboardApi = {
-  getStats: async (): Promise<any> => {
+  getStats: async () => {
     const response = await apiClient.get("/dashboard/summary");
-    const summary = unwrapApiData<any>(response.data);
+    const summary = unwrapApiData<DashboardSummary>(response.data);
 
     return {
       ...summary,
@@ -55,9 +63,9 @@ export const dashboardApi = {
     };
   },
 
-  getStaffStats: async (): Promise<any> => {
+  getStaffStats: async () => {
     const response = await apiClient.get("/dashboard/staff-summary");
-    const summary = unwrapApiData<any>(response.data);
+    const summary = unwrapApiData<DashboardSummary>(response.data);
 
     return {
       ...summary,

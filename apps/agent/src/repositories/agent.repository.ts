@@ -89,10 +89,11 @@ Vì vậy hệ thống làm tròn theo quy cách nhập hàng và đề xuất n
     };
 };
 
-const safeJsonParse = (value: unknown): any => {
+const safeJsonParse = (value: unknown): Record<string, unknown> | null => {
     if (typeof value !== 'string' || !value.trim()) return null;
     try {
-        return JSON.parse(value);
+        const parsed: unknown = JSON.parse(value);
+        return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null;
     } catch {
         return null;
     }

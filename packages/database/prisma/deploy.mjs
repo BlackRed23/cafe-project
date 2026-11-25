@@ -1,12 +1,13 @@
-'use strict';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { PrismaClient } from '@prisma/client';
 
-const { spawnSync } = require('node:child_process');
-const { createHash } = require('node:crypto');
-const { readFileSync, readdirSync } = require('node:fs');
-const path = require('node:path');
-const { PrismaClient } = require('@prisma/client');
-
-const schema = path.join(__dirname, 'schema');
+const require = createRequire(import.meta.url);
+const schema = fileURLToPath(new URL('./schema', import.meta.url));
 const migrations = path.join(schema, 'migrations');
 const legacy = '20261116090000_expand_preserve_legacy';
 const marker = 'migration.compat.' + legacy;

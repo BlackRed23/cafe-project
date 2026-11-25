@@ -7,9 +7,33 @@ dist
 .env.*
 *.log
 
-# Local execution artifacts; migrations and recovery evidence remain included.
+# Local execution artifacts and credentials.
+.round2.tmp
+.ci-test-assets
+.cce
+.gemini
+.mcp.json
+.claude/settings.local.json
+.turbo
+**/.turbo
 .task-artifacts
 reports
+**/reports
+**/logs
+**/playwright-videos
+**/tests
+**/test-results
+**/playwright-report
+**/screenshots
+**/storageState.json
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.dump
+**/*.bak
 coverage
 **/coverage
 **/*.tsbuildinfo

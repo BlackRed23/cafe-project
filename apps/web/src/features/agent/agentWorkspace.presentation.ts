@@ -12,6 +12,10 @@ export function runStatusLabel(status: RunStatus | string | null): string {
   switch (status) {
     case 'RUNNING': return 'Đang xử lý';
     case 'WAITING_APPROVAL': return 'HOLD · Cần xem xét';
+    case 'AWAITING_APPROVAL': return 'Chờ phê duyệt';
+    case 'HELD_POLICY': return 'Tạm giữ theo chính sách';
+    case 'DEGRADED_LLM': return 'Phân tích giới hạn';
+    case 'UNKNOWN': return 'Chưa xác định';
     case 'SUCCEEDED': return 'Hoàn tất';
     case 'FAILED': return 'Thất bại';
     case 'TIMEOUT': return 'Quá thời gian';
@@ -35,7 +39,8 @@ export function toolStatusLabel(status: ToolStatus | string): string {
 export function statusTone(status: string | null): 'good' | 'bad' | 'warn' | 'neutral' {
   if (status === 'SUCCEEDED' || status === 'SUCCESS') return 'good';
   if (['FAILED', 'TIMEOUT', 'CANCELLED'].includes(status || '')) return 'bad';
-  if (['RUNNING', 'WAITING_APPROVAL', 'BLOCKED_BY_PERMISSION', 'PENDING', 'SKIPPED'].includes(status || '')) return 'warn';
+  if (['RUNNING', 'WAITING_APPROVAL', 'AWAITING_APPROVAL', 'HELD_POLICY', 'DEGRADED_LLM',
+    'BLOCKED_BY_PERMISSION', 'PENDING', 'SKIPPED'].includes(status || '')) return 'warn';
   return 'neutral';
 }
 

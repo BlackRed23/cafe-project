@@ -1,3 +1,4 @@
+import { errorMessage } from '../../common/error-fields';
 import { Prisma } from '@cafe-project/database';
 import { deleteCloudinaryImage, extractCloudinaryPublicId } from '../../common/cloudinary';
 import { HttpError } from '../../common/http-error';
@@ -44,13 +45,13 @@ const toProductDto = (product: ProductRecord): ProductDto => {
         return {} as ProductDto; // Fallback an toàn nếu undefined
     }
 
-    const activeRecipe = (product as any).recipes?.[0];
+    const activeRecipe = product.recipes?.[0];
     let computedInventory: ProductDto['inventory'] = null;
 
     if (product.inventory) {
         const availableQty = Math.max(
             0,
-            Number(product.inventory.quantity) - Number((product.inventory as any).reservedStock ?? 0)
+            Number(product.inventory.quantity) - Number(product.inventory.reservedStock ?? 0)
         );
         computedInventory = {
             quantity: availableQty,
@@ -58,7 +59,7 @@ const toProductDto = (product: ProductRecord): ProductDto => {
             unit: product.inventory.unit
         };
     } else if (activeRecipe && Array.isArray(activeRecipe.ingredients) && activeRecipe.ingredients.length > 0) {
-        const requiredItems = activeRecipe.ingredients.filter((ri: any) => !ri.isOptional && ri.ingredient);
+        const requiredItems = activeRecipe.ingredients.filter((ri) => !ri.isOptional && ri.ingredient);
         let maxServings = requiredItems.length > 0 ? Infinity : 0;
         for (const ri of requiredItems) {
             const ingAvail = Math.max(
@@ -103,14 +104,14 @@ const toProductDto = (product: ProductRecord): ProductDto => {
         } : { id: product.categoryId || '', name: 'Unknown', description: null },
         inventory: computedInventory,
         inventoryQuantity: computedInventory?.quantity ?? null,
-        nutritionFacts: (product as any).nutritionFacts ?? null,
-        usageInstructions: (product as any).usageInstructions ?? null,
-        storageInstructions: (product as any).storageInstructions ?? null,
-        origin: (product as any).origin ?? null,
-        certifications: (product as any).certifications ?? null,
-        expiryInfo: (product as any).expiryInfo ?? null,
-        deletedAt: (product as any).deletedAt ?? null,
-        pendingDeleteUntil: (product as any).pendingDeleteUntil ?? null,
+        nutritionFacts: product.nutritionFacts ?? null,
+        usageInstructions: product.usageInstructions ?? null,
+        storageInstructions: product.storageInstructions ?? null,
+        origin: product.origin ?? null,
+        certifications: product.certifications ?? null,
+        expiryInfo: product.expiryInfo ?? null,
+        deletedAt: product.deletedAt ?? null,
+        pendingDeleteUntil: product.pendingDeleteUntil ?? null,
         createdAt: product.createdAt ?? new Date(),
         updatedAt: product.updatedAt ?? new Date()
     };
@@ -228,9 +229,9 @@ const deleteProductImageForPurge = async (product: ProductRecord): Promise<void>
 
     try {
         await deleteCloudinaryImage(publicId);
-    } catch (error: any) {
-        console.error(`[product] Failed to delete Cloudinary image for product ${product.id}. Reason: ${error.message}`);
-        throw new HttpError(502, error.message || 'Failed to delete product image from Cloudinary.');
+    } catch (error) {
+        console.error(`[product] Failed to delete Cloudinary image for product ${product.id}. Reason: ${errorMessage(error)}`);
+        throw new HttpError(502, errorMessage(error) || 'Failed to delete product image from Cloudinary.');
     }
 };
 
@@ -331,7 +332,7 @@ export const updateProduct = async (id: string, input: UpdateProductInput, actor
 };
 
 export const deleteProduct = async (id: string): Promise<ProductDto> => {
-    const product = await ensureProductExists(id, true);
+    await ensureProductExists(id, true);
     const blockedMessage = await getDeleteBlockedMessage(id);
 
     if (blockedMessage) {
@@ -349,9 +350,7 @@ export const scheduleDelete = async (id: string, actorId?: string): Promise<Prod
 
     const updatedProduct = await productRepository.update(id, {
         isActive: false,
-        // @ts-ignore
         deletedAt: new Date(),
-        // @ts-ignore
         pendingDeleteUntil
     }, undefined, actorId);
 
@@ -363,9 +362,7 @@ export const restore = async (id: string, actorId?: string): Promise<ProductDto>
 
     const updatedProduct = await productRepository.update(id, {
         isActive: true,
-        // @ts-ignore
         deletedAt: null,
-        // @ts-ignore
         pendingDeleteUntil: null
     }, undefined, actorId);
 

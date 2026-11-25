@@ -6,6 +6,7 @@ import { approvePurchaseRequest, completePurchaseRequest, findPurchaseRequest, l
 import { createPurchaseRequestSchema, markPurchaseRequestPaidSchema, receivePurchaseRequestSchema, rejectPurchaseRequestSchema } from './purchase.validator';
 import { getEmailPreview, sendEmail, retryEmail } from '../email/email.controller';
 import { purchaseOrderService } from './purchase-order.service';
+import { purchaseReceiptContextService, staffReceiptResult, staffDiscrepancyResult } from './purchase-receipt-context.service';
 import {
     poCreateSchema, poDispatchSchema, poDecisionSchema, poCancelSchema,
     poSelectSupplierSchema, poReceiptSchema, poDiscrepancySchema, poReturnSchema,
@@ -31,6 +32,11 @@ purchaseOrderRoutes.post('/', ...adminOnly, validateBody(poCreateSchema),
 purchaseOrderRoutes.get('/:id', ...adminOnly, asyncHandler(async (req: AuthenticatedRequest, res) =>
     sendSuccess(res, 200, 'Chi tiết PO và lịch sử nghiệp vụ.',
         await purchaseOrderService.get(req.params.id!, req.user!))));
+// Safe operational projection for STAFF; the ADMIN-only full PO route stays unchanged.
+purchaseOrderRoutes.get('/:id/receipt-context', ...canView,
+    asyncHandler(async (req: AuthenticatedRequest, res) =>
+        sendSuccess(res, 200, 'Dữ liệu nhập hàng tối thiểu theo PO.',
+            await purchaseReceiptContextService.get(req.params.id!, req.user!))));
 purchaseOrderRoutes.post('/:id/dispatch', ...adminOnly, validateBody(poDispatchSchema),
     asyncHandler(async (req: AuthenticatedRequest, res) =>
         sendSuccess(res, 200, 'Đã ghi nhận trạng thái điều phối thử, không liên hệ nhà cung cấp.',
@@ -56,13 +62,17 @@ purchaseOrderRoutes.post('/:id/cancellation-resolution', ...adminOnly, validateB
         sendSuccess(res, 201, 'Đã lưu chứng cứ hủy; cam kết vẫn chờ chính sách.',
             await purchaseOrderService.recordCancellationResolution(req.params.id!, req.body, req.user!))));
 purchaseOrderRoutes.post('/:id/receipts', ...canView, validateBody(poReceiptSchema),
-    asyncHandler(async (req: AuthenticatedRequest, res) =>
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+        const result = await purchaseOrderService.receive(req.params.id!, req.body, req.user!);
         sendSuccess(res, 201, 'Đã ghi nhận thực nhận theo PO và lô nguyên liệu.',
-            await purchaseOrderService.receive(req.params.id!, req.body, req.user!))));
+            req.user!.role === 'STAFF' ? staffReceiptResult(result, req.body.requestId, req.user!.id) : result);
+    }));
 purchaseOrderRoutes.post('/:id/discrepancies', ...canView, validateBody(poDiscrepancySchema),
-    asyncHandler(async (req: AuthenticatedRequest, res) =>
+    asyncHandler(async (req: AuthenticatedRequest, res) => {
+        const result = await purchaseOrderService.discrepancy(req.params.id!, req.body, req.user!);
         sendSuccess(res, 201, 'Đã lưu bằng chứng giao hàng sai lệch, chưa điều chỉnh tồn.',
-            await purchaseOrderService.discrepancy(req.params.id!, req.body, req.user!))));
+            req.user!.role === 'STAFF' ? staffDiscrepancyResult(result, req.body.requestId) : result);
+    }));
 purchaseOrderRoutes.post('/:id/overdelivery-amendments', ...adminOnly,
     validateBody(poOverdeliveryAmendmentSchema),
     asyncHandler(async (req: AuthenticatedRequest, res) =>

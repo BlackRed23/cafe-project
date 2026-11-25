@@ -15,6 +15,12 @@ export interface SupplierProduct {
   productId: string;
   product_id?: string;
   importPrice?: number;
+  ingredientId?: string;
+  productName?: string;
+  purchasePrice?: number;
+  price?: number;
+  leadTimeDays?: number;
+  isPreferred?: boolean;
   import_price?: number;
   minOrderQuantity?: number;
   min_order_quantity?: number;

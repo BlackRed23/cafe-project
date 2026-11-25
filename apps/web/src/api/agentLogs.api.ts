@@ -3,6 +3,7 @@ import type {
   AgentLog,
   AgentLogsQuery,
   AgentLogsResponse,
+  AgentLogsPagination,
   AgentLogStatus,
   ScanInventoryRequest,
   ScanInventoryResponse,
@@ -56,7 +57,23 @@ const firstString = (...values: unknown[]): string | undefined => {
 const cleanDisplayText = (value: unknown): string | undefined =>
   typeof value === "string" ? fixVietnameseMojibakeText(value) : undefined;
 
-const normalizeAgentOutput = (output: Record<string, any>): Record<string, any> => {
+type AgentLogObject = Record<string, unknown>;
+type RawAgentLog = Partial<AgentLog> & {
+  reference_type?: string;
+  reference_id?: string;
+  source_type?: string;
+  source_id?: string;
+  product_id?: string;
+  inventory_id?: string;
+  triggered_at?: string;
+  fallback_used?: boolean;
+  data?: { description?: unknown };
+};
+
+type ScanInventoryWire = Omit<ScanInventoryResponse, "results"> & { results?: RawAgentLog[] };
+type AgentLogsWire = { logs?: RawAgentLog[]; pagination?: AgentLogsPagination };
+
+const normalizeAgentOutput = (output: AgentLogObject): AgentLogObject => {
   const next = { ...output };
   const message = cleanDisplayText(next.message);
   const errorMessage = cleanDisplayText(next.errorMessage);
@@ -66,7 +83,7 @@ const normalizeAgentOutput = (output: Record<string, any>): Record<string, any> 
   if (description !== undefined) next.description = description;
 
   if (next.notification && typeof next.notification === "object" && !Array.isArray(next.notification)) {
-    const notification = { ...next.notification };
+    const notification = { ...next.notification } as AgentLogObject;
     const title = cleanDisplayText(notification.title);
     const description = cleanDisplayText(notification.description);
     if (title !== undefined) notification.title = title;
@@ -77,9 +94,9 @@ const normalizeAgentOutput = (output: Record<string, any>): Record<string, any> 
   return next;
 };
 
-const normalizeAgentLog = (log: any): AgentLog => {
-  const input = parseAgentLogJsonField(log?.input) || {};
-  const parsedOutput = parseAgentLogJsonField(log?.output) || {};
+const normalizeAgentLog = (log: RawAgentLog): AgentLog => {
+  const input = (parseAgentLogJsonField(log?.input) || {}) as AgentLogObject;
+  const parsedOutput = (parseAgentLogJsonField(log?.output) || {}) as AgentLogObject;
   const output = Object.keys(parsedOutput).length ? normalizeAgentOutput(parsedOutput) : parsedOutput;
   const result = firstString(log?.result, log?.status) || "";
   const errorMessage = firstString(log?.errorMessage, log?.error_message, log?.error);
@@ -139,7 +156,7 @@ const cleanParams = (query?: AgentLogsQuery) => {
 export const agentLogsApi = {
   scanInventory: async (payload: ScanInventoryRequest): Promise<ScanInventoryResponse> => {
     const response = await apiClient.post("/agent/scan-inventory", payload);
-    const data = unwrapApiData<any>(response.data);
+    const data = unwrapApiData<ScanInventoryWire>(response.data);
 
     return {
       ...data,
@@ -151,7 +168,7 @@ export const agentLogsApi = {
 
   getAgentLogsResponse: async (query?: AgentLogsQuery): Promise<AgentLogsResponse> => {
     const response = await apiClient.get("/agent/logs", { params: cleanParams(query) });
-    const data = unwrapApiData<any>(response.data);
+    const data = unwrapApiData<AgentLogsWire>(response.data);
     const logs = Array.isArray(data?.logs) ? data.logs.map(normalizeAgentLog) : [];
 
     return {

@@ -1,3 +1,12 @@
+type NotificationItem = {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  link?: string;
+  time?: string;
+};
+
 import React, { useEffect, useState } from "react";
 import {
   Bell,
@@ -20,7 +29,7 @@ import { Loading } from "../../components/common/Loading";
 
 export const AdminNotificationsPage: React.FC = () => {
   const { toasts } = useToastState();
-  const [apiNotifications, setApiNotifications] = useState<any[]>([]);
+  const [apiNotifications, setApiNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,11 +43,11 @@ export const AdminNotificationsPage: React.FC = () => {
           ordersApi.getOrders(),
         ]);
 
-        const items: any[] = [];
+        const items: NotificationItem[] = [];
 
         // Low stock
         if (inv.status === "fulfilled") {
-          inv.value.forEach((i: any) => {
+          inv.value.forEach((i) => {
             const name = i.product?.name || "Sản phẩm";
             const min = i.minThreshold ?? i.min_threshold ?? 5;
             items.push({
@@ -54,7 +63,7 @@ export const AdminNotificationsPage: React.FC = () => {
 
         // PRs
         if (prs.status === "fulfilled") {
-          prs.value.forEach((pr: any) => {
+          prs.value.forEach((pr) => {
             const name = pr.product?.name || "Sản phẩm";
             items.push({
               id: `pr-${pr.id}`,
@@ -69,7 +78,7 @@ export const AdminNotificationsPage: React.FC = () => {
 
         // Logs
         if (logs.status === "fulfilled") {
-          logs.value.forEach((log: any) => {
+          logs.value.forEach((log) => {
             const isError = (log.status || "").toUpperCase() === "ERROR" || (log.status || "").toUpperCase() === "FAILED" || !!log.error || !!log.error_message;
             items.push({
               id: `log-${log.id}`,
@@ -84,7 +93,7 @@ export const AdminNotificationsPage: React.FC = () => {
 
         // Orders
         if (ords.status === "fulfilled") {
-          ords.value.forEach((o: any) => {
+          ords.value.forEach((o) => {
             items.push({
               id: `order-${o.id}`,
               type: "new_order",
@@ -104,7 +113,7 @@ export const AdminNotificationsPage: React.FC = () => {
     fetchAll();
   }, []);
 
-  const localNotifications = toasts.map((t) => ({
+  const localNotifications: NotificationItem[] = toasts.map((t) => ({
     id: t.id,
     type: t.type,
     title: t.title,
@@ -113,10 +122,10 @@ export const AdminNotificationsPage: React.FC = () => {
   }));
 
   const all = [...localNotifications.reverse(), ...apiNotifications].sort((a, b) => {
-    return new Date(b.time).getTime() - new Date(a.time).getTime();
+    return Date.parse(b.time ?? "") - Date.parse(a.time ?? "");
   });
 
-  const ICON_MAP: any = {
+  const ICON_MAP: Record<string, { icon: React.ReactNode; bg: string }> = {
     low_stock: { icon: <AlertTriangle size={20} />, bg: "bg-amber-50 text-amber-700" },
     purchase_request: { icon: <ShoppingCart size={20} />, bg: "bg-blue-50 text-blue-700" },
     agent_error: { icon: <Bot size={20} />, bg: "bg-rose-50 text-rose-700" },

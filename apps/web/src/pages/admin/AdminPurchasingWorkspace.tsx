@@ -5,7 +5,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { purchasingApi } from '../../api/purchasing.api';
 import { ingredientsApi } from '../../api/ingredients.api';
 import type { Ingredient } from '../../types/ingredient.types';
-import type { PurchasingOrder, PurchasingReceipt, PurchasingDiscrepancy, PurchasingInvoice } from '../../types/purchasing.types';
+import type { PurchasingOrder, PurchasingReceiptContext, PurchasingReceipt, PurchasingDiscrepancy, PurchasingInvoice } from '../../types/purchasing.types';
 import './purchasing-workspace.css';
 
 type BatchDraft={batchCode:string;expirationDate:string;quantity:string};
@@ -30,6 +30,7 @@ export function AdminPurchasingWorkspace(){
   const [params,setParams]=useSearchParams();
   const [orderId,setOrderId]=useState(params.get('po')??'');
   const [order,setOrder]=useState<PurchasingOrder|null>(null);
+  const [staffOrder,setStaffOrder]=useState<PurchasingReceiptContext|null>(null);
   const [prId,setPrId]=useState('');
   const [ingredientId,setIngredientId]=useState('');
   const [ingredients,setIngredients]=useState<Ingredient[]>([]);
@@ -67,22 +68,31 @@ export function AdminPurchasingWorkspace(){
     return()=>{alive=false;};
   },[]);
   const loadOrder=async(id=orderId)=>{
-    if(!isAdmin||!id.trim())return;
+    if((!isAdmin&&!isStaff)||!id.trim())return;
     setBusy(true);
     try{
-      const data=await purchasingApi.getOrder(id.trim());setOrder(data);setOrderId(data.id);
-      setParams({po:data.id},{replace:true});setError('');
+      const data=await (isAdmin ? purchasingApi.getOrder(id.trim()) : purchasingApi.getReceiptContext(id.trim()));
+      const loadedId='id' in data ? data.id : data.orderId;
+      if('id' in data){setOrder(data);setStaffOrder(null);}
+      else{setOrder(null);setStaffOrder(data);setTab('receipt');}
+      setOrderId(loadedId);
+      setParams({po:loadedId},{replace:true});setError('');
       if(pending&&uncertain){
         const requestId=(pending.body as {requestId?:string}).requestId;
-        const proven=!!requestId && (
-          data.events.some(x=>(x as typeof x&{requestId?:string}).requestId===requestId) ||
-          data.discrepancies.some(x=>(x as typeof x&{requestId?:string}).requestId===requestId) ||
-          data.supplierReturns.some(x=>(x as typeof x&{requestId?:string}).requestId===requestId) ||
-          data.invoices.some(x=>(x as typeof x&{requestId?:string}).requestId===requestId) ||
-          data.receipts.some(x=>(x as typeof x&{idempotencyKey?:string}).idempotencyKey===requestId)
-        );
+        const proven=!!requestId && ('id' in data
+          ? data.events.some(x=>(x as typeof x&{requestId?:string}).requestId===requestId) ||
+            data.discrepancies.some(x=>(x as typeof x&{requestId?:string}).requestId===requestId) ||
+            data.supplierReturns.some(x=>(x as typeof x&{requestId?:string}).requestId===requestId) ||
+            data.invoices.some(x=>(x as typeof x&{requestId?:string}).requestId===requestId) ||
+            data.receipts.some(x=>(x as typeof x&{idempotencyKey?:string}).idempotencyKey===requestId)
+          : (data.receiptRequestIds??[]).includes(requestId) ||
+            (data.discrepancyRequestIds??[]).includes(requestId));
         if(proven){setPending(null);setUncertain(false);setResult('Đã tìm thấy chứng cứ yêu cầu trước trong chứng từ máy chủ.');}
-        else {setReconciled(true);setError('Chưa tìm được bằng chứng của mã yêu cầu trong chứng từ. Không được tạo mã mới; chỉ thử lại đúng payload cũ sau khi kiểm tra.');}
+        else {
+          const hasProof='id' in data || (Array.isArray(data.receiptRequestIds)&&Array.isArray(data.discrepancyRequestIds));
+          setReconciled(hasProof);
+          setError(hasProof?'Chưa tìm được bằng chứng của mã yêu cầu trong chứng từ. Không được tạo mã mới; chỉ thử lại đúng payload cũ sau khi kiểm tra.':'Thiếu chứng cứ requestId để xác định kết quả. Không tự thử lại; cần ADMIN đối soát trước.');
+        }
       }else{setReceiptDraft({});setInvoiceDraft({});setPending(null);setUncertain(false);}
       setConfirmed(false);
     }catch(e){setError(explanation(e));}finally{setBusy(false);}
@@ -93,8 +103,9 @@ export function AdminPurchasingWorkspace(){
     try{
       const response=await p.run() as Record<string,unknown>;
       const nextOrder=(response.order??((response.items&&response.events)?response:null)) as PurchasingOrder|null;
-      if(nextOrder?.id){setOrder(nextOrder);setOrderId(nextOrder.id);setParams({po:nextOrder.id},{replace:true});}
+      if(nextOrder?.id && isAdmin){setOrder(nextOrder);setOrderId(nextOrder.id);setParams({po:nextOrder.id},{replace:true});}
       else if(p.orderId && isAdmin){try{setOrder(await purchasingApi.getOrder(p.orderId));}catch{/* Keep confirmed outcome */}}
+      else if(p.orderId && isStaff){try{setStaffOrder(await purchasingApi.getReceiptContext(p.orderId));}catch{setError('Đã ghi nhận kết quả; cần tải lại chứng từ để đối chiếu.');}}
       const extra=response.reconciliation as {status?:string}|undefined;
       if(extra?.status==='DISPUTED')setResult('Đã đối soát hóa đơn. Có chênh lệch cần xử lý. Không phê duyệt thanh toán.');
       else if(response.discrepancy)setResult('Đã ghi nhận sai lệch giao hàng (HELD). Hàng chưa được tự động nhập kho.');
@@ -125,7 +136,14 @@ export function AdminPurchasingWorkspace(){
     const id=order.id,requestId=uuid();
     run({label,orderId:id,body:{requestId,reason,evidence},run:()=>fn(id,requestId)});
   };
-  const remaining=(item:PurchasingOrder['items'][number])=>item.quantityOrdered-item.quantityReceived;
+  const receiptOrder=isAdmin?order:(staffOrder?{
+    id:staffOrder.orderId,status:staffOrder.status,
+    items:staffOrder.items.map(i=>({
+      id:i.purchaseOrderItemId,ingredientId:i.ingredientId,
+      quantityOrdered:i.quantityOrdered,quantityReceived:i.quantityReceived,unit:i.unit,
+    })),
+  }:null);
+  const remaining=(item:{quantityOrdered:number;quantityReceived:number})=>item.quantityOrdered-item.quantityReceived;
   const addLine=(id:string)=>setReceiptDraft(old=>({...old,[id]:{
     id,qty:old[id]?.qty??'',batches:[...(old[id]?.batches??[]),{batchCode:'',expirationDate:'',quantity:''}],
   }}));
@@ -134,11 +152,11 @@ export function AdminPurchasingWorkspace(){
     return {...old,[id]:{...oldLine,batches:oldLine.batches.map((v,i)=>i===index?{...v,...patch}:v)}};
   });
   function submitReceipt(){
-    if(!order)return;
+    if(!receiptOrder)return;
     const items:PurchasingReceipt['items']=[];
     for(const [id,line] of Object.entries(receiptDraft)){
       if(!line.qty.trim()&&!line.batches.some(b=>b.quantity.trim()))continue;
-      const item=order.items.find(i=>i.id===id);
+      const item=receiptOrder.items.find(i=>i.id===id);
       if(!item||!positiveInt(line.qty)||Number(line.qty)>remaining(item)||
         !line.batches.length||line.batches.some(b=>!b.batchCode.trim()||!b.expirationDate||!positiveInt(b.quantity))||
         line.batches.reduce((s,b)=>s+Number(b.quantity),0)!==Number(line.qty)){
@@ -149,7 +167,7 @@ export function AdminPurchasingWorkspace(){
           quantity:Number(b.quantity)}))});
     }
     if(!items.length){setError('Chọn ít nhất một mặt hàng và lô thực nhận.');return;}
-    const id=order.id,body:PurchasingReceipt={requestId:uuid(),items,
+    const id=receiptOrder.id,body:PurchasingReceipt={requestId:uuid(),items,
       ...(invoiceNo.trim()?{supplierInvoiceNo:invoiceNo.trim()}:{}),...(receiptNote.trim()?{note:receiptNote.trim()}: {})};
     run({label:'Nhập hàng',orderId:id,body,run:()=>purchasingApi.receipt(id,body)});
   }
@@ -171,7 +189,7 @@ export function AdminPurchasingWorkspace(){
     <header className="pur-header"><div><small>OPERATIONS / PROCUREMENT</small><h1>Mua hàng & đối soát</h1><p>Phiếu yêu cầu → Đơn mua → Nhận theo lô → Đối soát chứng từ.</p></div><Link to="/admin/purchase-requests">Danh sách yêu cầu mua hàng</Link></header>
     {error&&<p role="alert" className="pur-warning">{error}</p>}{result&&<p role="status" className="pur-success">{result}</p>}
     {pending&&<section className="pur-warning"><strong>{uncertain?'Kết quả chưa rõ':'Yêu cầu đang xử lý'}</strong><p>{pending.label}: giữ nguyên requestId và payload. Không tự động thử lại.</p><p>Tải lại PO để kiểm tra trạng thái và sự kiện trước khi quyết định. Không dùng mã mới cho cùng hành động.</p>
-      {isAdmin&&pending.orderId&&<button disabled={busy} onClick={()=>void loadOrder(pending.orderId)}>Tải chứng từ để đối chiếu (không gửi lại)</button>}
+      {(isAdmin||isStaff)&&pending.orderId&&<button disabled={busy} onClick={()=>void loadOrder(pending.orderId)}>Tải chứng từ để đối chiếu (không gửi lại)</button>}
       {uncertain&&reconciled&&<button disabled={busy||!confirmed} onClick={()=>void execute(pending)}>Xác nhận thử lại cùng requestId / payload</button>}
       {uncertain&&!pending.orderId&&<button disabled={busy||!confirmed} onClick={()=>{
         if(window.confirm('Không có API truy vấn danh sách PO để chứng minh yêu cầu cũ. Chỉ thử lại chính xác cùng requestId và nội dung ban đầu?'))void execute(pending);
@@ -202,18 +220,20 @@ export function AdminPurchasingWorkspace(){
       </section>
       <section className="pur-panel"><h2>02 · Tra cứu đơn mua</h2><p>Không giả lập danh sách PO. Chỉ mở bằng ID chứng từ đã biết.</p>
         <label>Mã PO ID<input value={orderId} onChange={e=>setOrderId(e.target.value)} placeholder="PO ID"/></label>
-        {isAdmin?<button disabled={!orderId.trim()||busy} onClick={()=>void loadOrder()}>Tải chi tiết PO</button>:<p className="pur-warning">GET /purchase-orders/:id hiện chỉ dành cho ADMIN. STAFF không được phép xem chi tiết PO qua endpoint này; cần có quyền truy cập PO hợp lệ để điền phiếu nhận.</p>}
-        {order&&<div className="pur-summary"><strong>{order.code}</strong><span>{status(order.status)}</span><p>{order.supplierName} · {order.currency} · {order.recipientEmail||'Không có email'}</p><p>PR: {order.purchaseRequestId}</p>
+        <button disabled={!orderId.trim()||busy} onClick={()=>void loadOrder()}>{isAdmin?'Tải chi tiết PO':'Tải dữ liệu PO để nhận hàng'}</button>
+        {isStaff&&<p className="pur-warning">STAFF chỉ được xem thông tin phục vụ kiểm nhận. Giá mua, hóa đơn, dữ liệu nhà cung cấp và lịch sử điều phối không được cung cấp.</p>}
+        {isAdmin&&order&&<div className="pur-summary"><strong>{order.code}</strong><span>{status(order.status)}</span><p>{order.supplierName} · {order.currency} · {order.recipientEmail||'Không có email'}</p><p>PR: {order.purchaseRequestId}</p>
           <div className="pur-scroll"><table><thead><tr><th>Nguyên liệu</th><th>Đặt</th><th>Đã nhận</th><th>Còn lại</th><th>Đơn vị</th><th>Đơn giá</th></tr></thead><tbody>
             {order.items.map(i=><tr key={i.id}><td>{ingredients.find(v=>v.id===i.ingredientId)?.name||i.ingredientId}</td><td>{i.quantityOrdered}</td><td>{i.quantityReceived}</td><td>{remaining(i)}</td><td>{i.unit} (1 = {i.conversionToBase})</td><td>{i.unitPrice}</td></tr>)}
           </tbody></table></div>
         </div>}
+        {isStaff&&staffOrder&&<div className="pur-summary"><strong>Mã PO: {staffOrder.orderId}</strong><span>{status(staffOrder.status)}</span><div className="pur-scroll"><table><thead><tr><th>Nguyên liệu</th><th>Đặt</th><th>Đã nhận</th><th>Còn lại</th><th>Đơn vị</th></tr></thead><tbody>{staffOrder.items.map(i=><tr key={i.purchaseOrderItemId}><td>{ingredients.find(v=>v.id===i.ingredientId)?.name||i.ingredientId}</td><td>{i.quantityOrdered}</td><td>{i.quantityReceived}</td><td>{i.remainingQuantity}</td><td>{i.unit}</td></tr>)}</tbody></table></div></div>}
       </section>
     </div>
-    {order&&<section className="pur-panel">
+    {receiptOrder&&<section className="pur-panel">
       <nav className="pur-tabs" aria-label="Nghiệp vụ đơn mua">{(['po','receipt','discrepancy','return','invoice'] as const).filter(t=>isAdmin||t==='receipt'||t==='discrepancy').map(t=>
         <button key={t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{({po:'Điều phối',receipt:'Nhận hàng',discrepancy:'Sai lệch',return:'Trả NCC',invoice:'Hóa đơn'})[t]}</button>)}</nav>
-      {tab==='po'&&isAdmin&&<div className="pur-form"><h2>03 · Điều phối & bằng chứng</h2>
+      {tab==='po'&&isAdmin&&order&&<div className="pur-form"><h2>03 · Điều phối & bằng chứng</h2>
         <p className="pur-warning">SANDBOX không gửi email; UNKNOWN không xác nhận đã gửi. Xác nhận thủ công chưa phải xác minh độc lập.</p>
         <label>Chế độ điều phối<select value={mode} onChange={e=>setMode(e.target.value as typeof mode)}><option value="SANDBOX">SANDBOX (chỉ ghi thử)</option><option value="UNKNOWN">UNKNOWN (kết quả chưa rõ)</option></select></label>
         <label>Lý do / ghi chú<input value={reason} maxLength={1000} onChange={e=>setReason(e.target.value)}/></label>
@@ -227,36 +247,36 @@ export function AdminPurchasingWorkspace(){
         </div>
       </div>}
       {tab==='receipt'&&<div className="pur-form"><h2>04 · Nhận hàng theo lô</h2><p>Chỉ tiếp nhận hàng hợp lệ cho PO đã xác nhận, còn số lượng chưa nhận. Nhập từng đợt, không nhập lại bằng ID mới khi kết quả chưa rõ.</p>
-        {order.items.filter(i=>remaining(i)>0).map(i=><fieldset key={i.id}><legend>{ingredients.find(x=>x.id===i.ingredientId)?.name||i.ingredientId} · Còn {remaining(i)} {i.unit}</legend>
+        {receiptOrder.items.filter(i=>remaining(i)>0).map(i=><fieldset key={i.id}><legend>{ingredients.find(x=>x.id===i.ingredientId)?.name||i.ingredientId} · Còn {remaining(i)} {i.unit}</legend>
           <label>Lượng thực nhận<input type="number" step="1" min="1" max={remaining(i)} value={receiptDraft[i.id]?.qty??''} onChange={e=>setReceiptDraft(old=>({...old,[i.id]:{id:i.id,qty:e.target.value,batches:old[i.id]?.batches??[]}}))}/></label>
           {(receiptDraft[i.id]?.batches??[]).map((b,j)=><div className="pur-batch" key={j}><label>Mã lô<input value={b.batchCode} onChange={e=>updateLine(i.id,j,{batchCode:e.target.value})}/></label><label>Hạn sử dụng<input type="date" value={b.expirationDate} onChange={e=>updateLine(i.id,j,{expirationDate:e.target.value})}/></label><label>SL lô<input type="number" min="1" step="1" value={b.quantity} onChange={e=>updateLine(i.id,j,{quantity:e.target.value})}/></label><button type="button" onClick={()=>setReceiptDraft(old=>({...old,[i.id]:{...old[i.id],batches:old[i.id].batches.filter((_,index)=>index!==j)}}))}>Bỏ lô</button></div>)}
           <button type="button" onClick={()=>addLine(i.id)}>+ Thêm lô</button>
         </fieldset>)}
         <label>Số hóa đơn NCC (nếu có)<input value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)}/></label><label>Ghi chú<input value={receiptNote} onChange={e=>setReceiptNote(e.target.value)}/></label>
-        <button disabled={busy||!!pending||!['CONFIRMED','PARTIALLY_RECEIVED'].includes(order.status)} onClick={submitReceipt}>Ghi nhận phiếu nhập theo PO</button>
+        <button disabled={busy||!!pending||!['CONFIRMED','PARTIALLY_RECEIVED'].includes(receiptOrder.status)} onClick={submitReceipt}>Ghi nhận phiếu nhập theo PO</button>
       </div>}
       {tab==='discrepancy'&&<div className="pur-form"><h2>05 · Sai lệch giao hàng</h2><p>Ghi nhận HELD; không tự động cộng hàng từ chối vào tồn khả dụng.</p>
-        <label>Mặt hàng PO<select value={discrepancyItem} onChange={e=>setDiscrepancyItem(e.target.value)}><option value="">Chọn dòng PO</option>{order.items.map(i=><option key={i.id} value={i.id}>{i.ingredientId} · còn {remaining(i)}</option>)}</select></label>
+        <label>Mặt hàng PO<select value={discrepancyItem} onChange={e=>setDiscrepancyItem(e.target.value)}><option value="">Chọn dòng PO</option>{receiptOrder.items.map(i=><option key={i.id} value={i.id}>{i.ingredientId} · còn {remaining(i)}</option>)}</select></label>
         <label>Loại sai lệch<select value={category} onChange={e=>{setCategory(e.target.value as typeof category);if(e.target.value!=='OVER_DELIVERY')setAccepted('0');}}><option value="OVER_DELIVERY">Giao vượt</option><option value="WRONG_INGREDIENT">Sai nguyên liệu</option><option value="DAMAGED">Hàng hỏng</option><option value="SHELF_LIFE">Hạn dùng không đạt</option></select></label>
         {category==='WRONG_INGREDIENT'&&<label>Nguyên liệu thực nhận<select value={observedIngredient} onChange={e=>setObservedIngredient(e.target.value)}><option value="">Chọn nguyên liệu sai khác</option>{ingredients.map(i=><option value={i.id} key={i.id}>{i.name}</option>)}</select></label>}
         <label>Lượng quan sát<input type="number" step="1" min="1" value={observed} onChange={e=>setObserved(e.target.value)}/></label>
         {category==='OVER_DELIVERY'&&<label>Lượng chấp nhận (không vượt phần còn lại)<input type="number" min="0" step="1" value={accepted} onChange={e=>setAccepted(e.target.value)}/></label>}
         <p>Lượng giữ/từ chối dự kiến: {Number(observed)-Number(accepted)}. Chỉ ghi nhận chứng cứ, không nhập kho.</p>
-        <label>Lý do<input value={reason} onChange={e=>setReason(e.target.value)}/></label><button disabled={busy||!!pending||!['CONFIRMED','PARTIALLY_RECEIVED'].includes(order.status)} onClick={()=>{
-          const item=order.items.find(x=>x.id===discrepancyItem);
+        <label>Lý do<input value={reason} onChange={e=>setReason(e.target.value)}/></label><button disabled={busy||!!pending||!['CONFIRMED','PARTIALLY_RECEIVED'].includes(receiptOrder.status)} onClick={()=>{
+          const item=receiptOrder.items.find(x=>x.id===discrepancyItem);
           if(!item||!positiveInt(observed)||!Number.isInteger(Number(accepted))||Number(accepted)<0||
             Number(accepted)>Number(observed)||Number(accepted)>remaining(item)||!reason.trim()||
             (category!=='OVER_DELIVERY'&&Number(accepted)!==0)|| (category==='OVER_DELIVERY'&&Number(observed)<=remaining(item))||
             (category==='WRONG_INGREDIENT'&&(!observedIngredient||observedIngredient===item.ingredientId))){
             setError('Chênh lệch chưa hợp lệ: kiểm tra lượng giữ, phần còn lại và nguyên liệu thực nhận.');return;
           }
-          const id=order.id,body:PurchasingDiscrepancy={requestId:uuid(),purchaseOrderItemId:discrepancyItem,category,
+          const id=receiptOrder.id,body:PurchasingDiscrepancy={requestId:uuid(),purchaseOrderItemId:discrepancyItem,category,
             observedQuantity:Number(observed),acceptedQuantity:Number(accepted),rejectedQuantity:Number(observed)-Number(accepted),
             reason:reason.trim(),...(category==='WRONG_INGREDIENT'?{observedIngredientId:observedIngredient}:{})};
           run({label:'Ghi nhận sai lệch',orderId:id,body,run:()=>purchasingApi.discrepancy(id,body)});
         }}>Ghi nhận sai lệch (HELD)</button>
       </div>}
-      {tab==='return'&&isAdmin&&<div className="pur-form"><h2>06 · Trả nhà cung cấp</h2><p>Chỉ trả lô có chứng từ nhập và tồn vật lý hợp lệ. Backend tạo RETURN_OUT; công nợ vẫn UNSETTLED.</p>
+      {tab==='return'&&isAdmin&&order&&<div className="pur-form"><h2>06 · Trả nhà cung cấp</h2><p>Chỉ trả lô có chứng từ nhập và tồn vật lý hợp lệ. Backend tạo RETURN_OUT; công nợ vẫn UNSETTLED.</p>
         <label>Phiếu nhận hàng<select value={returnReceipt} onChange={e=>setReturnReceipt(e.target.value)}><option value="">Chọn phiếu nhận</option>{order.receipts.map(r=><option value={r.id} key={r.id}>{r.id} · {new Date(r.receivedAt).toLocaleDateString('vi-VN')}</option>)}</select></label>
         <label>ID lô nguồn (đối chiếu từ lịch sử lô)<input value={returnBatch} onChange={e=>setReturnBatch(e.target.value)}/></label><label>Số lượng trả<input type="number" min="0.001" step="0.001" value={returnQty} onChange={e=>setReturnQty(e.target.value)}/></label>
         <label>Lý do<input value={reason} onChange={e=>setReason(e.target.value)}/></label>
@@ -267,7 +287,7 @@ export function AdminPurchasingWorkspace(){
           run({label:'Trả NCC',orderId:id,body,run:()=>purchasingApi.supplierReturn(id,body)});
         }}>Ghi nhận trả hàng (UNSETTLED)</button>
       </div>}
-      {tab==='invoice'&&isAdmin&&<div className="pur-form"><h2>07 · Đối soát hóa đơn</h2><p>So sánh theo PO và số lượng đã nhận. Đối soát KHÔNG có nghĩa đã thanh toán.</p>
+      {tab==='invoice'&&isAdmin&&order&&<div className="pur-form"><h2>07 · Đối soát hóa đơn</h2><p>So sánh theo PO và số lượng đã nhận. Đối soát KHÔNG có nghĩa đã thanh toán.</p>
         <label>Số hóa đơn<input value={invoiceNo} onChange={e=>setInvoiceNo(e.target.value)}/></label><p>Tiền tệ: {order.currency}</p>
         {order.items.map(i=>{const d=invoiceDraft[i.id]??{quantity:String(i.quantityReceived),unitPrice:String(i.unitPrice),total:String(i.quantityReceived*Number(i.unitPrice))};
           return <fieldset key={i.id}><legend>{i.ingredientId} · PO: {i.quantityOrdered} {i.unit} · Đã nhận: {i.quantityReceived} · Giá PO: {i.unitPrice}</legend>
@@ -275,12 +295,12 @@ export function AdminPurchasingWorkspace(){
           </fieldset>;})}
         <button disabled={busy||!!pending} onClick={submitInvoice}>Đối soát hóa đơn (không thanh toán)</button>
       </div>}
-      <h2>Lịch sử & chứng cứ trên máy chủ</h2>
+      {isAdmin&&order&&<><h2>Lịch sử & chứng cứ trên máy chủ</h2>
       {order.events.map(ev=><details key={ev.id}><summary>{ev.type} · {new Date(ev.createdAt).toLocaleString('vi-VN')} · {ev.actorId}</summary><pre>{JSON.stringify(ev.details,null,2)}</pre></details>)}
       <div className="pur-audit"><div><h3>Phiếu nhận</h3>{order.receipts.map(x=><p key={x.id}>{x.id} · {new Date(x.receivedAt).toLocaleString('vi-VN')}</p>)}</div>
         <div><h3>Sai lệch</h3>{order.discrepancies.map(x=><p key={x.id}>{x.category} · {x.status} · {x.reason}</p>)}</div>
         <div><h3>Trả hàng</h3>{order.supplierReturns.map(x=><p key={x.id}>{x.batchId} · {x.quantity} · UNSETTLED</p>)}</div>
-        <div><h3>Đối soát hóa đơn</h3>{order.invoices.map(x=><p key={x.id}>{x.invoiceNumber} · {x.status} · Không phê duyệt thanh toán</p>)}</div></div>
+        <div><h3>Đối soát hóa đơn</h3>{order.invoices.map(x=><p key={x.id}>{x.invoiceNumber} · {x.status} · Không phê duyệt thanh toán</p>)}</div></div></>}
     </section>}
   </div>;
 }

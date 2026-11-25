@@ -22,15 +22,8 @@ export const authRepository = {
         });
     },
 
-    async updateGoogleProfile(id: string, data: { googleId: string; avatar?: string | null; provider?: string }): Promise<UserRecord> {
-        return prisma.user.update({
-            where: { id },
-            data: {
-                googleId: data.googleId,
-                provider: data.provider ?? 'google',
-                ...(data.avatar && { avatar: data.avatar })
-            }
-        });
+    async findByGoogleId(googleId: string): Promise<UserRecord | null> {
+        return prisma.user.findUnique({ where: { googleId } });
     },
 
     async updateLastLoginAt(id: string): Promise<UserRecord> {
@@ -57,7 +50,6 @@ export const authRepository = {
             where: { id },
             data: {
                 password: hashedPassword,
-                provider: 'local',
                 resetToken: null,
                 resetTokenExpiresAt: null
             }
@@ -75,10 +67,19 @@ export const authRepository = {
         return prisma.user.findFirst({
             where: {
                 resetToken,
+                isActive: true,
                 resetTokenExpiresAt: {
                     gt: new Date()
                 }
             }
         });
+    },
+
+    async consumeResetToken(id: string, resetToken: string, hashedPassword: string): Promise<boolean> {
+        const result = await prisma.user.updateMany({
+            where: { id, resetToken, isActive: true, resetTokenExpiresAt: { gt: new Date() } },
+            data: { password: hashedPassword, resetToken: null, resetTokenExpiresAt: null }
+        });
+        return result.count === 1;
     }
 };

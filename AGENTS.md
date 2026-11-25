@@ -24,7 +24,6 @@
 
 
 ## Ngữ cảnh và đầu ra
-- Dùng docs/token-workflow.md cho quy trình; docs/task-state.example.json là mẫu checkpoint, không phải trạng thái tác vụ thực tế.
 - Chỉ tạo/cập nhật checkpoint khi tác vụ dài hoặc cần bàn giao; ghi kết quả đã xác minh, file liên quan và việc còn lại. Không lưu source, log đầy đủ hoặc bí mật.
 - Trả lời ngắn bằng JSON hợp lệ, chỉ gồm: {"result":[],"errors":[],"next":[]}.
 - Không kể lại quá trình hoặc nhắc lại phân tích. Khi cần hỏi thông tin thiết yếu, đưa câu hỏi vào next.

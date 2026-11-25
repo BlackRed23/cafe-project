@@ -46,8 +46,8 @@ export const MyOrdersPage: React.FC = () => {
         const data = await ordersApi.getMyOrders();
         // Sort orders by newest first
         const sorted = data.sort((a, b) => {
-          const d1 = a.createdAt || (a as any).created_at || "";
-          const d2 = b.createdAt || (b as any).created_at || "";
+          const d1 = a.createdAt || a.created_at || "";
+          const d2 = b.createdAt || b.created_at || "";
           return new Date(d2).getTime() - new Date(d1).getTime();
         });
         setOrders(sorted);
@@ -80,7 +80,7 @@ export const MyOrdersPage: React.FC = () => {
       toast.info(`Đang chuyển hướng sang cổng thanh toán ${method}...`);
       const res = await paymentsApi.createPaymentUrl(order.id, method);
       window.location.assign(res.payUrl);
-    } catch (err: any) {
+    } catch (err) {
       toast.error(
         getOrderErrorMessage(err, "Không thể tạo liên kết thanh toán lại. Vui lòng thử lại.")
       );
@@ -156,8 +156,8 @@ export const MyOrdersPage: React.FC = () => {
             {orders.map((order) => {
               const isExpanded = expandedOrderId === order.id;
               const orderIdStr = order.id.slice(-8).toUpperCase();
-              const dateVal = order.createdAt || (order as any).created_at || "";
-              const method = order.paymentMethod || (order as any).payment_method;
+    const dateVal = order.createdAt || order.created_at || "";
+    const method = order.paymentMethod || order.payment_method;
               const canRetryOnline =
                 (method === "MOMO" || method === "VNPAY") &&
                 order.paymentStatus === "PENDING" &&
@@ -293,15 +293,15 @@ export const MyOrdersPage: React.FC = () => {
                             <div key={item.id} className="p-4 flex items-center justify-between text-sm">
                               <div>
                                 <p className="font-bold text-slate-800">
-                                  {item.product?.name || (item as any).Product?.name || "Sản phẩm"}
+                                  {item.product?.name || item.Product?.name || "Sản phẩm"}
                                 </p>
                                 <p className="text-slate-400 text-xs mt-0.5 font-light">
                                   Số lượng: {item.quantity}{" "}
-                                  {item.product?.unit || (item as any).Product?.unit || "hộp"}
+                                  {item.product?.unit || item.Product?.unit || "hộp"}
                                 </p>
                               </div>
                               <span className="font-bold text-slate-800">
-                                {formatCurrency((item.price || (item as any).Price || 0) * item.quantity)}
+                                {formatCurrency((item.price || item.Price || 0) * item.quantity)}
                               </span>
                             </div>
                           ))}

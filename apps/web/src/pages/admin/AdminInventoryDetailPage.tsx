@@ -1,7 +1,9 @@
+import { schedulePageLoad } from "../../utils/schedulePageLoad";
 import { mockEnabled } from '../../mock/config';
 import { MockWorkspace } from '../../mock/MockWorkspace';
-import { AdjustmentBatchSelect, eligibleAdjustmentBatches } from "../../components/admin/AdjustmentBatchSelect";
-import React, { useState, useEffect } from "react";
+import { AdjustmentBatchSelect } from "../../components/admin/AdjustmentBatchSelect";
+import { eligibleAdjustmentBatches } from "../../components/admin/eligibleAdjustmentBatches";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { inventoryApi } from "../../api/inventory.api";
 import { suppliersApi } from "../../api/suppliers.api";
@@ -38,7 +40,7 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
   const [prQuantity, setPrQuantity] = useState<number>(0);
   const [prSupplierId, setPrSupplierId] = useState<string>("");
   const [modalLoading, setModalLoading] = useState(false);
-  const [thresholdSuggestion, setThresholdSuggestion] = useState<any>(null);
+  const [thresholdSuggestion, setThresholdSuggestion] = useState<Awaited<ReturnType<typeof inventoryApi.getThresholdSuggestion>> | null>(null);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" | "warning" } | null>(null);
 
@@ -47,7 +49,7 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!inventoryId) return;
     try {
       setIsLoading(true);
@@ -56,23 +58,23 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
         inventoryApi.getInventories(),
         !isStaff ? suppliersApi.getSupplierProducts() : Promise.resolve([]),
       ]);
-      const found = inventories.find((i) => i.id === inventoryId || (i as any).inventoryId === inventoryId || i.productId === inventoryId);
+      const found = inventories.find((i) => i.id === inventoryId || i.inventoryId === inventoryId || i.productId === inventoryId);
       if (!found) {
         setError("Không tìm thấy tồn kho.");
       } else {
         setInventory(found);
         setSupplierProducts(suppliers.filter((sp) => sp.productId === found.productId));
       }
-    } catch (err) {
+    } catch {
       setError("Không thể tải dữ liệu chi tiết.");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [inventoryId, isStaff]);
 
   useEffect(() => {
-    fetchData();
-  }, [inventoryId]);
+    return schedulePageLoad(fetchData);
+  }, [fetchData]);
 
 
 
@@ -113,9 +115,9 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
       setIsSuggesting(true);
       setThresholdSuggestion(null);
       try {
-        const suggestion = await inventoryApi.getThresholdSuggestion((inventory as any).inventoryId ?? inventory.id);
+        const suggestion = await inventoryApi.getThresholdSuggestion(inventory.inventoryId ?? inventory.id);
         setThresholdSuggestion(suggestion);
-      } catch (err) {
+      } catch {
         console.error("Failed to load suggestion");
       } finally {
         setIsSuggesting(false);
@@ -145,7 +147,7 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
       showToast("Đã lưu ngưỡng đề xuất.", "success");
       await fetchData();
       handleCloseModal();
-    } catch (err: any) {
+    } catch (err) {
       showToast(getErrorMessage(err) || "Không thể lưu ngưỡng.", "error");
     } finally {
       setModalLoading(false);
@@ -183,11 +185,11 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
           supplierId: prSupplierId,
           notes: inputNote.trim() || undefined,
           items: [{
-            inventoryId: (inventory as any).inventoryId ?? inventory.id,
+            inventoryId: inventory.inventoryId ?? inventory.id,
             quantity: prQuantity
           }]
         });
-        const createdRequest = (response as any)?.purchaseRequest || (response as any)?.data?.purchaseRequest || response;
+        const createdRequest = response;
         const createdRequestId = createdRequest?.id;
         if (createdRequestId) {
           showToast("Tạo yêu cầu thành công.", "success");
@@ -198,7 +200,7 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
           handleCloseModal();
           await fetchData();
         }
-      } catch (err: any) {
+      } catch (err) {
         showToast(getErrorMessage(err) || "Không thể tạo yêu cầu.", "error");
       } finally {
         setModalLoading(false);
@@ -235,7 +237,7 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
       }
       await fetchData();
       handleCloseModal();
-    } catch (err: any) {
+    } catch (err) {
       showToast(getErrorMessage(err) || "Có lỗi xảy ra.", "error");
     } finally {
       setModalLoading(false);
@@ -271,12 +273,6 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
   const actionButtonClass = "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50";
   const primaryButtonClass = "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-amber-600 bg-amber-600 px-3 text-xs font-semibold text-white transition hover:bg-amber-700";
 
-  const Metric = ({ label, value, highlight }: { label: string; value: React.ReactNode; highlight?: boolean }) => (
-    <div className="flex flex-col rounded-xl border border-slate-100 bg-slate-50 p-4">
-      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</span>
-      <span className={`mt-1 text-2xl font-bold ${highlight ? "text-amber-600" : "text-slate-900"}`}>{value}</span>
-    </div>
-  );
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5">
@@ -344,7 +340,7 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
         <div className="flex flex-wrap gap-6 text-sm">
           <div className="flex flex-col gap-1">
             <span className="text-slate-500">SKU</span>
-            <span className="font-semibold text-slate-800">{(inventory.product as any)?.sku || (inventory as any).sku || "—"}</span>
+            <span className="font-semibold text-slate-800">{inventory.product?.sku || inventory.sku || "—"}</span>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-slate-500">Đơn vị</span>
@@ -352,7 +348,7 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-slate-500">Danh mục</span>
-            <span className="font-semibold text-slate-800">{(inventory as any).categoryName || "—"}</span>
+            <span className="font-semibold text-slate-800">{inventory.categoryName || "—"}</span>
           </div>
         </div>
       </div>
@@ -360,7 +356,7 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
       {/* Danh sách lô hàng */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="mb-4 text-base font-bold text-slate-900">Danh sách lô hàng</h2>
-        {(inventory as any).batches && (inventory as any).batches.length > 0 ? (
+        {inventory.batches && inventory.batches.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-slate-600">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
@@ -372,7 +368,7 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {(inventory as any).batches.map((batch: any) => {
+                {inventory.batches.map((batch) => {
                   const startOfToday = new Date();
                   startOfToday.setHours(0, 0, 0, 0);
                   const expDate = new Date(batch.expirationDate);
@@ -435,9 +431,9 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
                     {idx === 0 && <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">Chính</span>}
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm text-slate-600">
-                    <div>Thời gian giao: <span className="font-medium text-slate-900">{(sp as any).leadTimeDays || sp.leadTime || "—"} ngày</span></div>
+                    <div>Thời gian giao: <span className="font-medium text-slate-900">{sp.leadTimeDays || sp.leadTime || "—"} ngày</span></div>
                     <div>MOQ: <span className="font-medium text-slate-900">{sp.minOrderQuantity || "—"}</span></div>
-                    {(sp as any).purchasePrice && <div>Giá nhập: <span className="font-medium text-slate-900">{Number((sp as any).purchasePrice).toLocaleString()}đ</span></div>}
+                    {sp.purchasePrice && <div>Giá nhập: <span className="font-medium text-slate-900">{Number(sp.purchasePrice).toLocaleString()}đ</span></div>}
                   </div>
                 </div>
               ))}
@@ -456,7 +452,7 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
             <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold text-amber-900">Đang xử lý</span>
-                <Badge status={(inventory.openPurchaseRequestStatus as any) || "PENDING"} />
+                <Badge status={inventory.openPurchaseRequestStatus || "PENDING"} />
               </div>
               <div className="text-sm text-amber-800">Mã yêu cầu: <span className="font-semibold">{inventory.openPurchaseRequestCode || "—"}</span></div>
               <Link to={`/admin/purchase-requests/${inventory.openPurchaseRequestId}`} className="mt-1 text-sm font-bold text-amber-700 underline hover:text-amber-900">
@@ -672,3 +668,10 @@ const LegacyAdminInventoryDetailPage: React.FC = () => {
     </div>
   );
 };
+
+const Metric = ({ label, value, highlight }: { label: string; value: React.ReactNode; highlight?: boolean }) => (
+  <div className="flex flex-col rounded-xl border border-slate-100 bg-slate-50 p-4">
+    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</span>
+    <span className={`mt-1 text-2xl font-bold ${highlight ? "text-amber-600" : "text-slate-900"}`}>{value}</span>
+  </div>
+);

@@ -381,7 +381,7 @@ export const processMoMoWebhook = async (
 
     try {
         // Exact attempt identity only; legacy order IDs must not select a newer attempt.
-        let payment = await paymentRepository.findByMerchantRef(merchantRef);
+        const payment = await paymentRepository.findByMerchantRef(merchantRef);
 
         if (!payment || (isSuccess && !transIdStr)) {
             await paymentRepository.updateCallbackLog(callbackLog.id, {
@@ -513,7 +513,7 @@ export const processVNPayIpn = async (
             : null;
 
     // 2. Find Payment first so we can return VNPay standard codes (01 = Order not found, 04 = Invalid amount, 02 = Already confirmed)
-    let payment = await paymentRepository.findByMerchantRef(merchantRef);
+    const payment = await paymentRepository.findByMerchantRef(merchantRef);
 
     if (!payment || (isSuccess && !vnpTxnNo)) {
         await paymentRepository.createCallbackLog({

@@ -6,14 +6,6 @@ import { InventoryTransactionType } from '@cafe-project/database';
 import { scanInventoryViaAgentService, createAgentLogViaAgentService } from '../agent/agent.client';
 export type InventoryStatus = 'OUT_OF_STOCK' | 'LOW_STOCK' | 'IN_STOCK';
 
-type ThresholdSuggestionOptions = {
-    salesWindowDays?: number;
-    bufferDays?: number;
-    delayBufferDays?: number;
-    planningPeriod?: 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
-    planningDays?: number;
-};
-
 export type ThresholdWarning = {
     level: 'strong' | 'warning' | 'info';
     message: string;
@@ -45,7 +37,7 @@ export type InventoryDto = {
     openPurchaseRequestCode?: string;
     openPurchaseRequestStatus?: string;
     sellableQuantity: number;
-    batches?: any[];
+    batches?: InventoryRecord['batches'];
 };
 
 export type InventoryTransactionDto = {
@@ -91,8 +83,8 @@ const toInventoryDto = (inventory: InventoryRecord): InventoryDto => {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const batches = (inventory as any).batches ?? [];
-    const sellableQuantity = batches.reduce((sum: number, batch: any) => {
+    const batches = inventory.batches ?? [];
+    const sellableQuantity = batches.reduce((sum: number, batch) => {
         if (batch.quantity > 0 && new Date(batch.expirationDate) >= startOfToday) {
             return sum + batch.quantity;
         }
@@ -159,7 +151,7 @@ const toTransactionDto = (transaction: InventoryTransactionRecord): InventoryTra
         '';
     const itemUnit =
         transaction.ingredient?.baseUnit ??
-        (transaction.product as any)?.servingUnit ??
+        transaction.product?.servingUnit ??
         '';
     const batchCode =
         transaction.batch?.batchCode ??
@@ -206,15 +198,7 @@ const ensureInventoryExists = async (id: string): Promise<InventoryRecord> => {
     return inventory;
 };
 
-const normalizePositiveInteger = (value: number | undefined, fallback: number): number => {
-    if (value === undefined || !Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
-        return fallback;
-    }
-
-    return value;
-};
-
-const toSupplierDto = (supplierProduct: any) => ({
+const toSupplierDto = (supplierProduct: Awaited<ReturnType<typeof getSupplierProductsForSuggestion>>[number]) => ({
     supplierId: supplierProduct.supplierId,
     supplierName: supplierProduct.supplier.name,
     isPreferred: supplierProduct.isPreferred,
@@ -303,7 +287,7 @@ export const getInventories = async (): Promise<InventoryDto[]> => {
         _sum: { quantity: true }
     });
 
-    const salesMap = new Map<string, number>(salesGroups.map((g: any) => [g.productId, Math.abs(Number(g._sum.quantity ?? 0))]));
+    const salesMap = new Map<string | null, number>(salesGroups.map((g) => [g.productId, Math.abs(Number(g._sum.quantity ?? 0))]));
 
     const supplierProducts = await prisma.supplierProduct.findMany({
         where: {
@@ -313,7 +297,7 @@ export const getInventories = async (): Promise<InventoryDto[]> => {
         orderBy: [{ isPreferred: 'desc' }, { leadTimeDays: 'asc' }, { price: 'asc' }]
     });
 
-    const supplierMap = new Map<string, any>();
+    const supplierMap = new Map<string | null, (typeof supplierProducts)[number]>();
     for (const sp of supplierProducts) {
         if (!supplierMap.has(sp.productId)) {
             supplierMap.set(sp.productId, sp);

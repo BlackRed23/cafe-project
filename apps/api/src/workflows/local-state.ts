@@ -61,8 +61,7 @@ export function createLocalDevelopmentRepositories(env: Record<string, string | 
     if (!env.MOCK_STATE_PATH || !isAbsolute(env.MOCK_STATE_PATH)) throw new Error('MOCK_STATE_PATH_MUST_BE_ABSOLUTE');
     const adapter = new LocalDevelopmentState(resolve(env.MOCK_STATE_PATH));
     const restored = adapter.load();
-    let repository: MockRepository;
     const agentRepository = new MockAgentRepository(restored?.agent, agent => adapter.save({ business: repository.snapshot(), agent }));
-    repository = new MockRepository(restored?.business, business => adapter.save({ business, agent: agentRepository.preparedSnapshot() }));
+    const repository = new MockRepository(restored?.business, business => adapter.save({ business, agent: agentRepository.preparedSnapshot() }));
     return { repository, agentRepository };
 }

@@ -4,6 +4,7 @@ import { useCart } from "../contexts/CartContext";
 import { getOrderErrorMessage, ordersApi } from "../api/orders.api";
 import { paymentsApi } from "../api/payments.api";
 import type { PaymentMethod } from "../types/order.types";
+import type { Product } from "../types/product.types";
 import { formatCurrency } from "../utils/formatCurrency";
 import { detectShippingZone, calculateShippingFee, getZoneLabel, FREE_SHIPPING_THRESHOLD } from "../utils/shipping";
 import { STORE_BANK_INFO } from "../utils/payment";
@@ -43,6 +44,8 @@ const PAYMENT_OPTIONS: Array<{
   },
 ];
 
+type AdministrativeArea = { code: number; name: string };
+
 export const CheckoutPage: React.FC = () => {
   const { items, totalAmount: subtotal, clearCart } = useCart();
   const navigate = useNavigate();
@@ -55,9 +58,9 @@ export const CheckoutPage: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
 
   // Location states
-  const [provinces, setProvinces] = useState<any[]>([]);
-  const [districts, setDistricts] = useState<any[]>([]);
-  const [wards, setWards] = useState<any[]>([]);
+  const [provinces, setProvinces] = useState<AdministrativeArea[]>([]);
+  const [districts, setDistricts] = useState<AdministrativeArea[]>([]);
+  const [wards, setWards] = useState<AdministrativeArea[]>([]);
 
   const [selectedProvinceCode, setSelectedProvinceCode] = useState<number | "">("");
   const [selectedDistrictCode, setSelectedDistrictCode] = useState<number | "">("");
@@ -71,28 +74,31 @@ export const CheckoutPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (selectedProvinceCode) {
-      fetch(`https://provinces.open-api.vn/api/p/${selectedProvinceCode}?depth=2`)
-        .then((res) => res.json())
-        .then((data) => setDistricts(data.districts || []))
-        .catch(console.error);
-    } else {
-      setDistricts([]);
-    }
-    setSelectedDistrictCode("");
-    setSelectedWardCode("");
+    if (!selectedProvinceCode) return;
+    const request = new AbortController();
+    fetch(`https://provinces.open-api.vn/api/p/${selectedProvinceCode}?depth=2`, { signal: request.signal })
+      .then((res) => res.json())
+      .then((data: { districts?: AdministrativeArea[] }) => {
+        if (!request.signal.aborted) setDistricts(data.districts || []);
+      })
+      .catch((error: unknown) => {
+        if (!request.signal.aborted) console.error(error);
+      });
+    return () => request.abort();
   }, [selectedProvinceCode]);
 
   useEffect(() => {
-    if (selectedDistrictCode) {
-      fetch(`https://provinces.open-api.vn/api/d/${selectedDistrictCode}?depth=2`)
-        .then((res) => res.json())
-        .then((data) => setWards(data.wards || []))
-        .catch(console.error);
-    } else {
-      setWards([]);
-    }
-    setSelectedWardCode("");
+    if (!selectedDistrictCode) return;
+    const request = new AbortController();
+    fetch(`https://provinces.open-api.vn/api/d/${selectedDistrictCode}?depth=2`, { signal: request.signal })
+      .then((res) => res.json())
+      .then((data: { wards?: AdministrativeArea[] }) => {
+        if (!request.signal.aborted) setWards(data.wards || []);
+      })
+      .catch((error: unknown) => {
+        if (!request.signal.aborted) console.error(error);
+      });
+    return () => request.abort();
   }, [selectedDistrictCode]);
 
   const provinceName = useMemo(
@@ -120,7 +126,8 @@ export const CheckoutPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   const getCartProductId = (item: (typeof items)[number]) => {
-    return String(item.product.id ?? (item.product as any).product_id ?? "").trim();
+    const product: Product & { product_id?: string } = item.product;
+    return String(product.id ?? product.product_id ?? "").trim();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -183,7 +190,7 @@ export const CheckoutPage: React.FC = () => {
           const paymentRes = await paymentsApi.createPaymentUrl(createdOrder.id, paymentMethod);
           window.location.assign(paymentRes.payUrl);
           return;
-        } catch (payErr: any) {
+        } catch (payErr) {
           const payMsg = getOrderErrorMessage(
             payErr,
             "Đã tạo đơn hàng nhưng chưa thể kết nối cổng thanh toán. Bạn có thể bấm Thanh toán lại trong Đơn hàng của tôi."
@@ -196,7 +203,7 @@ export const CheckoutPage: React.FC = () => {
 
       toast.success("Tạo đơn hàng thành công.");
       navigate("/my-orders?success=true");
-    } catch (err: any) {
+    } catch (err) {
       const message = getOrderErrorMessage(err, "Không thể tạo đơn hàng, vui lòng thử lại.");
       setApiError(message);
       toast.error(message);
@@ -309,7 +316,13 @@ export const CheckoutPage: React.FC = () => {
                   <select
                     required
                     value={selectedProvinceCode}
-                    onChange={(e) => setSelectedProvinceCode(Number(e.target.value) || "")}
+                    onChange={(e) => {
+                      setSelectedProvinceCode(Number(e.target.value) || "");
+                      setSelectedDistrictCode("");
+                      setSelectedWardCode("");
+                      setDistricts([]);
+                      setWards([]);
+                    }}
                     className="block w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm outline-none transition focus:border-amber-700 focus:ring-2 focus:ring-amber-50 text-slate-900 bg-white disabled:opacity-50"
                   >
                     <option value="">Chọn Tỉnh / Thành phố</option>
@@ -323,7 +336,11 @@ export const CheckoutPage: React.FC = () => {
                   <select
                     required
                     value={selectedDistrictCode}
-                    onChange={(e) => setSelectedDistrictCode(Number(e.target.value) || "")}
+                    onChange={(e) => {
+                      setSelectedDistrictCode(Number(e.target.value) || "");
+                      setSelectedWardCode("");
+                      setWards([]);
+                    }}
                     disabled={!selectedProvinceCode || districts.length === 0}
                     className="block w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm outline-none transition focus:border-amber-700 focus:ring-2 focus:ring-amber-50 text-slate-900 bg-white disabled:opacity-50"
                   >

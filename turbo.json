@@ -6,17 +6,33 @@
         "^build"
       ],
       "outputs": [
-        "dist/**",
-        ".next/**"
+        "dist/**"
       ]
+    },
+    "@cafe-project/web#build": {
+      "dependsOn": ["^build"],
+      "env": ["VITE_*"],
+      "outputs": ["dist/**"]
+    },
+    "generate": {
+      "cache": false
+    },
+    "@cafe-project/database#build": {
+      "dependsOn": ["^build", "generate"],
+      "outputs": ["dist/**"]
+    },
+    "@cafe-project/database#check-types": {
+      "dependsOn": ["^build", "generate"],
+      "outputs": []
+    },
+    "@cafe-project/types#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
     },
     "lint": {},
     "dev": {
       "cache": false,
       "persistent": true
-    },
-    "db:generate": {
-      "cache": false
     },
     "check-types": {
       "dependsOn": [

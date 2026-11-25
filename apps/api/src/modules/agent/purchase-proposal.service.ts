@@ -31,6 +31,7 @@ export const proposalRejectSchema = proposalReferenceSchema.extend({
 export type ProposalSnapshot = z.infer<typeof proposalSnapshotSchema>;
 type Reference = z.infer<typeof proposalReferenceSchema>;
 type Tx = Prisma.TransactionClient;
+type ContinueGraph = (tx: Tx, reference: Reference) => Promise<void>;
 // Flat, schema-ordered scalar contracts; sort keys so JSONB storage order is irrelevant.
 const digest = (value: object) => createHash('sha256').update(JSON.stringify(value, Object.keys(value).sort())).digest('hex');
 const conflict = (code: string): never => { throw new HttpError(409, code); };
@@ -223,7 +224,7 @@ export class PurchaseProposalService {
             return tx.agentPurchaseProposalVersion.create({ data: { proposalId, version, snapshot, contentHash: digest(snapshot) } });
         });
     }
-    async approve(proposalId: string, actorId: string, raw: unknown) {
+    async approve(proposalId: string, actorId: string, raw: unknown, continueGraph?: ContinueGraph) {
         const reference = proposalReferenceSchema.parse(raw);
         return this.transaction(async tx => {
             await this.admin(tx, actorId);
@@ -233,15 +234,18 @@ export class PurchaseProposalService {
             await this.stockStillCurrent(tx, snapshot, revision.createdAt);
             if (revision.approvedById) {
                 await this.currentApprover(tx, revision.approvedById);
+                await continueGraph?.(tx, reference);
                 return revision;
             }
-            return tx.agentPurchaseProposalVersion.update({ where: { proposalId_version: { proposalId, version: reference.version } }, data: { approvedById: actorId, approvedAt: new Date() } });
+            const approved = await tx.agentPurchaseProposalVersion.update({ where: { proposalId_version: { proposalId, version: reference.version } }, data: { approvedById: actorId, approvedAt: new Date() } });
+            await continueGraph?.(tx, reference);
+            return approved;
         });
     }
     /** AI18: An authenticated current ADMIN may veto one exact persisted
      * revision/hash. Neither the model nor an internal service token can reject
      * or silently reverse an existing rejection. No procurement is issued. */
-    async reject(proposalId: string, actorId: string, raw: unknown) {
+    async reject(proposalId: string, actorId: string, raw: unknown, continueGraph?: ContinueGraph) {
         id.parse(proposalId);
         const input = proposalRejectSchema.parse(raw);
         return this.transaction(async tx => {
@@ -251,14 +255,18 @@ export class PurchaseProposalService {
                 where: { agentProposalId: proposalId }, select: { id: true }
             })) return conflict('PROPOSAL_ALREADY_EXECUTED');
             if (revision.rejectedAt) {
-                if (revision.rejectedById === actorId && revision.rejectionReason === input.reason)
+                if (revision.rejectedById === actorId && revision.rejectionReason === input.reason) {
+                    await continueGraph?.(tx, input);
                     return revision;
+                }
                 return conflict('PROPOSAL_ALREADY_REJECTED');
             }
-            return tx.agentPurchaseProposalVersion.update({
+            const rejected = await tx.agentPurchaseProposalVersion.update({
                 where: { proposalId_version: { proposalId, version: input.version } },
                 data: { rejectedById: actorId, rejectedAt: new Date(), rejectionReason: input.reason }
             });
+            await continueGraph?.(tx, input);
+            return rejected;
         });
     }
     async execute(proposalId: string, raw: unknown) {

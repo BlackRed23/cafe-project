@@ -34,7 +34,7 @@ const LegacyAdminInventoryTransactionsPage: React.FC = () => {
           return new Date(t2).getTime() - new Date(t1).getTime();
         });
         setTransactions(sorted);
-      } catch (err: any) {
+      } catch {
         setError("Không thể tải lịch sử giao dịch kho.");
       } finally {
         setIsLoading(false);
@@ -257,7 +257,7 @@ const LegacyAdminInventoryTransactionsPage: React.FC = () => {
           onClose={() => setIsModalOpen(false)}
           title="Chi tiết giao dịch kho nguyên liệu"
         >
-          <div className="space-y-4 text-sm">
+          <div className="space-y-4 text-sm min-w-0 [overflow-wrap:anywhere]">
             <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
               <div className="col-span-1 text-slate-500">Nguyên liệu</div>
               <div className="col-span-2 font-semibold text-slate-800">
@@ -266,7 +266,7 @@ const LegacyAdminInventoryTransactionsPage: React.FC = () => {
             </div>
             <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
               <div className="col-span-1 text-slate-500">Phân loại & SKU</div>
-              <div className="col-span-2 flex items-center gap-2">
+              <div className="col-span-2 min-w-0 flex flex-wrap items-center gap-2">
                 <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
                   Nguyên liệu pha chế
                 </span>
@@ -278,14 +278,14 @@ const LegacyAdminInventoryTransactionsPage: React.FC = () => {
             {selectedTx.batchCode && (
               <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
                 <div className="col-span-1 text-slate-500">Mã lô (FEFO)</div>
-                <div className="col-span-2 font-mono text-xs font-semibold text-slate-700">
+                <div className="col-span-2 min-w-0 font-mono text-xs font-semibold text-slate-700">
                   {selectedTx.batchCode}
                 </div>
               </div>
             )}
             <div className="grid grid-cols-3 gap-4 border-b border-slate-100 pb-4">
               <div className="col-span-1 text-slate-500">Loại hoạt động</div>
-              <div className="col-span-2">
+              <div className="col-span-2 min-w-0">
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${getTypeBadgeColor(selectedTx.type)}`}>
                   {getTransactionTypeLabel(selectedTx.type)}
                 </span>

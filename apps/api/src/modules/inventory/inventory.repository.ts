@@ -1,6 +1,5 @@
 import { InventoryTransactionType, type Category, type Inventory, type InventoryTransaction, type Prisma, type Product, type User } from '@cafe-project/database';
 import { prisma } from '@cafe-project/database';
-import { getOptionalSettingValue } from '../system-setting/system-setting.service';
 import { HttpError } from '../../common/http-error';
 
 const assertStockDelta = (quantity: number, positiveOnly = false): void => {
@@ -15,6 +14,7 @@ type ProductWithCategory = Product & {
 
 export type InventoryRecord = Inventory & {
     product: ProductWithCategory;
+    batches?: Prisma.InventoryBatchGetPayload<object>[];
 };
 
 export type InventoryTransactionRecord = InventoryTransaction & {

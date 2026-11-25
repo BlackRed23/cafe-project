@@ -1,6 +1,6 @@
 import type { Inventory } from "../../types/inventory.types";
-export const eligibleAdjustmentBatches = (inventory: Inventory, now = Date.now()) =>
-  (inventory.batches ?? []).filter(batch => Number.isFinite(Date.parse(batch.expirationDate)) && Date.parse(batch.expirationDate) > now && batch.quantity >= 0);
+import { eligibleAdjustmentBatches } from "./eligibleAdjustmentBatches";
+
 export function AdjustmentBatchSelect({ inventory, value, onChange }: { inventory: Inventory; value: string; onChange: (id: string) => void }) {
   const batches = eligibleAdjustmentBatches(inventory);
   return <label className="block text-sm font-medium text-slate-700">

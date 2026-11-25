@@ -1,3 +1,4 @@
+import { schedulePageLoad } from "../../utils/schedulePageLoad";
 import React, { useState, useEffect } from "react";
 import { suppliersApi } from "../../api/suppliers.api";
 import { ingredientsApi } from "../../api/ingredients.api";
@@ -45,8 +46,8 @@ export const AdminSuppliersPage: React.FC = () => {
   const toast = useToast();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [purchaseRequests, setPurchaseRequests] = useState<any[]>([]);
+  const [products, setProducts] = useState<Array<Pick<Product, "id" | "name" | "sku" | "unit"> & { price: number }>>([]);
+  const [purchaseRequests, setPurchaseRequests] = useState<Awaited<ReturnType<typeof purchaseRequestsApi.getPurchaseRequests>>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchSup, setSearchSup] = useState("");
@@ -102,10 +103,10 @@ export const AdminSuppliersPage: React.FC = () => {
           sku: ing.sku,
           unit: ing.baseUnit,
           price: ing.costPerBaseUnit,
-        })) as any
+        }))
       );
       setPurchaseRequests(prs);
-    } catch (err: any) {
+    } catch {
       setError("Không thể tải thông tin nhà cung cấp.");
     } finally {
       setIsLoading(false);
@@ -113,7 +114,7 @@ export const AdminSuppliersPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    return schedulePageLoad(fetchData);
   }, []);
 
   const handleOpenSupplierModal = (sup?: Supplier) => {
@@ -218,13 +219,13 @@ export const AdminSuppliersPage: React.FC = () => {
           isPreferred: false,
           ...conversionPayload,
         };
-        await suppliersApi.createSupplierProduct(linkPayload as any);
+        await suppliersApi.createSupplierProduct(linkPayload);
         toast.success("Gán thành công", "Sản phẩm đã được gán cho nhà cung cấp.");
       }
 
       await fetchData();
       handleCloseSupplierModal();
-    } catch (err) {
+    } catch {
       toast.error("Thao tác thất bại", "Lỗi khi lưu thông tin nhà cung cấp.");
     } finally {
       setModalLoading(false);
@@ -283,16 +284,16 @@ export const AdminSuppliersPage: React.FC = () => {
 
     try {
       if (rightColumnMode === "EDIT" && editingSupplierProductId) {
-        await suppliersApi.updateSupplierProduct(editingSupplierProductId, payload as any);
+        await suppliersApi.updateSupplierProduct(editingSupplierProductId, payload);
         toast.success("Cập nhật thành công", "Điều kiện cung cấp đã được lưu.");
       } else {
-        await suppliersApi.createSupplierProduct(payload as any);
+        await suppliersApi.createSupplierProduct(payload);
         toast.success("Gán thành công", "Sản phẩm đã được gán cho nhà cung cấp.");
       }
       await fetchData();
       setRightColumnMode("LIST");
       setEditingSupplierProductId(null);
-    } catch (err) {
+    } catch {
       toast.error("Thao tác thất bại", "Lỗi khi lưu thông tin liên kết.");
     } finally {
       setLinkLoading(false);
@@ -364,11 +365,11 @@ export const AdminSuppliersPage: React.FC = () => {
     };
 
     try {
-      await suppliersApi.createSupplierProduct(payload as any);
+      await suppliersApi.createSupplierProduct(payload);
       toast.success("Gán thành công", "Sản phẩm đã được gán cho nhà cung cấp.");
       await fetchData();
       setIsLinkModalOpen(false);
-    } catch (err) {
+    } catch {
       toast.error("Gán thất bại", "Lỗi khi gán sản phẩm cho nhà cung cấp.");
     } finally {
       setLinkLoading(false);
@@ -386,7 +387,7 @@ export const AdminSuppliersPage: React.FC = () => {
       await fetchData();
       setDeleteId(null);
       setDeleteType(null);
-    } catch (err: any) {
+    } catch {
       toast.error("Thao tác thất bại", "Lỗi khi thực hiện xóa.");
     } finally {
       setIsDeleting(false);
@@ -402,7 +403,7 @@ export const AdminSuppliersPage: React.FC = () => {
           await fetchData();
           setDeleteId(null);
           setDeleteType(null);
-      } catch (err) {
+      } catch {
           toast.error("Thất bại", "Lỗi khi cập nhật trạng thái.");
       } finally {
           setIsDeleting(false);
@@ -418,7 +419,7 @@ export const AdminSuppliersPage: React.FC = () => {
           await fetchData();
           setDeleteId(null);
           setDeleteType(null);
-      } catch (err) {
+      } catch {
           toast.error("Thất bại", "Lỗi khi cập nhật trạng thái.");
       } finally {
           setIsDeleting(false);
@@ -561,7 +562,7 @@ export const AdminSuppliersPage: React.FC = () => {
       header: "Nguyên liệu gán",
       render: (sp: SupplierProduct) => {
         const pName =
-          (sp as any).productName ||
+          sp.productName ||
           products.find((p) => p.id === (sp.productId || sp.product_id))?.name ||
           "N/A";
         return <span className="font-semibold text-slate-800">{pName}</span>;

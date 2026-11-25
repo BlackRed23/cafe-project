@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY turbo.json ./
@@ -6,17 +6,18 @@ COPY apps/api/package.json apps/api/
 COPY apps/agent/package.json apps/agent/
 COPY apps/web/package.json apps/web/
 COPY packages/database/package.json packages/database/
+COPY packages/types/package.json packages/types/
+COPY packages/eslint-config/package.json packages/eslint-config/
+COPY packages/typescript-config/package.json packages/typescript-config/
+COPY .npmrc ./
 
-RUN npm install
+RUN npm ci
 
 COPY . .
 
-RUN npm run generate -w @cafe-project/database
-RUN npm run build -w @cafe-project/database
-RUN npm run build -w @cafe-project/agent
-RUN npm run build -w @cafe-project/api
+RUN npm run build -- --filter=@cafe-project/api
 
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 COPY --from=builder /app /app
 

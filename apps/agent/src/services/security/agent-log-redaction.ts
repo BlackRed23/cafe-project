@@ -15,7 +15,7 @@ const safeCode = /^[A-Z][A-Z0-9_]{0,79}$/;
 function safeText(value: unknown, limit = 200): string | null {
     if (typeof value !== 'string') return null;
     const text = value.trim();
-    if (!text || text.length > limit || /[\u0000-\u001f]/.test(text) ||
+    if (!text || text.length > limit || Array.from(text).some(char => char.charCodeAt(0) < 32) ||
         unsafeHint.test(text) || longOpaqueToken.test(text)) return null;
     return text;
 }

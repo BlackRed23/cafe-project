@@ -77,6 +77,7 @@ export interface OrderItemTopping {
 }
 
 export interface OrderItem {
+  product_id?: string;
   id: string;
   orderId: string;
   productId: string;
@@ -95,6 +96,8 @@ export interface OrderItem {
   grossProfit?: number;
   toppings?: OrderItemTopping[];
   product?: Product;
+  Product?: Pick<Product, "name" | "unit">;
+  Price?: number;
 }
 
 export interface Order {
@@ -120,7 +123,9 @@ export interface Order {
   grossProfit?: number;
   status: OrderStatus;
   paymentMethod: PaymentMethod;
+  payment_method?: PaymentMethod;
   paymentStatus: PaymentStatus;
+  payment_status?: PaymentStatus;
   payment?: PaymentAttempt | null;
   shippingName?: string | null;
   shippingPhone?: string | null;
@@ -128,6 +133,7 @@ export interface Order {
   note?: string;
   stockDeductedAt?: string | null;
   createdAt: string;
+  created_at?: string;
   updatedAt: string;
   items?: OrderItem[];
 }

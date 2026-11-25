@@ -11,7 +11,7 @@ import { requireAgentUser } from '../../internal-auth';
 import { agentRepository } from '../../repositories/agent.repository';
 import { runLiveReadOnlyGraph } from '../../workflows/agent-live-readonly';
 import type { PerceptionContext } from '../../workflows/inventory-perception';
-import { assessAiLnReadOnly, createAiLnBackendJwtReader,
+import { createAiLnBackendJwtReader,
     type AiLnCaseId, type AiLnReadAssessment } from './ai-ln-cross-business';
 
 type BridgeStatus = 'HOLD_GRAPH' | 'HOLD_SOURCE' | 'REVIEW_READY' | 'HOLD_CROSS_BUSINESS';

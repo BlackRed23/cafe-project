@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Column<T> {
@@ -29,11 +29,12 @@ export function DataTable<T extends { id: string | number }>({
   caption = "Danh sách dữ liệu",
 }: DataTableProps<T>) {
   const [currentPage, setCurrentPage] = useState(1);
+  const [previousInputs, setPreviousInputs] = useState({ searchValue, dataLength: data.length });
 
-  // Reset page when search term or data length changes
-  useEffect(() => {
+  if (previousInputs.searchValue !== searchValue || previousInputs.dataLength !== data.length) {
+    setPreviousInputs({ searchValue, dataLength: data.length });
     setCurrentPage(1);
-  }, [searchValue, data.length]);
+  }
 
   const totalItems = data.length;
   const totalPages = Math.ceil(totalItems / pageSize);

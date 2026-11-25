@@ -22,19 +22,29 @@ import { prisma } from '@cafe-project/database';
 import { createHash, randomUUID } from 'node:crypto';
 const totalForItem = (quantity: number, unitPrice: number | null): number => quantity * (unitPrice ?? 0);
 
-const getItemDisplayName = (item: PurchaseRequestRecord['items'][number]): string => {
+type PurchaseEmailItem = Omit<PurchaseRequestRecord['items'][number], 'ingredient'> & {
+    ingredient?: PurchaseRequestRecord['items'][number]['ingredient'];
+};
+type PurchaseEmailRequest = Pick<PurchaseRequestRecord, 'emailContent' | 'notes' | 'aiGenerated' | 'requestNumber' | 'status' | 'emailSentAt' | 'lastEmailError'> & {
+    supplier: (Omit<NonNullable<PurchaseRequestRecord['supplier']>, 'ingredients'> & {
+        ingredients?: NonNullable<PurchaseRequestRecord['supplier']>['ingredients'];
+    }) | null;
+    items: PurchaseEmailItem[];
+};
+
+const getItemDisplayName = (item: PurchaseEmailItem): string => {
     return item.product?.name ?? item.ingredient?.name ?? 'Mặt hàng';
 };
 
-const getItemDisplaySku = (item: PurchaseRequestRecord['items'][number]): string => {
+const getItemDisplaySku = (item: PurchaseEmailItem): string => {
     return item.product?.sku ?? item.ingredient?.sku ?? '';
 };
 
-const getItemDisplayUnit = (item: PurchaseRequestRecord['items'][number]): string => {
+const getItemDisplayUnit = (item: PurchaseEmailItem): string => {
     return item.inventory?.unit ?? item.ingredient?.baseUnit ?? 'đơn vị';
 };
 
-const purchaseConversionForItem = (request: PurchaseRequestRecord, item: PurchaseRequestRecord['items'][number]) => {
+const purchaseConversionForItem = (request: PurchaseEmailRequest, item: PurchaseEmailItem) => {
     if (item.ingredientId && item.ingredient) {
         const supIng = request.supplier?.ingredients?.find((mapping) => mapping.ingredientId === item.ingredientId);
         const conversionQuantity = supIng ? Number(supIng.conversionQuantity) : null;
@@ -96,7 +106,7 @@ const purchaseConversionForItem = (request: PurchaseRequestRecord, item: Purchas
     };
 };
 
-const emailStatusForRequest = (request: PurchaseRequestRecord): string => {
+const emailStatusForRequest = (request: Pick<PurchaseEmailRequest, 'status' | 'emailSentAt' | 'lastEmailError'>): string => {
     if (request.status === PurchaseRequestStatus.SENT || request.emailSentAt) return 'Đã gửi';
     if (request.lastEmailError) return 'Gửi lỗi';
     return 'Chưa gửi';
@@ -131,7 +141,7 @@ const isSupplierEmailContentUsable = (value?: string | null): value is string =>
     return !unsafeSupplierEmailTextPatterns.some((pattern) => value.includes(pattern));
 };
 
-const buildSupplierEmailItemLine = (request: PurchaseRequestRecord, item: PurchaseRequestRecord['items'][number]): string => {
+const buildSupplierEmailItemLine = (request: PurchaseEmailRequest, item: PurchaseEmailItem): string => {
     const conversion = purchaseConversionForItem(request, item);
     const productName = getItemDisplayName(item);
     const inventoryUnit = conversion.inventoryUnit || getItemDisplayUnit(item) || '';
@@ -146,7 +156,7 @@ const buildSupplierEmailItemLine = (request: PurchaseRequestRecord, item: Purcha
     return `- ${productName}: ${formatQuantity(item.quantity, inventoryUnit)}`;
 };
 
-const buildSupplierEmailSubject = async (request: PurchaseRequestRecord): Promise<string> => {
+const buildSupplierEmailSubject = async (request: PurchaseEmailRequest): Promise<string> => {
     if (request.items.length === 1) {
         const item = request.items[0]!;
         const conversion = purchaseConversionForItem(request, item);
@@ -205,7 +215,7 @@ ${itemLabel} này chưa có quy cách nhập hàng theo nhà cung cấp, nên s�
     return explanations.join('\n\n');
 };
 
-export const buildPurchaseRequestEmailDraft = async (request: PurchaseRequestRecord) => {
+export const buildPurchaseRequestEmailDraft = async (request: PurchaseEmailRequest) => {
     const supplierName = request.supplier?.name || 'nhà cung cấp chưa xác định';
     const subject = await buildSupplierEmailSubject(request);
     const itemsList = request.items.map((item) => buildSupplierEmailItemLine(request, item)).join('\n');

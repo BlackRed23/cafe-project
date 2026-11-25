@@ -208,7 +208,7 @@ const getReasonText = (code: string | undefined | null) => {
   }
 };
 
-export const getAgentLogDisplayDescription = (log: AgentLog): string => {
+const getAgentLogDisplayDescription = (log: AgentLog): string => {
   const input = asRecord(log.input);
   const output = asRecord(log.output);
 
@@ -382,7 +382,7 @@ const LegacyAdminAgentLogsPage: React.FC = () => {
   const cronSummary = useMemo(() => {
     const cronSessions = summaryLogs.filter(log => 
       log.action === "SCAN_INVENTORY_SESSION" && 
-      (log.triggerType === "SCHEDULED_CRON_SCAN" || (log.output as any)?.triggerType === "SCHEDULED_CRON_SCAN" || (log.input as any)?.triggerType === "SCHEDULED_CRON_SCAN")
+      (log.triggerType === "SCHEDULED_CRON_SCAN" || asRecord(log.output)?.triggerType === "SCHEDULED_CRON_SCAN" || asRecord(log.input)?.triggerType === "SCHEDULED_CRON_SCAN")
     );
     const latestCronSession = cronSessions.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0];
 
@@ -391,7 +391,7 @@ const LegacyAdminAgentLogsPage: React.FC = () => {
     const output = asRecord(latestCronSession.output) || {};
     
     return {
-      scanSessionId: String(output.scanSessionId || latestCronSession.scanSessionId || (latestCronSession.input as any)?.scanSessionId || ''),
+      scanSessionId: String(output.scanSessionId || latestCronSession.scanSessionId || asRecord(latestCronSession.input)?.scanSessionId || ''),
       time: formatDate(latestCronSession.createdAt!),
       totalChecked: Number(output.totalProductsScanned ?? output.totalChecked ?? 0),
       createdCount: Number(output.purchaseRequestCreatedCount ?? output.createdPurchaseRequestCount ?? 0),
@@ -428,7 +428,7 @@ const LegacyAdminAgentLogsPage: React.FC = () => {
       if (log.scanSessionId) {
         scanSessions.add(log.scanSessionId);
       } else {
-        const sourceId = log.sourceId || (log.input as any)?.sourceId || (log.input as any)?.scanId || (log.input as any)?.requestId;
+        const sourceId = log.sourceId || asRecord(log.input)?.sourceId || asRecord(log.input)?.scanId || asRecord(log.input)?.requestId;
         if (sourceId) {
           scanSessions.add(`${log.triggerType || 'UNKNOWN'}-${sourceId}`);
         } else {
@@ -450,12 +450,15 @@ const LegacyAdminAgentLogsPage: React.FC = () => {
     };
   }, [summaryLogs]);
 
-  useEffect(() => {
-    if (searchParams.get("tab") === "simulation" && statusFilter !== "SIMULATION") {
+  const simulationTab = searchParams.get("tab") === "simulation";
+  const [previousSimulationTab, setPreviousSimulationTab] = useState(simulationTab);
+  if (simulationTab !== previousSimulationTab) {
+    setPreviousSimulationTab(simulationTab);
+    if (simulationTab) {
       setStatusFilter("SIMULATION");
       setPage(1);
     }
-  }, [searchParams, statusFilter]);
+  }
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -524,15 +527,15 @@ const LegacyAdminAgentLogsPage: React.FC = () => {
     }
 
     if (scanSessionIdParam || productIdParam || sourceIdParam) {
-      const getLogProductId = (log: any) =>
-        log.productId || log.input?.productId || log.output?.productId || log.product?.id || log.referenceProductId || "";
-      const getLogProductName = (log: any) =>
-        log.productName || log.input?.productName || log.output?.productName || log.product?.name || "";
-      const getLogSourceId = (log: any) =>
-        log.sourceId || log.input?.sourceId || log.output?.sourceId || "";
-      const getLogScanSessionId = (log: any) =>
-        log.scanSessionId || log.input?.scanSessionId || log.output?.scanSessionId || "";
-      const isSessionSummary = (log: any) => log.action === "SCAN_INVENTORY_SESSION";
+      const getLogProductId = (log: AgentLog) =>
+        log.productId || asRecord(log.input).productId || asRecord(log.output).productId || log.product?.id || log.referenceProductId || "";
+      const getLogProductName = (log: AgentLog) =>
+        log.productName || asRecord(log.input).productName || asRecord(log.output).productName || log.product?.name || "";
+      const getLogSourceId = (log: AgentLog) =>
+        log.sourceId || asRecord(log.input).sourceId || asRecord(log.output).sourceId || "";
+      const getLogScanSessionId = (log: AgentLog) =>
+        log.scanSessionId || asRecord(log.input).scanSessionId || asRecord(log.output).scanSessionId || "";
+      const isSessionSummary = (log: AgentLog) => log.action === "SCAN_INVENTORY_SESSION";
 
       let scopedLogs = paramFilteredLogs;
 
@@ -579,8 +582,8 @@ const LegacyAdminAgentLogsPage: React.FC = () => {
 
   const filterNote = useMemo(() => {
     if (!productIdParam || filteredLogs.length === 0) return null;
-    const getLogSourceId = (log: any) => log.sourceId || log.input?.sourceId || log.output?.sourceId || "";
-    const getLogScanSessionId = (log: any) => log.scanSessionId || log.input?.scanSessionId || log.output?.scanSessionId || "";
+    const getLogSourceId = (log: AgentLog) => log.sourceId || asRecord(log.input).sourceId || asRecord(log.output).sourceId || "";
+    const getLogScanSessionId = (log: AgentLog) => log.scanSessionId || asRecord(log.input).scanSessionId || asRecord(log.output).scanSessionId || "";
 
     if (sourceIdParam && !filteredLogs.some(log => getLogSourceId(log) === sourceIdParam)) {
       return "Không tìm thấy log theo sourceId, đang hiển thị nhật ký theo sản phẩm.";

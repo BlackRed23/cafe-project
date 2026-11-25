@@ -528,7 +528,7 @@ export const dashboardService = {
 
         return inventories
             .filter((inv: { quantity: number; minThreshold: number }) => inv.quantity <= inv.minThreshold)
-            .map((inv: any) => ({
+            .map((inv) => ({
                 productName: inv.product.name,
                 sku: inv.product.sku,
                 quantity: inv.quantity,

@@ -2,8 +2,8 @@
   "name": "cafe-project-system",
   "private": true,
   "scripts": {
-    "test": "node ../../cafe-project-artifacts/testing/run-tests.cjs normal",
-    "test:mock": "node ../../cafe-project-artifacts/testing/run-tests.cjs mock",
+    "test": "node scripts/ci/run-external-tests.cjs normal",
+    "test:mock": "node scripts/ci/run-external-tests.cjs mock",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
@@ -14,7 +14,7 @@
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@types/bcrypt": "^6.0.0",
-    "@types/express": "^5.0.6",
+    "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.1.0",
     "@types/node": "^26.0.0",
@@ -32,9 +32,15 @@
     "apps/*",
     "packages/*"
   ],
+  "overrides": {
+    "@prisma/config@6.19.3": {
+      "deepmerge-ts": "8.0.2",
+      "effect": "3.22.5"
+    }
+  },
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "node-cron": "4.4.1",
-    "nodemailer": "9.0.1"
+    "nodemailer": "10.6.1"
   }
 }

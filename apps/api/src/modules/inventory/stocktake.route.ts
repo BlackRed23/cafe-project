@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type NextFunction, type Response } from 'express';
 import { UserRole } from '@cafe-project/database';
 import { asyncHandler } from '../../common/async-handler';
 import { sendSuccess } from '../../common/response';
@@ -7,7 +7,8 @@ import { authMiddleware, roleMiddleware, type AuthenticatedRequest } from '../au
 import {
     stocktakeCreateSchema, stocktakeEntrySchema, stocktakeSubmitSchema, stocktakeDecisionSchema
 } from './stocktake.validator';
-import { stocktakeService } from './stocktake.service';
+import { recordBackendDenial } from '../auth/security-denial-audit';
+import { stocktakeService, StocktakeScopeDenied } from './stocktake.service';
 
 export const stocktakeRoutes = Router();
 stocktakeRoutes.use(authMiddleware, roleMiddleware(UserRole.ADMIN, UserRole.STAFF));
@@ -35,3 +36,10 @@ stocktakeRoutes.post('/:id/reopen', roleMiddleware(UserRole.ADMIN), validateBody
     asyncHandler(async (req: AuthenticatedRequest, res) => {
         sendSuccess(res, 200, 'Đã yêu cầu kiểm kê lại và giữ lịch sử.', await stocktakeService.reopen(req.params.id!, req.body, req.user!));
     }));
+
+stocktakeRoutes.use((error: unknown, req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
+    if (!(error instanceof StocktakeScopeDenied) || !req.user) return next(error);
+
+    const forwardDenial = () => next(error);
+    void recordBackendDenial(req, 'RESOURCE_SCOPE_DENIED', req.user.id).then(forwardDenial, forwardDenial);
+});

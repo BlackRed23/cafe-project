@@ -1,0 +1,345 @@
+name: Cafe Project CI-CD (TC2.4-2.6)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [cafe-tests-updated]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cafe-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  # Valid URL for Prisma generation/validation, deliberately unreachable.
+  DATABASE_URL: postgresql://ci_no_write:ci_no_write@127.0.0.1:1/ci_unreachable
+  AGENT_GRAPH_READONLY: 'YES'
+
+jobs:
+  # Rubric stage 1: BUILD. Never migrate or seed a database in CI.
+  build:
+    name: '01 / Build + typecheck'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Validate Prisma schema and generate local client
+        run: |
+          npx prisma validate --schema packages/database/prisma/schema
+          npm run generate -w @cafe-project/database
+      - name: TypeScript checks
+        run: npm run check-types
+      - name: Production build
+        run: npm run build
+
+  # Rubric stage 2: lint/static analysis. Do not hide existing lint debt.
+  lint:
+    name: '02 / Lint'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: ESLint (no auto-fix or suppression)
+        run: npm run lint
+
+  # Rubric stage 3: tests. Test-only files remain in an external repository.
+  # No assets => FAIL, never a dummy green job.
+  test:
+    name: '03 / Full automated regression'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      test_sha: ${{ steps.revisions.outputs.test_sha }}
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://ci_no_write:ci_no_write@127.0.0.1:1/ci_unreachable
+      AGENT_GRAPH_READONLY: 'YES'
+      CI_TESTS_REPOSITORY: ${{ vars.CI_TESTS_REPOSITORY }}
+      CI_TESTS_SHA: ${{ github.event.client_payload.test_sha || vars.CI_TESTS_SHA }}
+      CI_DISPATCH_REPOSITORY: ${{ github.event.client_payload.test_repository || '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Require separately hosted test sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$CI_TESTS_REPOSITORY" ]]; then
+            echo "::error::Set CI_TESTS_REPOSITORY (repository with testing/run-tests.cjs)."
+            echo "::error::No tests means CI fails, not skips."
+            exit 2
+          fi
+          if [[ ! "$CI_TESTS_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "::error::Set CI_TESTS_SHA to a pinned 40-hex test repository commit, not a mutable branch."
+            exit 2
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == 'repository_dispatch' &&
+                "$CI_DISPATCH_REPOSITORY" != "$CI_TESTS_REPOSITORY" ]]; then
+            echo "::error::Dispatched repository is not the configured test repository."
+            exit 2
+          fi
+      - name: Checkout external test repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ vars.CI_TESTS_REPOSITORY }}
+          ref: ${{ github.event.client_payload.test_sha || vars.CI_TESTS_SHA }}
+          token: ${{ secrets.CI_TESTS_READ_TOKEN || github.token }}
+          path: .ci-test-assets
+          persist-credentials: false
+      - name: Verify exact external test and fixture bytes
+        working-directory: .ci-test-assets
+        shell: bash
+        run: |
+          test -f MANIFEST.sha256 || {
+            echo "::error::Missing required test bundle SHA256 manifest"
+            exit 2
+          }
+          sha256sum --check --status MANIFEST.sha256 || {
+            echo "::error::Test bundle SHA256 integrity verification failed"
+            exit 2
+          }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Build dependencies used by relocated test suites
+        run: |
+          npm run generate -w @cafe-project/database
+          npm run build
+      - name: Prepare Chromium used by UI tests
+        run: npx playwright install --with-deps chromium
+      - name: Reconnect external test workspace to runtime source
+        shell: bash
+        env:
+          CAFE_PROJECT_ROOT: ${{ github.workspace }}
+        run: |
+          test -f .ci-test-assets/testing/run-tests.cjs || {
+            echo "::error::Expected testing/run-tests.cjs in CI_TESTS_REPOSITORY"; exit 2;
+          }
+          bash .ci-test-assets/testing/bootstrap-links.sh
+      - name: Attest exact source and test commits
+        id: revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          test_sha="$(git -C .ci-test-assets rev-parse HEAD)"
+          if [[ "$source_sha" != "$GITHUB_SHA" || "$test_sha" != "$CI_TESTS_SHA" ]]; then
+            echo "::error::Source or test checkout does not match the expected commit SHA."
+            exit 2
+          fi
+          echo "test_sha=$test_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Reproducible source / test pairing"
+            echo "- Source: $GITHUB_REPOSITORY@$source_sha"
+            echo "- Tests: $CI_TESTS_REPOSITORY@$test_sha"
+            echo "- Test root: .ci-test-assets/testing"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Run registered suites without a live DB
+        shell: bash
+        env:
+          CAFE_PROJECT_TEST_ROOT: ${{ github.workspace }}/.ci-test-assets/testing
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/ci-full-tests.log"
+      - name: Upload test execution log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: full-regression-log
+          path: ${{ runner.temp }}/ci-full-tests.log
+          if-no-files-found: warn
+          retention-days: 30
+
+  # Rubric stage 4: dependency, secret and configuration scanning.
+  security:
+    name: '04 / Security scanning'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: npm production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Trivy vulnerability, secret and configuration scan
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+
+  # Rubric stage 5: Docker. Registry publishing gated on successful CI.
+  docker:
+    name: '05 / Docker ${{ matrix.app }}'
+    needs: [build, lint, test, security]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, agent, web]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Prepare lower-case image owner
+        id: image
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Login to GHCR on trusted branch only
+        if: github.event_name == 'push' && github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main')
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build; publish only from trusted branch
+        id: image-build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          build-args: |
+            VITE_API_URL=${{ vars.CI_PUBLIC_API_URL }}
+          push: ${{ github.event_name == 'push' && github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main') }}
+          tags: ghcr.io/${{ steps.image.outputs.owner }}/cafe-${{ matrix.app }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            io.github.cafe-project.tests.repository=${{ vars.CI_TESTS_REPOSITORY }}
+            io.github.cafe-project.tests.revision=${{ needs.test.outputs.test_sha }}
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+      - name: Record published image digest
+        if: github.event_name == 'push' && github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main')
+        shell: bash
+        env:
+          IMAGE: ghcr.io/${{ steps.image.outputs.owner }}/cafe-${{ matrix.app }}
+          DIGEST: ${{ steps.image-build.outputs.digest }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || {
+            echo "::error::Missing or invalid published image digest."
+            exit 2
+          }
+          printf 'Published image `%s@%s` for source commit `%s`.\n' "$IMAGE" "$DIGEST" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+  # Rubric stage 6: disabled until staging env/secrets are configured.
+  staging:
+    name: '06 / Staging deploy + smoke + rollback'
+    needs: docker
+    if: >-
+      github.event_name == 'push' &&
+      github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main') &&
+      vars.CI_ENABLE_STAGING == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: cafe-staging
+      cancel-in-progress: false
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Check staging configuration
+        shell: bash
+        env:
+          PUBLIC_API_URL: ${{ vars.CI_PUBLIC_API_URL }}
+          HOST: ${{ secrets.STAGING_HOST }}
+          USER: ${{ secrets.STAGING_USER }}
+          KEY: ${{ secrets.STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+        run: |
+          for key in HOST USER KEY KNOWN_HOSTS; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing staging configuration: $key"
+              exit 2
+            fi
+          done
+          if [[ "$PUBLIC_API_URL" != https://* ||
+                "$PUBLIC_API_URL" == *localhost* ||
+                "$PUBLIC_API_URL" == *.invalid* ]]; then
+            echo "::error::CI_PUBLIC_API_URL must be the real HTTPS staging API URL"
+            exit 2
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Deploy commit-tagged images
+        shell: bash
+        env:
+          HOST: ${{ secrets.STAGING_HOST }}
+          USER: ${{ secrets.STAGING_USER }}
+          IMAGE_OWNER: ${{ github.repository_owner }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          IMAGE_OWNER="${IMAGE_OWNER,,}"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$USER@$HOST" \
+            'mkdir -p /opt/cafe/staging'
+          scp -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            deploy/compose.staging.yml deploy/deploy-staging.sh \
+            "$USER@$HOST:/opt/cafe/staging/"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$USER@$HOST" \
+            "bash /opt/cafe/staging/deploy-staging.sh '$IMAGE_OWNER' '$IMAGE_TAG'"
+      - name: Record measured commit-to-staging latency for rubric
+        shell: bash
+        run: |
+          set -euo pipefail
+          commit_epoch="$(git show -s --format=%ct HEAD)"
+          deployed_epoch="$(date -u +%s)"
+          seconds="$((deployed_epoch - commit_epoch))"
+          if [[ "$seconds" -lt 0 ]]; then
+            echo "::error::Commit timestamp is newer than deployment clock"
+            exit 1
+          fi
+          {
+            echo "### TC2.6 staging deployment evidence"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Deployment UTC: $(date -u -d "@$deployed_epoch" +%FT%TZ)"
+            echo "- Commit to healthy staging: $seconds seconds"
+            echo "- Target: 900 seconds (15 minutes)"
+            echo "- Verified: API + Agent + Web health and exact Git SHA images"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$seconds" -gt 900 ]]; then
+            echo "::warning::Commit-to-staging exceeded rubric 15-minute target"
+          fi

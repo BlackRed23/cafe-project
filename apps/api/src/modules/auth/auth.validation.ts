@@ -18,9 +18,10 @@ export const loginSchema = z.object({
     password: z.string().trim().min(1, 'Mật khẩu không được để trống.')
 });
 
-export const googleAuthSchema = z.object({
-    access_token: z.string().trim().min(1, 'Token Google là bắt buộc.')
-});
+export const googleAuthSchema = z.union([
+    z.strictObject({ id_token: z.string().trim().min(1).max(8192) }),
+    z.strictObject({ access_token: z.string().trim().min(1).max(8192) })
+]);
 
 export const forgotPasswordSchema = z.object({
     email: z.string().trim().email('Email không hợp lệ.').toLowerCase()

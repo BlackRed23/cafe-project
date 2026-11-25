@@ -1,35 +1,9 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from "lucide-react";
 
-export type ToastType = "success" | "error" | "warning" | "info";
-
-export interface Toast {
-  id: string;
-  type: ToastType;
-  title: string;
-  message?: string;
-  link?: string;
-}
-
-interface ToastContextType {
-  toasts: Toast[];
-  toast: {
-    success: (title: string, message?: string, link?: string) => void;
-    error: (title: string, message?: string, link?: string) => void;
-    warning: (title: string, message?: string, link?: string) => void;
-    info: (title: string, message?: string, link?: string) => void;
-  };
-  dismiss: (id: string) => void;
-}
-
-const ToastContext = createContext<ToastContextType | undefined>(undefined);
-
-export const useToastState = () => {
-  const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error("useToastState must be used within a ToastProvider");
-  return ctx;
-};
+import type { Toast, ToastType } from "./ToastContextState";
+import { ToastContext } from "./ToastContextState";
 
 const ICONS = {
   success: <CheckCircle size={18} className="text-emerald-500 flex-shrink-0" />,
@@ -227,10 +201,4 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
       </div>, toastTarget)}
     </ToastContext.Provider>
   );
-};
-
-export const useToast = () => {
-  const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error("useToast must be used within a ToastProvider");
-  return ctx.toast;
 };

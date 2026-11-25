@@ -2,7 +2,6 @@ import '../config/env';
 import { z } from 'zod';
 import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import type { UnifiedToolRegistry } from './tool-registry';
 import { selectToolForTask } from '../services/tool-selection/tool-selection.service';
 import { TOOL_SELECTION_VERSION, type ToolSelectionInput } from '../services/tool-selection/tool-selection.schema';
 import { executeActReadStep } from '../services/execution/act-read-step';
@@ -21,7 +20,7 @@ export * from './tool-registry';
 export * from './tool-policies';
 export { SAFETY_BUFFER_DAYS } from '../utils/inventory.utils';
 import { replenishmentPlan, validateReplenishmentPlan } from './replenishment';
-import type { InventoryRow, PurchaseProposal, ReplenishmentInput, ReplenishmentOutputs, ReplenishmentPlan, SupplierQuote } from './replenishment';
+import type { InventoryRow, PurchaseProposal, ReplenishmentInput, ReplenishmentOutputs, ReplenishmentPlan } from './replenishment';
 export type { PurchaseProposal, ReplenishmentInput, ReplenishmentOutputs, ReplenishmentPlan } from './replenishment';
 
 

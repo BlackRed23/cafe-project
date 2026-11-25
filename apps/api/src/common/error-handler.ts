@@ -9,6 +9,7 @@ export const notFoundHandler = (req: Request, res: Response): void => {
 };
 
 export const errorHandler = (error: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction): void => {
+    void _next;
     if (error instanceof SyntaxError && error.status === 400) {
         sendError(res, 400, 'JSON body không hợp lệ.');
         return;
@@ -61,6 +62,12 @@ export const errorHandler = (error: Error & { status?: number }, _req: Request, 
     // Unknown errors may contain SQL, provider responses, keys or private input.
     const kind = error instanceof Error
         ? error.name.replace(/[^A-Za-z]/g, '').slice(0, 40) : 'UnknownError';
-    console.error('[api] unexpected error', { kind: kind || 'UnknownError', status: 500 });
+    console.error(JSON.stringify({
+        event: 'http.request.error',
+        timestamp: new Date().toISOString(),
+        requestId: res.locals.requestId,
+        kind: kind || 'UnknownError',
+        status: 500
+    }));
     sendError(res, 500, 'Lỗi máy chủ nội bộ.');
 };

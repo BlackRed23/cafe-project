@@ -40,22 +40,19 @@ export const PaymentResultPage: React.FC = () => {
   const [payment, setPayment] = useState<PaymentAttempt | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pollTimedOut, setPollTimedOut] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [requestError, setError] = useState<string | null>(null);
+  const error = orderId ? requestError : "Thiếu thông tin mã đơn hàng trên đường dẫn.";
   const [actionLoading, setActionLoading] = useState(false);
 
   const fetchPaymentStatus = useCallback(async () => {
-    if (!orderId) {
-      setError("Không tìm thấy mã đơn hàng để kiểm tra trạng thái thanh toán.");
-      setIsLoading(false);
-      return null;
-    }
+    if (!orderId) return null;
 
     try {
       const data = await paymentsApi.getPaymentByOrder(orderId);
       setPayment(data);
       setError(null);
       return data;
-    } catch (err: any) {
+    } catch (err) {
       setError(
         getOrderErrorMessage(
           err,
@@ -69,11 +66,7 @@ export const PaymentResultPage: React.FC = () => {
   }, [orderId]);
 
   useEffect(() => {
-    if (!orderId) {
-      setIsLoading(false);
-      setError("Thiếu thông tin mã đơn hàng trên đường dẫn.");
-      return;
-    }
+    if (!orderId) return;
 
     let cancelled = false;
     const startTime = Date.now();
@@ -112,6 +105,7 @@ export const PaymentResultPage: React.FC = () => {
   }, [orderId, fetchPaymentStatus]);
 
   const handleManualCheck = async () => {
+    if (!orderId) return;
     setPollTimedOut(false);
     setIsLoading(true);
     await fetchPaymentStatus();
@@ -125,7 +119,7 @@ export const PaymentResultPage: React.FC = () => {
       toast.info(`Đang tạo phiên thanh toán ${method} mới...`);
       const res = await paymentsApi.createPaymentUrl(orderId, method);
       window.location.assign(res.payUrl);
-    } catch (err: any) {
+    } catch (err) {
       toast.error(
         getOrderErrorMessage(err, "Không thể tạo lại liên kết thanh toán. Vui lòng thử lại.")
       );
@@ -145,7 +139,7 @@ export const PaymentResultPage: React.FC = () => {
           ? "Đã giả lập IPN MoMo thành công (PAID)."
           : "Đã giả lập IPN MoMo thất bại (FAILED)."
       );
-    } catch (err: any) {
+    } catch (err) {
       toast.error(getOrderErrorMessage(err, "Không thể giả lập IPN MoMo."));
     } finally {
       setActionLoading(false);
@@ -294,11 +288,11 @@ export const PaymentResultPage: React.FC = () => {
           {isPending && (
             <Button
               variant="outline"
-              disabled={isLoading || actionLoading}
+              disabled={!orderId || isLoading || actionLoading}
               onClick={handleManualCheck}
               className="flex items-center gap-1.5"
             >
-              <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} /> Kiểm tra lại
+              <RefreshCw size={14} className={orderId && isLoading ? "animate-spin" : ""} /> Kiểm tra lại
             </Button>
           )}
 

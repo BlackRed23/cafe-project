@@ -22,7 +22,7 @@ export const reconcileProviderPayment = async (paymentId: string, user: JwtUserP
         lookup = await queryProviderPayment({ method: payment.method, merchantRef: payment.merchantRef,
             amount: new Prisma.Decimal(payment.amount), requestPayload: payment.requestPayload,
             providerTxnId: payment.providerTxnId });
-    } catch (error) {
+    } catch {
         await paymentRepository.createCallbackLog({
             method: payment.method, providerEventId: null, eventType: 'PROVIDER_STATUS_LOOKUP',
             paymentId: payment.id, signatureValid: false, rawPayload: { paymentId: payment.id },

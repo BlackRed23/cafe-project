@@ -20,7 +20,7 @@ const getBearerToken = (authorizationHeader: string | undefined): string | null 
 };
 
 export type AuthenticationSource = {
-    verifyAuthToken(token: string): JwtUserPayload;
+    verifyAuthToken(token: string): JwtUserPayload | Promise<JwtUserPayload>;
     getCurrentUser(id: string): Promise<JwtUserPayload>;
 };
 
@@ -36,7 +36,7 @@ export const createAuthMiddleware = (source: AuthenticationSource) => async (req
     }
 
     try {
-        const claims = source.verifyAuthToken(token);
+        const claims = await source.verifyAuthToken(token);
         // JWT identity is signed; authorization comes from the current account.
         const current = await source.getCurrentUser(claims.id);
         req.user = { id: current.id, email: current.email, role: current.role };
@@ -53,8 +53,8 @@ export const createAuthMiddleware = (source: AuthenticationSource) => async (req
 };
 
 export const authMiddleware = createAuthMiddleware({
-    verifyAuthToken: token => require('./auth.service').verifyAuthToken(token),
-    getCurrentUser: id => require('./auth.service').getCurrentUser(id),
+    verifyAuthToken: async token => (await import('./auth.service')).verifyAuthToken(token),
+    getCurrentUser: async id => (await import('./auth.service')).getCurrentUser(id),
 });
 
 export const roleMiddleware = (...allowedRoles: UserRole[]) => {

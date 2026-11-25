@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 import { inventoryScaledQuantity, perceptionContextSchema, type PerceptionContext } from '../inventory-perception';
-import { stocktakeScenarioSourceSchema, type StocktakeScenarioSource } from './stocktake-scenario-continuation';
+import { stocktakeScenarioSourceSchema } from './stocktake-scenario-continuation';
 import { TOOL_CONTRACTS, type P1ToolName } from '../tool-contracts';
 import type { ToolOutcome } from '../tool-registry';
 

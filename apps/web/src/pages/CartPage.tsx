@@ -60,10 +60,10 @@ export const CartPage: React.FC = () => {
             return (
               <div
                 key={product.id}
-                className="bg-white rounded-3xl border border-amber-900/5 p-4 sm:p-6 flex items-center justify-between gap-4 shadow-xl shadow-amber-950/2"
+                className="bg-white rounded-3xl border border-amber-900/5 p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl shadow-amber-950/2 min-w-0"
               >
                 {/* Product details */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 min-w-0 w-full sm:w-auto">
                   <div className="w-16 sm:w-20 aspect-square rounded-2xl bg-amber-50/20 border border-amber-900/5 overflow-hidden flex-shrink-0">
                     <img
                       src={imgUrl}
@@ -72,7 +72,7 @@ export const CartPage: React.FC = () => {
                       className="w-full h-full object-cover"
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h3 className="font-bold text-slate-800 text-sm sm:text-base line-clamp-1">
                       {product.name}
                     </h3>
@@ -84,7 +84,7 @@ export const CartPage: React.FC = () => {
                 </div>
 
                 {/* Actions & subtotals */}
-                <div className="flex flex-col sm:flex-row items-end sm:items-center gap-4 sm:gap-8">
+                <div className="flex flex-row flex-wrap items-center justify-between sm:justify-end gap-3 sm:gap-8 w-full sm:w-auto">
                   {/* Quantity adjustments */}
                   <div className="flex items-center border border-amber-900/10 rounded-xl overflow-hidden bg-white">
                     <button

@@ -1,4 +1,4 @@
-import { agentRepository } from '../repositories/agent.repository';
+import { agentRepository, type AgentInventoryRecord, type AgentIngredientRecord } from '../repositories/agent.repository';
 import { geminiService } from './gemini.service';
 import { calculateReorderPoint, DELAY_BUFFER_DAYS, SAFETY_BUFFER_DAYS } from '../utils/inventory.utils';
 import { SYSTEM_PROMPT_TEMPLATE, INGREDIENT_SYSTEM_PROMPT_TEMPLATE } from '../config/system-prompt';
@@ -32,7 +32,18 @@ const planningPeriodText = (period: ReorderPlanningPeriod): string => {
     return 'chu ky nhap hang hang tuan';
 };
 
-const formatRecommendationQuantity = (quantity: number, inventory: any, supplierProduct: any) => {
+type SupplierProduct = NonNullable<AgentInventoryRecord['product']>['supplierProducts'][number];
+type ProductSales = Parameters<typeof SYSTEM_PROMPT_TEMPLATE>[3];
+type ReorderSupplier = Parameters<typeof SYSTEM_PROMPT_TEMPLATE>[4][number] & {
+    price: number;
+    supplierProduct: SupplierProduct;
+};
+
+const formatRecommendationQuantity = (
+    quantity: number,
+    inventory: Pick<AgentInventoryRecord, 'unit'>,
+    supplierProduct: SupplierProduct | null | undefined
+) => {
     const inventoryUnit = inventory.unit || 'don vi';
     const purchaseUnit = supplierProduct?.purchaseUnit;
     const conversionQuantity = Number(supplierProduct?.conversionQuantity || 0);
@@ -214,7 +225,7 @@ export const recommendationService = {
         }
 
         const suppliers = activeSupplierProducts.map((sp) => {
-            const spRaw = sp as any;
+            const spRaw: SupplierProduct & { leadTime?: number } = sp;
             return {
                 supplierId: sp.supplierId,
                 supplierName: sp.supplier.name,
@@ -262,7 +273,7 @@ export const recommendationService = {
                     if (!reasoningValid) failReason += 'Reasoning is empty. ';
                     throw new Error(`Gemini validation failed: ${failReason}`);
                 }
-            } catch (err: any) {
+            } catch (err) {
                 fallbackUsed = true;
                 errorMessage = err instanceof Error ? err.message : 'Unknown Gemini error';
             }
@@ -322,7 +333,12 @@ export const recommendationService = {
         };
     },
 
-    calculateRuleBased(inventory: any, sales: any, suppliers: any[], planningSettings: { reorderPlanningPeriod: ReorderPlanningPeriod; reorderPlanningDays: number }) {
+    calculateRuleBased(
+        inventory: Pick<AgentInventoryRecord, 'unit' | 'quantity' | 'minThreshold'>,
+        sales: Pick<ProductSales, 'salesVelocity7d' | 'salesVelocity30d'>,
+        suppliers: readonly ReorderSupplier[],
+        planningSettings: { reorderPlanningPeriod: ReorderPlanningPeriod; reorderPlanningDays: number }
+    ) {
         const rawDailySales = Math.max(sales.salesVelocity7d, sales.salesVelocity30d, 0);
         const dailySales = rawDailySales > 0 ? rawDailySales : 0;
         const sorted = [...suppliers].sort((a, b) => {
@@ -548,7 +564,7 @@ export const recommendationService = {
                 } else {
                     throw new Error('Gemini ingredient recommendation failed validation.');
                 }
-            } catch (err: any) {
+            } catch (err) {
                 fallbackUsed = true;
                 errorMessage = err instanceof Error ? err.message : 'Unknown Gemini error';
             }
@@ -632,7 +648,7 @@ export const recommendationService = {
     },
 
     calculateIngredientRuleBased(
-        ingredient: any,
+        ingredient: Pick<AgentIngredientRecord, 'name' | 'baseUnit'>,
         availableStock: number,
         minThreshold: number,
         usedByProducts: string[],

@@ -37,7 +37,7 @@ export const ForgotPasswordPage: React.FC = () => {
       await authApi.forgotPassword({ email: email.trim() });
       setIsSent(true);
       toast.success("Đã gửi email đặt lại mật khẩu.");
-    } catch (err: any) {
+    } catch (err) {
       const message = getErrorMessage(err);
       setApiError(message);
       toast.error("Không thể gửi email", message || "Vui lòng thử lại.");

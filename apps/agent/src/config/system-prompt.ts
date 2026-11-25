@@ -1,9 +1,9 @@
 export const SYSTEM_PROMPT_TEMPLATE = (
   storeName: string,
-  product: any,
-  inventory: any,
-  sales: any,
-  suppliers: any[]
+  product: { readonly name: string; readonly sku: string | null; readonly category?: { name: string } | null },
+  inventory: { readonly quantity: number; readonly minThreshold: number },
+  sales: { readonly totalSold7d: number; readonly totalSold30d: number; readonly salesVelocity7d: number; readonly salesVelocity30d: number },
+  suppliers: readonly { supplierId: string; supplierName: string; supplyPrice: number; minOrderQuantity: number; leadTimeDays: number; isPreferred: boolean }[]
 ): string => {
   return `You are an AI inventory reorder assistant for a cafe product inventory system. Draft emails on behalf of ${storeName}.
 

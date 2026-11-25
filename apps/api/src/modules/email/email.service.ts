@@ -57,7 +57,7 @@ export const emailService = {
 
         const supplierEmail = request.supplier?.email || '';
         const isValidEmail = EMAIL_REGEX.test(supplierEmail);
-        const emailDraft = await buildPurchaseRequestEmailDraft(request as any);
+        const emailDraft = await buildPurchaseRequestEmailDraft(request);
 
         let smtpConfigured = true;
         try {
@@ -100,7 +100,7 @@ export const emailService = {
             throw new HttpError(400, 'Only approved purchase requests can be emailed.');
         }
 
-        const isPendingDelete = request.items.some((item: any) => item.product?.pendingDeleteUntil);
+        const isPendingDelete = request.items.some((item) => item.product?.pendingDeleteUntil);
         if (isPendingDelete) {
             await createAgentLogViaAgentService({
                 action: 'SEND_SUPPLIER_EMAIL_BLOCKED',
@@ -142,7 +142,14 @@ export const emailService = {
         }
 
         if (request.supplier?.status === 'INACTIVE') {
-            let suggestedSuppliers: any[] = [];
+            let suggestedSuppliers: Array<{
+                supplierId: string;
+                supplierName: string;
+                isPreferred: boolean;
+                leadTimeDays: number | null;
+                moq: number | null;
+                purchasePrice: number;
+            }> = [];
             const productId = request.items?.[0]?.productId;
             if (productId && request.supplier) {
                 const altSupplierProducts = await prisma.supplierProduct.findMany({
@@ -158,7 +165,7 @@ export const emailService = {
                         { price: 'asc' }
                     ]
                 });
-                suggestedSuppliers = altSupplierProducts.map((sp: any) => ({
+                suggestedSuppliers = altSupplierProducts.map((sp) => ({
                     supplierId: sp.supplierId,
                     supplierName: sp.supplier.name,
                     isPreferred: sp.isPreferred,
@@ -241,7 +248,7 @@ export const emailService = {
             });
 
             return updatedRequest;
-        } catch (error: any) {
+        } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown SMTP error';
 
             await prisma.purchaseRequest.update({

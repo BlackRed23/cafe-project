@@ -12,7 +12,7 @@ type Purchase = { id: string; supplierId: string; agentProposalId: string; agent
     notes: string; emailContent: string | null; items: { ingredientId?: string | null; inventoryId?: string | null; quantity: number; unitPrice: string | number }[] };
 const snapshotHash = (snapshot: Snapshot) => createHash('sha256').update(JSON.stringify(snapshot, Object.keys(snapshot).sort())).digest('hex');
 
-async function backend(path: string, method = 'GET', body?: unknown): Promise<any> {
+async function backend<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
     // Same secret authenticates service, never impersonates an ADMIN.
     const token = process.env.AGENT_INTERNAL_TOKEN;
     if (!token) throw new AgentHttpError(503, 'Backend proposal authentication unavailable.');
@@ -25,11 +25,11 @@ async function backend(path: string, method = 'GET', body?: unknown): Promise<an
     if (!response.ok) throw new AgentHttpError(response.status, 'Backend proposal request rejected.');
     const result = await response.json() as { data?: unknown };
     if (!result.data) throw new AgentHttpError(502, 'Backend proposal response invalid.');
-    return result.data;
+    return result.data as T;
 }
 
 export async function submitPurchaseProposal(snapshot: Snapshot, proposalId: string = randomUUID()): Promise<Proposal> {
-    const result = await backend('', 'POST', { proposalId, snapshot });
+    const result = await backend<Proposal>('', 'POST', { proposalId, snapshot });
     if (result.proposalId !== proposalId || result.version !== 1 || !/^[a-f0-9]{64}$/.test(result.contentHash) ||
         !result.snapshot || snapshotHash(result.snapshot) !== result.contentHash) throw new AgentHttpError(502, 'Proposal identity mismatch.');
     return result;
@@ -39,7 +39,7 @@ export async function submitPurchaseProposal(snapshot: Snapshot, proposalId: str
 export async function executeApprovedPurchaseProposal(proposalId: string, reference: Reference, idempotencyKey: string) {
     if (!Number.isInteger(reference.version) || reference.version < 1 || !/^[a-f0-9]{64}$/.test(reference.contentHash) || !idempotencyKey?.trim()) throw new AgentHttpError(400, 'Invalid proposal reference.');
     const path = '/' + encodeURIComponent(proposalId);
-    const result = await backend(path + '/execute', 'POST', { ...reference, idempotencyKey });
+    const result = await backend<{ purchaseRequest?: Purchase }>(path + '/execute', 'POST', { ...reference, idempotencyKey });
     const persisted: Proposal = await backend(path);
     const pr = persisted.purchaseRequest, snapshot = persisted.snapshot;
     if (persisted.proposalId !== proposalId || persisted.version !== reference.version || persisted.contentHash !== reference.contentHash ||

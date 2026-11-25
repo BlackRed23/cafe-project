@@ -1,5 +1,5 @@
 import { apiClient, unwrapApiData, unwrapApiField, unwrapApiList } from "./client";
-import type { PurchaseRequest, PurchaseRequestEmailPreview } from "../types/purchaseRequest.types";
+import type { PurchaseRequest, PurchaseRequestEmailPreview, PurchaseRequestItem } from "../types/purchaseRequest.types";
 import { fixVietnameseMojibakeText } from "../utils/textEncoding";
 
 const cleanText = (value: unknown): string =>
@@ -8,7 +8,24 @@ const cleanText = (value: unknown): string =>
 const cleanOptionalText = (value: unknown): string | undefined =>
   typeof value === "string" ? fixVietnameseMojibakeText(value) : undefined;
 
-const normalizePurchaseRequest = (request: any): PurchaseRequest => {
+type PurchaseRequestWire = PurchaseRequest & {
+  email_to?: string;
+  email_subject?: string;
+  email_body?: string;
+  email_status?: string;
+  agent_explanation?: string;
+  display_reasoning?: string;
+  email_sent_at?: string;
+  sent_at?: string;
+  payment_status?: PurchaseRequest["paymentStatus"];
+  paid_at?: string | null;
+  payment_note?: string | null;
+  supplier_email?: string;
+  retry_count?: number;
+  last_email_error?: string | null;
+};
+
+const normalizePurchaseRequest = (request: PurchaseRequestWire): PurchaseRequest => {
   const firstItem = request?.items?.[0];
   const emailTo = cleanText(request?.emailDraft?.to ?? request?.emailTo ?? request?.email_to ?? request?.supplierEmail ?? request?.supplier?.email ?? "");
   const emailSubject = cleanText(request?.emailDraft?.subject ?? request?.emailSubject ?? request?.email_subject ?? "");
@@ -58,7 +75,7 @@ const normalizePurchaseRequest = (request: any): PurchaseRequest => {
     conversionMissing: request?.conversionMissing ?? firstItem?.conversionMissing,
     product: request?.product ?? (firstItem ? { id: firstItem.productId || firstItem.ingredientId || firstItem.id, name: firstItem.productName } : undefined),
     items: Array.isArray(request?.items)
-      ? request.items.map((item: any) => ({
+      ? request.items.map((item: PurchaseRequestItem) => ({
         ...item,
         notes: cleanOptionalText(item?.notes) ?? item?.notes,
         purchaseQuantity: item?.purchaseQuantity ?? null,
@@ -90,7 +107,7 @@ const normalizeEmailPreview = (preview: PurchaseRequestEmailPreview): PurchaseRe
 export const purchaseRequestsApi = {
   getPurchaseRequests: async (params?: { status?: string }): Promise<PurchaseRequest[]> => {
     const response = await apiClient.get("/purchase-requests", { params });
-    return unwrapApiList<any>(response.data, "purchaseRequests").map(normalizePurchaseRequest);
+    return unwrapApiList<PurchaseRequestWire>(response.data, "purchaseRequests").map(normalizePurchaseRequest);
   },
 
   createPurchaseRequest: async (payload: {
@@ -100,22 +117,22 @@ export const purchaseRequestsApi = {
     items: Array<{ inventoryId?: string; ingredientId?: string; quantity: number; unitPrice?: number }>;
   }): Promise<PurchaseRequest> => {
     const response = await apiClient.post("/purchase-requests", payload);
-    return normalizePurchaseRequest(unwrapApiField<any>(response.data, "purchaseRequest"));
+    return normalizePurchaseRequest(unwrapApiField<PurchaseRequestWire>(response.data, "purchaseRequest"));
   },
 
   getPurchaseRequestById: async (id: string): Promise<PurchaseRequest> => {
     const response = await apiClient.get(`/purchase-requests/${id}`);
-    return normalizePurchaseRequest(unwrapApiField<any>(response.data, "purchaseRequest"));
+    return normalizePurchaseRequest(unwrapApiField<PurchaseRequestWire>(response.data, "purchaseRequest"));
   },
 
   approvePurchaseRequest: async (id: string): Promise<PurchaseRequest> => {
     const response = await apiClient.patch(`/purchase-requests/${id}/approve`);
-    return normalizePurchaseRequest(unwrapApiField<any>(response.data, "purchaseRequest"));
+    return normalizePurchaseRequest(unwrapApiField<PurchaseRequestWire>(response.data, "purchaseRequest"));
   },
 
   rejectPurchaseRequest: async (id: string, payload: { reason: string }): Promise<PurchaseRequest> => {
     const response = await apiClient.patch(`/purchase-requests/${id}/reject`, payload);
-    return normalizePurchaseRequest(unwrapApiField<any>(response.data, "purchaseRequest"));
+    return normalizePurchaseRequest(unwrapApiField<PurchaseRequestWire>(response.data, "purchaseRequest"));
   },
 
   getEmailPreview: async (id: string): Promise<PurchaseRequestEmailPreview> => {
@@ -125,7 +142,7 @@ export const purchaseRequestsApi = {
 
   sendEmail: async (id: string, payload: { to: string; subject: string; body: string }): Promise<PurchaseRequest> => {
     const response = await apiClient.post(`/purchase-requests/${id}/send-email`, payload);
-    return normalizePurchaseRequest(unwrapApiField<any>(response.data, "purchaseRequest"));
+    return normalizePurchaseRequest(unwrapApiField<PurchaseRequestWire>(response.data, "purchaseRequest"));
   },
 
   receivePurchaseRequest: async (
@@ -134,13 +151,13 @@ export const purchaseRequestsApi = {
   ): Promise<{ purchaseRequest: PurchaseRequest; isStockSafe: boolean }> => {
     const response = await apiClient.patch(`/purchase-requests/${id}/receive`, payload);
     const data = response.data;
-    const purchaseRequest = normalizePurchaseRequest(unwrapApiField<any>(data, "purchaseRequest"));
+    const purchaseRequest = normalizePurchaseRequest(unwrapApiField<PurchaseRequestWire>(data, "purchaseRequest"));
     const isStockSafe = data?.data?.isStockSafe ?? true;
     return { purchaseRequest, isStockSafe };
   },
 
   markPurchaseRequestPaid: async (id: string, payload: { paymentNote?: string | null }): Promise<PurchaseRequest> => {
     const response = await apiClient.post(`/purchase-requests/${id}/mark-paid`, payload);
-    return normalizePurchaseRequest(unwrapApiField<any>(response.data, "purchaseRequest"));
+    return normalizePurchaseRequest(unwrapApiField<PurchaseRequestWire>(response.data, "purchaseRequest"));
   },
 };

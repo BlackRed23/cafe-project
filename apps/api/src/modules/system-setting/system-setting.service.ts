@@ -1,5 +1,5 @@
 ﻿import { HttpError } from '../../common/http-error';
-import { systemSettingRepository, type SystemSettingRecord } from './system-setting.repository';
+import { internalAgentSettingPrefixes, systemSettingRepository, type SystemSettingRecord } from './system-setting.repository';
 import { systemSettingKeySchema } from './system-setting.validator';
 
 const DEFAULT_SETTINGS: Record<string, string> = {
@@ -40,6 +40,9 @@ const normalizeKey = (key: string): string => {
         throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Khóa cấu hình không hợp lệ.');
     }
 
+    if (internalAgentSettingPrefixes.some(prefix => parsed.data.startsWith(prefix))) {
+        throw new HttpError(404, 'Không tìm thấy cấu hình.');
+    }
     return parsed.data;
 };
 

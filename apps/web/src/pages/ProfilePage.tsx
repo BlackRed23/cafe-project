@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { usersApi } from "../api/users.api";
 import { Input } from "../components/common/Input";
@@ -15,10 +15,12 @@ export const ProfilePage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
+  const [previousUser, setPreviousUser] = useState(user);
+  if (user !== previousUser) {
+    setPreviousUser(user);
     setName(user?.name || "");
     setPhone(user?.phone || "");
-  }, [user]);
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,7 +38,7 @@ export const ProfilePage: React.FC = () => {
       setSaved(true);
       toast.success("Cập nhật thành công", "Thông tin của bạn đã được lưu.");
       setTimeout(() => setSaved(false), 3000);
-    } catch (err) {
+    } catch {
       toast.error("Cập nhật thất bại", "Đã có lỗi xảy ra, vui lòng thử lại.");
     } finally {
       setIsSaving(false);

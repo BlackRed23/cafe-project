@@ -61,9 +61,14 @@ const isFresh = (date: string, now: Date): boolean => {
 function businessFingerprint(proof: ReturnType<typeof purchasingAuthorityProofSchema.parse>) {
     const { sourceReadAt: _readAt, backendReadAt: _backendReadAt,
         ...perception } = proof.perception;
+    void _readAt;
+    void _backendReadAt;
     return digest({
         inventory: perception,
-        risk: proof.backendRisk.observations.map(({ asOf: _asOf, ...observation }) => observation),
+        risk: proof.backendRisk.observations.map(({ asOf, ...observation }) => {
+            void asOf;
+            return observation;
+        }),
         codes: proof.backendRisk.codes,
         stocktake: proof.stocktake,
         inbound: proof.inbound,

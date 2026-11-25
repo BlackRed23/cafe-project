@@ -1,12 +1,15 @@
 import { apiClient, unwrapApiField, unwrapApiList } from "./client";
 import type { Supplier, SupplierProduct } from "../types/supplier.types";
 
-const normalizeSupplier = (supplier: any): Supplier => ({
+type SupplierPayload = Supplier & { contact?: string };
+type SupplierProductPayload = SupplierProduct & { price?: number; leadTimeDays?: number; isPreferred?: boolean; supplierSku?: string; supplier_sku?: string };
+
+const normalizeSupplier = (supplier: SupplierPayload): Supplier => ({
   ...supplier,
   phone: supplier?.phone ?? supplier?.contact,
 });
 
-const normalizeSupplierProduct = (item: any): SupplierProduct => ({
+const normalizeSupplierProduct = (item: SupplierProductPayload): SupplierProduct => ({
   ...item,
   supplier_id: item?.supplier_id ?? item?.supplierId,
   product_id: item?.product_id ?? item?.productId,
@@ -24,7 +27,7 @@ const normalizeSupplierProduct = (item: any): SupplierProduct => ({
   conversion_target_unit: item?.conversion_target_unit ?? item?.conversionTargetUnit,
 });
 
-const normalizeSupplierProductPayload = (payload: any) => ({
+const normalizeSupplierProductPayload = (payload: Partial<SupplierProductPayload>) => ({
   supplierId: payload.supplierId ?? payload.supplier_id,
   productId: payload.productId ?? payload.product_id,
   price: payload.price ?? payload.importPrice ?? payload.import_price,
@@ -40,22 +43,22 @@ const normalizeSupplierProductPayload = (payload: any) => ({
 export const suppliersApi = {
   getSuppliers: async (): Promise<Supplier[]> => {
     const response = await apiClient.get("/suppliers");
-    return unwrapApiList<any>(response.data, "suppliers").map(normalizeSupplier);
+    return unwrapApiList<SupplierPayload>(response.data, "suppliers").map(normalizeSupplier);
   },
 
   getSupplierById: async (id: string): Promise<Supplier> => {
     const response = await apiClient.get(`/suppliers/${id}`);
-    return normalizeSupplier(unwrapApiField<any>(response.data, "supplier"));
+    return normalizeSupplier(unwrapApiField<SupplierPayload>(response.data, "supplier"));
   },
 
   createSupplier: async (payload: Partial<Supplier>): Promise<Supplier> => {
     const response = await apiClient.post("/suppliers", payload);
-    return normalizeSupplier(unwrapApiField<any>(response.data, "supplier"));
+    return normalizeSupplier(unwrapApiField<SupplierPayload>(response.data, "supplier"));
   },
 
   updateSupplier: async (id: string, payload: Partial<Supplier>): Promise<Supplier> => {
     const response = await apiClient.put(`/suppliers/${id}`, payload);
-    return normalizeSupplier(unwrapApiField<any>(response.data, "supplier"));
+    return normalizeSupplier(unwrapApiField<SupplierPayload>(response.data, "supplier"));
   },
 
   deleteSupplier: async (id: string): Promise<void> => {
@@ -64,17 +67,17 @@ export const suppliersApi = {
 
   getSupplierProducts: async (): Promise<SupplierProduct[]> => {
     const response = await apiClient.get("/supplier-products");
-    return unwrapApiList<any>(response.data, "supplierProducts").map(normalizeSupplierProduct);
+    return unwrapApiList<SupplierProductPayload>(response.data, "supplierProducts").map(normalizeSupplierProduct);
   },
 
   createSupplierProduct: async (payload: Partial<SupplierProduct>): Promise<SupplierProduct> => {
     const response = await apiClient.post("/supplier-products", normalizeSupplierProductPayload(payload));
-    return normalizeSupplierProduct(unwrapApiField<any>(response.data, "supplierProduct"));
+    return normalizeSupplierProduct(unwrapApiField<SupplierProductPayload>(response.data, "supplierProduct"));
   },
 
   updateSupplierProduct: async (id: string, payload: Partial<SupplierProduct>): Promise<SupplierProduct> => {
     const response = await apiClient.put(`/supplier-products/${id}`, normalizeSupplierProductPayload(payload));
-    return normalizeSupplierProduct(unwrapApiField<any>(response.data, "supplierProduct"));
+    return normalizeSupplierProduct(unwrapApiField<SupplierProductPayload>(response.data, "supplierProduct"));
   },
 
   deleteSupplierProduct: async (id: string): Promise<void> => {

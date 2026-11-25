@@ -199,7 +199,7 @@ export class BusinessWorkflows {
         });
     }
     createOrder(c: Command, input: (OrderLineInput & { amount: string }) | { items: OrderLineInput[]; amount: string }) {
-        return this.command(c, 'order.create', 'order.write', input, (tx, now, input, c) => {
+        return this.command(c, 'order.create', 'order.write', input, (tx, now, input) => {
             if (scaled(input.amount, 2) <= 0n) fail('POSITIVE_AMOUNT_REQUIRED', 400);
             const lines = 'items' in input ? input.items : [input];
             if (!lines.length || lines.length > 100) fail('INVALID_ORDER_LINES', 400);
@@ -466,10 +466,10 @@ export class BusinessWorkflows {
         });
     }
     submitCount(c: Command, input: { countId: string }) {
-        return this.command(c, 'count.submit', 'count.write', input, (tx, _now, input, c) => { const count = get(tx.count(input.countId)); if (count.status !== 'DRAFT') fail('INVALID_COUNT_STATE'); count.status = 'SUBMITTED'; tx.saveCount(count); return count; });
+        return this.command(c, 'count.submit', 'count.write', input, (tx, _now, input) => { const count = get(tx.count(input.countId)); if (count.status !== 'DRAFT') fail('INVALID_COUNT_STATE'); count.status = 'SUBMITTED'; tx.saveCount(count); return count; });
     }
     editCount(c: Command, input: { countId: string; lines: { batchId: string; actual: string }[] }) {
-        return this.command(c, 'count.edit', 'count.write', input, (tx, _now, input, c) => {
+        return this.command(c, 'count.edit', 'count.write', input, (tx, _now, input) => {
             const count = get(tx.count(input.countId)); if (count.status !== 'DRAFT') fail('INVALID_COUNT_STATE'); unique(input.lines.map(l => l.batchId));
             count.lines = input.lines.map(line => {
                 const lot = get(tx.lots().find(l => l.id === line.batchId)); const ingredient = get(tx.ingredient(lot.ingredientId));
@@ -493,7 +493,7 @@ export class BusinessWorkflows {
         });
     }
     paymentAttempt(c: Command, input: { orderId: string; account: string }) {
-        return this.command(c, 'payment.attempt', 'payment.write', input, (tx, now, input, c) => {
+        return this.command(c, 'payment.attempt', 'payment.write', input, (tx, now, input) => {
             const order = get(tx.order(input.orderId)); if (order.status === 'CANCELLED' || !input.account.trim()) fail('INVALID_PAYMENT');
             if (tx.payments(order.id).some(p => p.status !== 'FAILED')) fail('PAYMENT_EXISTS');
             const payment = { id: tx.nextId('payment'), orderId: order.id, amount: order.amount, account: input.account, createdAt: now.toISOString(), settledAt: null, status: 'PENDING' as const, refunds: [], refundAttempts: [] };
@@ -501,7 +501,7 @@ export class BusinessWorkflows {
         });
     }
     settle(c: Command, input: { paymentId: string; account: string; eventId: string; amount: string; outcome: 'SETTLED' | 'FAILED' }) {
-        return this.command(c, 'payment.settle', 'payment.callback', input, (tx, now, input, c) => {
+        return this.command(c, 'payment.settle', 'payment.callback', input, (tx, now, input) => {
             const p = get(tx.payment(input.paymentId));
             if (!input.eventId.trim() || p.account !== input.account || scaled(p.amount, 2) !== scaled(input.amount, 2)) fail('CALLBACK_MISMATCH');
             if (input.outcome !== 'SETTLED' && input.outcome !== 'FAILED') fail('INVALID_OUTCOME', 400);
@@ -511,7 +511,7 @@ export class BusinessWorkflows {
         });
     }
     refund(c: Command, input: { paymentId: string; amount: string }) {
-        return this.command(c, 'payment.refund', 'payment.write', input, (tx, now, input, c) => {
+        return this.command(c, 'payment.refund', 'payment.write', input, (tx, now, input) => {
             const p = get(tx.payment(input.paymentId)); const amount = scaled(input.amount, 2);
             if (p.status !== 'SETTLED' || p.refundAttempts.some(r => r.status === 'PENDING' || r.status === 'UNKNOWN') || amount <= 0n || p.refunds.reduce((sum, r) => sum + scaled(r.amount, 2), 0n) + amount > scaled(p.amount, 2)) fail('INVALID_REFUND');
             const id = tx.nextId('refund'); p.refunds.push({ id, amount: format(amount, 2), appliedAt: now.toISOString() }); p.refundAttempts.push({ id, amount: format(amount, 2), status: 'SUCCEEDED' });

@@ -21,6 +21,7 @@ export interface Product {
   is_active?: boolean;
   updatedAt?: string;
   expectedUpdatedAt?: string;
+  availableStock?: number;
   inventory?: {
     quantity: number;
     minThreshold?: number;

@@ -31,7 +31,7 @@ export const ProductDetailPage: React.FC = () => {
         setIsLoading(true);
         const data = await productsApi.getProductById(id);
         setProduct(data);
-      } catch (err: any) {
+      } catch {
         setError("Không tìm thấy thông tin sản phẩm. Vui lòng thử lại sau.");
       } finally {
         setIsLoading(false);

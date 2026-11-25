@@ -2,7 +2,7 @@ import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { URL } from 'node:url';
 import dotenv from 'dotenv';
 import { requireInternalSecret, validInternalToken, requireAgentUser } from './internal-auth';
-import { agentService } from './services/agent.service';
+import { agentService, type RecommendReorderInput, type ScanInventoryInput } from './services/agent.service';
 import { executeApprovedPurchaseProposal } from './services/purchase-proposal.client';
 import { recordAgentInternalDenial } from './services/security/agent-denial-audit';
 import { z } from 'zod';
@@ -28,14 +28,14 @@ const sendJson = (res: ServerResponse, statusCode: number, payload: unknown) => 
     res.end(body);
 };
 
-const readJsonBody = async (req: IncomingMessage): Promise<any> =>
-    new Promise((resolve, reject) => {
+const readJsonBody = async <T = unknown>(req: IncomingMessage): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
         const chunks: Buffer[] = [];
         req.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
         req.on('error', reject);
         req.on('end', () => {
             const raw = Buffer.concat(chunks).toString('utf8').trim();
-            if (!raw) return resolve({});
+            if (!raw) return resolve({} as T);
             try {
                 resolve(JSON.parse(raw));
             } catch {
@@ -83,12 +83,12 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse) =
         }
 
         if (method === 'POST' && url.pathname === '/internal/agent/scan-inventory') {
-            const body = await readJsonBody(req);
+            const body = await readJsonBody<{ input?: ScanInventoryInput }>(req);
             const data = await agentService.scanInventory(body.input || {}, userId!);
             return sendJson(res, 200, { data });
         }
         if (method === 'POST' && url.pathname === '/internal/agent/graph-proposal-review') {
-            const body = await readJsonBody(req);
+            const body = await readJsonBody<{ input: unknown }>(req);
             // User principal comes exclusively from verified internal headers,
             // NOT from the supplied JSON or a forged ADMIN JWT.
             const { runLiveReadOnlyProposalReview } = await import('./workflows/agent-live-readonly');
@@ -113,7 +113,7 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse) =
             return sendJson(res, 200, { data });
         }
         if (method === 'POST' && url.pathname === '/internal/agent/graph-proposal-risk-review') {
-            const body = await readJsonBody(req);
+            const body = await readJsonBody<{ input: unknown }>(req);
             const { runLiveReadOnlyJointReview } = await import('./workflows/agent-live-readonly');
             const data = await runLiveReadOnlyJointReview(body.input, userId!);
             return sendJson(res, 200, { data });
@@ -125,7 +125,7 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse) =
         }
 
         if (method === 'POST' && url.pathname === '/internal/agent/recommend-reorder') {
-            const body = await readJsonBody(req);
+            const body = await readJsonBody<{ input?: RecommendReorderInput }>(req);
             const data = await agentService.recommendReorder(body.input || {}, userId!);
             return sendJson(res, 200, { data });
         }
@@ -137,7 +137,7 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse) =
 
         const executeMatch = url.pathname.match(/^\/internal\/agent\/purchase-proposals\/([^/]+)\/execute$/);
         if (method === 'POST' && executeMatch) {
-            const body = await readJsonBody(req);
+            const body = await readJsonBody<{ version: number; contentHash: string; idempotencyKey: string }>(req);
             if (Object.keys(body).some(key => !['version', 'contentHash', 'idempotencyKey'].includes(key))) {
                 return sendJson(res, 400, { message: 'Only approved proposal reference allowed.' });
             }
@@ -152,8 +152,10 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse) =
         }
 
         if (method === 'POST' && url.pathname === '/internal/agent/logs') {
-            const body = await readJsonBody(req);
-            const data = await agentService.createLog({ ...body, creator: userId ? { connect: { id: userId } } : undefined, createdBy: undefined });
+            const body = await readJsonBody<Parameters<typeof agentService.createLog>[0] & { createdBy?: unknown }>(req);
+            const log = { ...body, creator: userId ? { connect: { id: userId } } : undefined };
+            delete log.createdBy;
+            const data = await agentService.createLog(log);
             return sendJson(res, 201, { data });
         }
 
@@ -166,7 +168,8 @@ export const handleRequest = async (req: IncomingMessage, res: ServerResponse) =
         if (error instanceof Error && error.message === 'GRAPH_RESUME_IN_PROGRESS') {
             return sendJson(res, 409, { message: 'Graph resume already in progress.' });
         }
-        const statusCode = typeof (error as any)?.statusCode === 'number' ? (error as any).statusCode : 500;
+        const statusCode = error && typeof error === 'object' && 'statusCode' in error && typeof error.statusCode === 'number'
+            ? error.statusCode : 500;
         const message = statusCode === 403 ? 'Forbidden' : 'Agent service error.';
         return sendJson(res, statusCode, { message });
     }

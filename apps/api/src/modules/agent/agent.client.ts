@@ -56,6 +56,9 @@ class AgentServiceError extends Error {
     }
 }
 
+export const resumeGraphPurchasing = (input: { scanSessionId: string; ingredientIds: string[] }, actorId: string) =>
+    requestJson<unknown>('POST', '/internal/agent/graph-purchasing-resume', input, undefined, actorId);
+
 const buildUrl = (path: string, query?: Record<string, unknown>) => {
     const url = new URL(path, AGENT_SERVICE_URL);
     if (query) {
@@ -69,7 +72,8 @@ const buildUrl = (path: string, query?: Record<string, unknown>) => {
 const requestJson = async <T>(method: 'GET' | 'POST', path: string, body?: unknown, query?: Record<string, unknown>, userId?: string): Promise<T> => {
     const token = internalSecret();
     await authorize(method, path, userId);
-    const deadline = scanDeadline(method, path);
+    const deadline = path === '/internal/agent/graph-purchasing-resume'
+        ? Math.max(AGENT_SERVICE_TIMEOUT_MS, 30000) : scanDeadline(method, path);
     return new Promise<T>((resolve, reject) => {
         const url = buildUrl(path, query);
         const payload = body === undefined ? undefined : JSON.stringify(body);
@@ -122,9 +126,16 @@ const requestJson = async <T>(method: 'GET' | 'POST', path: string, body?: unkno
     });
 };
 
-export const scanInventoryViaAgentService = async (input: ScanInventoryInput, userId?: string) => {
+export type AgentInventoryScan = {
+    results?: Array<Record<string, unknown>>;
+    createdPurchaseRequests?: Array<Record<string, unknown>>;
+    scanSessionId?: string;
+    agentWarning?: string;
+};
+
+export const scanInventoryViaAgentService = async (input: ScanInventoryInput, userId?: string): Promise<AgentInventoryScan> => {
     try {
-        return await requestJson<any>('POST', '/internal/agent/scan-inventory', { input }, undefined, userId);
+        return await requestJson<AgentInventoryScan>('POST', '/internal/agent/scan-inventory', { input }, undefined, userId);
     } catch (error) {
         rethrowSecurityError(error);
         const log = await agentFailureLogService.createServiceUnavailableLog(input, error, userId);
@@ -138,7 +149,7 @@ export const scanInventoryViaAgentService = async (input: ScanInventoryInput, us
 
 export const getAgentLogsViaAgentService = async (query: Record<string, unknown> = {}, userId?: string) => {
     try {
-        return await requestJson<any>('GET', '/internal/agent/logs', undefined, query, userId);
+        return await requestJson<unknown>('GET', '/internal/agent/logs', undefined, query, userId);
     } catch (error) {
         rethrowSecurityError(error);
         await agentFailureLogService.createServiceUnavailableLog({ triggerType: 'GET_AGENT_LOGS' }, error);
@@ -147,17 +158,17 @@ export const getAgentLogsViaAgentService = async (query: Record<string, unknown>
 };
 
 export const recommendReorderViaAgentService = (input: RecommendReorderInput, userId: string) =>
-    requestJson<any>('POST', '/internal/agent/recommend-reorder', { input }, undefined, userId);
+    requestJson<unknown>('POST', '/internal/agent/recommend-reorder', { input }, undefined, userId);
 
 export const getRecommendationsViaAgentService = (userId?: string) =>
-    requestJson<any>('GET', '/internal/agent/recommendations', undefined, undefined, userId);
+    requestJson<unknown>('GET', '/internal/agent/recommendations', undefined, undefined, userId);
 
 export const createPurchaseRequestFromRecommendationViaAgentService = (id: string, userId: string) =>
-    requestJson<any>('POST', `/internal/agent/recommendations/${id}/create-purchase-request`, {}, undefined, userId);
+    requestJson<unknown>('POST', `/internal/agent/recommendations/${id}/create-purchase-request`, {}, undefined, userId);
 
 export const createAgentLogViaAgentService = async (input: Record<string, unknown>) => {
     try {
-        return await requestJson<any>('POST', '/internal/agent/logs', input);
+        return await requestJson<unknown>('POST', '/internal/agent/logs', input);
     } catch (error) {
         rethrowSecurityError(error);
         return agentFailureLogService.createServiceUnavailableLog({ triggerType: asString(input.action) }, error);

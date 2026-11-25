@@ -1,22 +1,17 @@
 import { HttpError } from '../../common/http-error';
 import { simulateSaleRepository } from './simulate-sale.repository';
 import type { SimulateSaleInput } from './simulate-sale.validator';
-import { scanInventoryViaAgentService, createAgentLogViaAgentService } from '../agent/agent.client';
+import { scanInventoryViaAgentService, createAgentLogViaAgentService, type AgentInventoryScan } from '../agent/agent.client';
 
 const randomInt = (min: number, max: number): number => Math.floor(Math.random() * (max - min + 1)) + min;
 
-// Helper to normalize simulate sale input into items array
-const normalizeSimulateItems = (input: SimulateSaleInput) => {
-  if (input.items && input.items.length > 0) {
-    return input.items;
-  }
-  if (input.productId) {
-    return [{ productId: input.productId, quantity: input.quantity ?? 0 }];
-  }
-  return [];
-};
+type RecipeSale = Awaited<ReturnType<typeof simulateSaleRepository.applyRecipeSale>>[number];
+type InventorySale = Awaited<ReturnType<typeof simulateSaleRepository.applySale>>[number];
+type AffectedProduct = RecipeSale | (InventorySale & { ingredientIds?: never; minThreshold?: number });
+type SingleAffectedProduct = Awaited<ReturnType<typeof simulateSaleRepository.applyRecipeProductSale>>
+    | (Awaited<ReturnType<typeof simulateSaleRepository.applyProductSale>> & { ingredientIds?: never });
 
-const runAgentScan = async (input: { productIds: string[]; ingredientIds?: string[]; userId: string; sourceId?: string }) => {
+const runAgentScan = async (input: { productIds: string[]; ingredientIds?: string[]; userId: string; sourceId?: string }): Promise<Omit<AgentInventoryScan, 'agentWarning'> & { agentWarning: string | null }> => {
     try {
         const scan = await scanInventoryViaAgentService({
             productIds: input.productIds,
@@ -44,7 +39,7 @@ export const simulateSaleService = {
         const allInventories = await simulateSaleRepository.findInventories();
         const hasMissingInventory = input.items.some((it) => !allInventories.find((i) => i.productId === it.productId));
 
-        let affectedProducts: any[];
+        let affectedProducts: AffectedProduct[];
         if (hasMissingInventory) {
             affectedProducts = await simulateSaleRepository.applyRecipeSale(
                 input.items.map((it) => ({ productId: it.productId, decrease: it.quantity })),
@@ -70,8 +65,8 @@ export const simulateSaleService = {
             affectedProducts = await simulateSaleRepository.applySale(plans, input.note ?? null, userId);
         }
 
-        const allProductIds = affectedProducts.map((a: any) => a.productId);
-        const allIngredientIds = Array.from(new Set(affectedProducts.flatMap((a: any) => a.ingredientIds ?? []))) as string[];
+        const allProductIds = affectedProducts.map((a) => a.productId);
+        const allIngredientIds = Array.from(new Set(affectedProducts.flatMap((a) => a.ingredientIds ?? [])));
         const scan = await runAgentScan({
             productIds: allProductIds,
             ingredientIds: allIngredientIds,
@@ -138,7 +133,7 @@ export const simulateSaleService = {
                 }
             }
 
-            let affectedProduct: any;
+            let affectedProduct: SingleAffectedProduct;
             if (!inventory) {
                 affectedProduct = await simulateSaleRepository.applyRecipeProductSale(
                     input.productId,
@@ -192,12 +187,12 @@ export const simulateSaleService = {
                 creator: userId ? { connect: { id: userId } } : undefined
             }).catch(console.error);
 
-            const taggedResults = (scan.results ?? []).map((r: any) => ({
+            const taggedResults = (scan.results ?? []).map((r) => ({
                 ...r,
                 productId: r.productId ?? affectedProduct.productId,
                 productName: r.productName ?? r.ingredientName ?? affectedProduct.productName
             }));
-            const taggedPrs = (scan.createdPurchaseRequests ?? []).map((pr: any) => ({
+            const taggedPrs = (scan.createdPurchaseRequests ?? []).map((pr) => ({
                 ...pr,
                 productId: pr.productId ?? affectedProduct.productId
             }));
@@ -226,7 +221,7 @@ export const simulateSaleService = {
         const minDecrease = input.minDecrease ?? 1;
         const maxDecrease = input.maxDecrease ?? minDecrease;
 
-        let affectedProducts: any[];
+        let affectedProducts: AffectedProduct[];
         if (inventories.length === 0) {
             const recipeProducts = await simulateSaleRepository.findRecipeProducts();
             if (recipeProducts.length === 0) throw new HttpError(404, 'No active products found.');
@@ -240,8 +235,8 @@ export const simulateSaleService = {
             const plans = selected.map((inventory) => ({ inventory, decrease: randomInt(minDecrease, maxDecrease) }));
             affectedProducts = await simulateSaleRepository.applySale(plans, input.note ?? null, userId);
         }
-        const productIds = affectedProducts.map((item: any) => item.productId);
-        const ingredientIds = Array.from(new Set(affectedProducts.flatMap((item: any) => item.ingredientIds ?? [])));
+        const productIds = affectedProducts.map((item) => item.productId);
+        const ingredientIds = Array.from(new Set(affectedProducts.flatMap((item) => item.ingredientIds ?? [])));
         const scan = await runAgentScan({
             productIds,
             ingredientIds,

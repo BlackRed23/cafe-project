@@ -18,6 +18,7 @@ export interface IngredientBatch {
 }
 
 export interface Ingredient {
+  unit?: string;
   id: string;
   sku: string;
   name: string;

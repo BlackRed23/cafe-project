@@ -1,14 +1,44 @@
 import { apiClient, unwrapApiData, unwrapApiList } from "./client";
 import type { Inventory, InventoryTransaction } from "../types/inventory.types";
 
+type InventoryWire = Inventory & { inventoryId?: string; productImageUrl?: string };
+type InventoryMutationWire = { inventory?: InventoryWire; warnings?: Array<{ message: string }>; message?: string };
+type InventoryTransactionWire = InventoryTransaction & { createdBy?: string; createdByEmail?: string; quantity?: number };
+export type ThresholdSuggestion = {
+  recommendedThreshold: number;
+  leadTimeDemand: number;
+  safetyStock?: number;
+  explanation?: string;
+};
+type ThresholdSuggestionWire = ThresholdSuggestion & { suggestion?: ThresholdSuggestion };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
 
-const normalizeInventoryMutation = (payload: any) => {
-  const data = unwrapApiData<any>(payload);
-  const inventory = normalizeInventory(data?.inventory ?? data);
+const isInventoryWire = (value: unknown): value is InventoryWire =>
+  isRecord(value) && typeof value.id === "string" &&
+  typeof value.productId === "string" && typeof value.quantity === "number";
+
+const normalizeInventoryMutation = (payload: unknown) => {
+  const data = unwrapApiData<unknown>(payload);
+  if (!isRecord(data)) throw new Error("INVALID_INVENTORY_MUTATION_RESPONSE");
+  const rawInventory = data.inventory ?? data;
+  if (!isInventoryWire(rawInventory)) throw new Error("INVALID_INVENTORY_MUTATION_RESPONSE");
+  const rawWarnings = data.warnings;
+  if (rawWarnings !== undefined &&
+    (!Array.isArray(rawWarnings) || !rawWarnings.every(warning => isRecord(warning) && typeof warning.message === "string"))) {
+    throw new Error("INVALID_INVENTORY_MUTATION_WARNINGS");
+  }
+  const warnings = rawWarnings as InventoryMutationWire["warnings"];
+  if (data.message !== undefined && typeof data.message !== "string") {
+    throw new Error("INVALID_INVENTORY_MUTATION_MESSAGE");
+  }
+  const inventory = normalizeInventory(rawInventory);
 
   return {
     ...data,
+    warnings,
+    message: typeof data.message === "string" ? data.message : undefined,
     inventory,
     quantity: inventory.quantity,
     minThreshold: inventory.minThreshold,
@@ -19,7 +49,7 @@ const normalizeInventoryMutation = (payload: any) => {
   };
 };
 
-const normalizeInventory = (inventory: any): Inventory => {
+const normalizeInventory = (inventory: InventoryWire): Inventory => {
   const quantity = Number(inventory?.quantity ?? inventory?.stock ?? 0);
   const reservedStock = Number(inventory?.reservedStock ?? inventory?.reserved_stock ?? 0);
   const availableStock = Number(inventory?.availableStock ?? inventory?.available_stock ?? quantity - reservedStock);
@@ -64,7 +94,7 @@ const normalizeInventory = (inventory: any): Inventory => {
   };
 };
 
-const normalizeTransaction = (transaction: any): InventoryTransaction => ({
+const normalizeTransaction = (transaction: InventoryTransactionWire): InventoryTransaction => ({
   ...transaction,
   productId: transaction?.productId ?? transaction?.product_id,
   product_id: transaction?.product_id ?? transaction?.productId,
@@ -95,18 +125,19 @@ const resolveInventoryId = async (productIdOrInventoryId: string): Promise<strin
   const inventory = inventories.find(
     (item) =>
       item.id === productIdOrInventoryId ||
-      (item as any).inventoryId === productIdOrInventoryId ||
+      ("inventoryId" in item && item.inventoryId === productIdOrInventoryId) ||
       item.productId === productIdOrInventoryId ||
       item.product_id === productIdOrInventoryId
   );
 
-  return (inventory as any)?.inventoryId ?? inventory?.id ?? productIdOrInventoryId;
+  const inventoryId = inventory && "inventoryId" in inventory ? inventory.inventoryId : undefined;
+  return typeof inventoryId === "string" ? inventoryId : inventory?.id ?? productIdOrInventoryId;
 };
 
 export const inventoryApi = {
   getInventories: async (): Promise<Inventory[]> => {
     const response = await apiClient.get("/inventories");
-    return unwrapApiList<any>(response.data, "inventories").map(normalizeInventory);
+    return unwrapApiList<InventoryWire>(response.data, "inventories").map(normalizeInventory);
   },
 
   getLowStockInventories: async (): Promise<Inventory[]> => {
@@ -116,13 +147,15 @@ export const inventoryApi = {
 
   getInventoryById: async (id: string): Promise<Inventory> => {
     const response = await apiClient.get(`/inventories/${id}`);
-    const data = unwrapApiData<any>(response.data);
-    return normalizeInventory(data?.inventory ?? data);
+    const data = unwrapApiData<unknown>(response.data);
+    const inventory = isRecord(data) ? data.inventory ?? data : data;
+    if (!isInventoryWire(inventory)) throw new Error("INVALID_INVENTORY_RESPONSE");
+    return normalizeInventory(inventory);
   },
 
   getLowStock: async (): Promise<Inventory[]> => inventoryApi.getLowStockInventories(),
 
-  updateInventory: async (productId: string, payload: { minThreshold?: number; min_threshold?: number; quantity?: number; batchId?: string }): Promise<any> => {
+  updateInventory: async (productId: string, payload: { minThreshold?: number; min_threshold?: number; quantity?: number; batchId?: string }) => {
     const inventoryId = await resolveInventoryId(productId);
     if (payload.quantity !== undefined) {
       return inventoryApi.adjustInventory({ productId, quantity: payload.quantity, batchId: payload.batchId ?? "" });
@@ -140,7 +173,7 @@ export const inventoryApi = {
     throw new Error("Invalid payload for updateInventory");
   },
 
-  importInventory: async (payload: { productId: string; quantity: number; note?: string; batchCode?: string; expirationDate?: string }): Promise<any> => {
+  importInventory: async (payload: { productId: string; quantity: number; note?: string; batchCode?: string; expirationDate?: string }) => {
     const response = await apiClient.post("/inventories/import", {
       inventoryId: await resolveInventoryId(payload.productId),
       quantity: payload.quantity,
@@ -151,7 +184,7 @@ export const inventoryApi = {
     return normalizeInventoryMutation(response.data);
   },
 
-  adjustInventory: async (payload: { productId: string; batchId: string; quantity: number; note?: string }): Promise<any> => {
+  adjustInventory: async (payload: { productId: string; batchId: string; quantity: number; note?: string }) => {
     if (!payload.batchId) throw new Error("Vui lòng chọn lô còn hạn để điều chỉnh.");
     const response = await apiClient.post("/inventories/adjust", {
       batchId: payload.batchId,
@@ -164,13 +197,13 @@ export const inventoryApi = {
 
   getInventoryTransactions: async (): Promise<InventoryTransaction[]> => {
     const response = await apiClient.get("/inventory-transactions");
-    return unwrapApiList<any>(response.data, "transactions").map(normalizeTransaction);
+    return unwrapApiList<InventoryTransactionWire>(response.data, "transactions").map(normalizeTransaction);
   },
 
-  getThresholdSuggestion: async (inventoryId: string): Promise<any> => {
+  getThresholdSuggestion: async (inventoryId: string): Promise<ThresholdSuggestion> => {
     const resolvedInventoryId = await resolveInventoryId(inventoryId);
     const response = await apiClient.get(`/inventories/${resolvedInventoryId}/suggest-threshold`);
-    const data = unwrapApiData<any>(response.data);
-    return data?.suggestion || data || {};
+    const data = unwrapApiData<ThresholdSuggestionWire>(response.data);
+    return data?.suggestion || data;
   },
 };

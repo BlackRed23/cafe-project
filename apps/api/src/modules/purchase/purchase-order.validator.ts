@@ -3,7 +3,6 @@ import { z } from 'zod';
 const uuid = z.string().uuid('requestId phải là UUID.');
 const nonempty = z.string().trim().min(1, 'Bắt buộc nhập lý do hoặc bằng chứng.').max(1000);
 const qty = z.number().int().positive();
-const base = z.object({ requestId: uuid }).strict();
 
 export const poCreateSchema = z.object({
     requestId: uuid, purchaseRequestId: z.string().min(1),

@@ -56,7 +56,7 @@ export const ResetPasswordPage: React.FC = () => {
       await authApi.resetPassword({ token, newPassword });
       toast.success("Đặt lại mật khẩu thành công.");
       navigate("/login");
-    } catch (err: any) {
+    } catch (err) {
       const message = getErrorMessage(err);
       setApiError(message);
       toast.error("Không thể đặt lại mật khẩu", message || "Vui lòng thử lại.");

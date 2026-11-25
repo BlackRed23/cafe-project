@@ -88,7 +88,13 @@ export interface ScanInventoryResponse {
   agentWarning?: string;
   scanSessionId?: string;
   sessionStatus?: string;
-  summary?: any;
+  summary?: {
+    createdCount?: number;
+    duplicateCount?: number;
+    noSupplierCount?: number;
+    lowStockCount?: number;
+    failedCount?: number;
+  };
   cooldownRemainingSeconds?: number;
   activeScanSessionId?: string;
   activeTriggerType?: string;

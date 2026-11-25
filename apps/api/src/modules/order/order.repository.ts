@@ -359,7 +359,7 @@ export const consumeReservedOrder = async (tx: Prisma.TransactionClient, order: 
                     orderBy: [{ expirationDate: 'asc' }, { id: 'asc' }]
                 });
 
-                const totalSellable = batches.reduce((sum: number, b: any) => sum + b.quantity, 0);
+                const totalSellable = batches.reduce((sum: number, b) => sum + b.quantity, 0);
                 if (totalSellable < item.quantity) {
                     throw new Error(`Không đủ lô hàng còn hạn để xuất. Yêu cầu: ${item.quantity}, Có thể xuất: ${totalSellable}.`);
                 }

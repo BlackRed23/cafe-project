@@ -6,6 +6,11 @@ import { randomUUID } from 'node:crypto';
 
 type PlannerTool = { name: DynamicToolName; purpose: string };
 type Config = Record<string, string | undefined>;
+type NativeToolCall = { type?: unknown; id?: unknown; function?: { name?: unknown; arguments?: unknown } };
+type ProviderResponse = {
+    error?: unknown;
+    choices?: Array<{ finish_reason?: unknown; message?: { content?: unknown; tool_calls?: unknown; refusal?: unknown } }>;
+};
 export type NativePlannerDiagnostic = {
     requestId: string; model: string | null; toolsCount: number; toolChoice: 'auto' | 'required' | null;
     selectedTool: DynamicToolName | null; argumentsValidation: 'NOT_RUN' | 'PASS' | 'FAIL';
@@ -53,7 +58,7 @@ export async function generateNativeToolPlan(prompt: string, tools: PlannerTool[
     const timeout = Number(config.LLM_TIMEOUT_MS || 30000);
     if (!Number.isFinite(timeout) || timeout <= 0 || timeout > 120000) throw new Error('INVALID_LLM_TIMEOUT');
     const signal = AbortSignal.timeout(timeout);
-    let data: any;
+    let data: ProviderResponse;
     try {
         diagnostic.requestSent = true;
         const response = await fetch(endpoint.toString(), { method: 'POST', signal,
@@ -76,21 +81,21 @@ export async function generateNativeToolPlan(prompt: string, tools: PlannerTool[
     diagnostic.refusalPresent = Boolean(message?.refusal);
     diagnostic.toolCallsCount = Array.isArray(message?.tool_calls) ? message.tool_calls.length : 0;
     if (!message || typeof message !== 'object') throw new Error('LLM_INVALID_RESPONSE');
-    if (message.refusal || choice.finish_reason === 'content_filter') throw new Error('LLM_REFUSED');
-    if (choice.finish_reason === 'length') throw new Error('LLM_RESPONSE_TRUNCATED');
+    if (message.refusal || choice?.finish_reason === 'content_filter') throw new Error('LLM_REFUSED');
+    if (choice?.finish_reason === 'length') throw new Error('LLM_RESPONSE_TRUNCATED');
     const calls = message.tool_calls;
     if (calls !== undefined && !Array.isArray(calls)) throw new Error('INVALID_NATIVE_TOOL_CALL');
     if (!calls?.length) {
         // Only explicit machine-readable clarification is classified; prose never becomes a call.
         let content: unknown;
-        try { content = JSON.parse(message.content); } catch { /* Ordinary text response. */ }
+        try { content = JSON.parse(String(message.content)); } catch { /* Ordinary text response. */ }
         if ((content as { error?: unknown } | null)?.error === 'INSUFFICIENT_CONTEXT') throw new Error('INSUFFICIENT_CONTEXT');
         throw new Error('NO_TOOL_CALL_RETURNED');
     }
     if (calls.length > 10) throw new Error('INVALID_NATIVE_TOOL_CALL');
     diagnostic.validationStatus = 'FAIL';
     const ids = new Set<string>();
-    const steps = calls.map((call: any, index: number) => {
+    const steps = calls.map((call: NativeToolCall | null, index) => {
         if (call?.type !== 'function' || typeof call.id !== 'string' || !call.id || ids.has(call.id)) throw new Error('INVALID_NATIVE_TOOL_CALL');
         ids.add(call.id);
         const name = call.function?.name;
