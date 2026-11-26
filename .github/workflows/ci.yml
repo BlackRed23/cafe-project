@@ -126,12 +126,22 @@ jobs:
           node scripts/ci/run-regression.cjs "$tier" 2>&1 | tee "$RUNNER_TEMP/regression.log"
       - name: Upload test execution log
         if: always()
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.ci-artifacts/regression"
+          if [[ -f "$RUNNER_TEMP/regression.log" ]]; then
+            cp "$RUNNER_TEMP/regression.log" "$GITHUB_WORKSPACE/.ci-artifacts/regression/"
+          fi
+          if [[ -d "$CAFE_PROJECT_TEST_ROOT/reports/tier-runs" ]]; then
+            find "$CAFE_PROJECT_TEST_ROOT/reports/tier-runs" -maxdepth 1 -type f -name '*.jsonl' \
+              -exec cp {} "$GITHUB_WORKSPACE/.ci-artifacts/regression/" \;
+          fi
+      - name: Upload test execution log artifact
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: regression-log
-          path: |
-            ${{ runner.temp }}/regression.log
-            ${{ env.CAFE_PROJECT_TEST_ROOT }}/reports/tier-runs/*.jsonl
+          path: ${{ github.workspace }}/.ci-artifacts/regression
           if-no-files-found: error
           retention-days: 30
 

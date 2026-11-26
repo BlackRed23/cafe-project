@@ -21,6 +21,13 @@ for rel in ['manifests', 'ci'] + [f'apps/{app}/{kind}' for app in ['api', 'agent
             if p.is_symlink() or name.startswith('.env') or p.suffix not in ['.cjs','.js','.mjs','.ts','.tsx','.json','.html','.css','.svg','.md']:
                 continue
             files['testing/' + p.relative_to(root).as_posix()] = p.read_bytes()
+strict_root = root.parent / 'reports/agent/experimental-evaluation/run-20261121-strict-source-fidelity-v01'
+strict_target = 'testing/apps/agent/fixtures/exp-strict-acceptance-gate'
+for contract in sorted((strict_root / 'contracts').glob('EXP-*.json')):
+    data = contract.read_bytes()
+    files[f'{strict_target}/contracts/{contract.name}'] = data
+    historical = Path(json.loads(data)['historical_case_evidence_file'])
+    files[f'{strict_target}/historical/{historical.name}'] = historical.read_bytes()
 manifest = ''.join(hashlib.sha256(data).hexdigest() + '  ' + name + '\n' for name, data in sorted(files.items()))
 files['MANIFEST.sha256'] = manifest.encode()
 asset = f'cafe-regression-{version}.zip'
