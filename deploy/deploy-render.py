@@ -56,6 +56,10 @@ def validate(env):
     missing = [key for key in keys if not env.get(key)]
     if missing:
         raise DeployError("Missing configuration: " + ", ".join(missing))
+    if env["CI_DEPLOY_BRANCH"] != "production":
+        raise DeployError("CI_DEPLOY_BRANCH must be production")
+    if env.get("GITHUB_EVENT_NAME") != "push" or env.get("GITHUB_REF") != "refs/heads/production":
+        raise DeployError("Render deployment requires a production push")
     ids = [env[f"RENDER_{name}_SERVICE_ID"] for name in ("API", "AGENT", "WEB")]
     if len(set(ids)) != 3 or any(not ID.fullmatch(value) for value in ids):
         raise DeployError("Render service IDs must be distinct valid srv IDs")

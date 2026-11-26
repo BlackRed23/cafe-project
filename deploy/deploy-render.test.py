@@ -37,7 +37,7 @@ class FakeRender:
         sid = parts[2]
         name = self.ids[sid]
         if len(parts) == 3:
-            return {"id": sid, "repo": "https://github.com/acme/cafe", "branch": "main",
+            return {"id": sid, "repo": "https://github.com/acme/cafe", "branch": "production",
                     "autoDeployTrigger": "off", "serviceDetails": {"url": f"https://{name}.onrender.com"}}
         if len(parts) == 4 and method == "GET":
             return [{"deploy": item} for item in self.history[sid]]
@@ -73,9 +73,10 @@ class RenderTests(unittest.TestCase):
     def setUp(self):
         self.env = {"RENDER_API_KEY": "test-token", "RENDER_API_SERVICE_ID": "srv-api",
                     "RENDER_AGENT_SERVICE_ID": "srv-agent", "RENDER_WEB_SERVICE_ID": "srv-web",
-                    "CI_PUBLIC_API_URL": "https://api.onrender.com/api", "CI_DEPLOY_BRANCH": "main",
+                    "CI_PUBLIC_API_URL": "https://api.onrender.com/api", "CI_DEPLOY_BRANCH": "production",
                     "GITHUB_SHA": SHA, "GITHUB_REPOSITORY": "acme/cafe", "GH_TOKEN": "test-token",
-                    "GITHUB_EVENT_PATH": "unused"}
+                    "GITHUB_EVENT_PATH": "unused", "GITHUB_EVENT_NAME": "push",
+                    "GITHUB_REF": "refs/heads/production"}
 
     def execute(self, fault=None, health_failure=False):
         fake = FakeRender(fault)
@@ -107,6 +108,21 @@ class RenderTests(unittest.TestCase):
     def test_missing_configuration(self):
         self.env.pop("RENDER_API_KEY")
         with self.assertRaisesRegex(module.DeployError, "Missing configuration"):
+            module.validate(self.env)
+
+    def test_wrong_deploy_branch_is_blocked(self):
+        self.env["CI_DEPLOY_BRANCH"] = "main"
+        with self.assertRaisesRegex(module.DeployError, "CI_DEPLOY_BRANCH must be production"):
+            module.validate(self.env)
+
+    def test_main_push_is_blocked(self):
+        self.env["GITHUB_REF"] = "refs/heads/main"
+        with self.assertRaisesRegex(module.DeployError, "production push"):
+            module.validate(self.env)
+
+    def test_production_pull_request_is_blocked(self):
+        self.env["GITHUB_EVENT_NAME"] = "pull_request"
+        with self.assertRaisesRegex(module.DeployError, "production push"):
             module.validate(self.env)
 
     def test_invalid_authentication(self):

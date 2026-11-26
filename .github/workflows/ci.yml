@@ -2,7 +2,9 @@ name: Cafe Project CI-CD (TC2.4-2.6)
 
 on:
   push:
+    branches: [main, production, '**']
   pull_request:
+    branches: [main, production, '**']
   workflow_dispatch:
   schedule:
     - cron: '0 19 * * 0'
@@ -14,7 +16,7 @@ permissions:
 
 concurrency:
   group: cafe-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !(github.event_name == 'push' && github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main') && vars.CI_ENABLE_STAGING == 'true') }}
+  cancel-in-progress: ${{ !(github.event_name == 'push' && github.ref_name == 'production' && vars.CI_DEPLOY_BRANCH == 'production' && vars.CI_ENABLE_STAGING == 'true') }}
 
 env:
   CI: 'true'
@@ -115,7 +117,7 @@ jobs:
           tier=smoke
           if [[ "$EVENT" == pull_request ]]; then tier=pr; fi
           if [[ "$REF_NAME" == main && "$EVENT" == push ]]; then tier=core; fi
-          if [[ "$EVENT" == push && "$REF_NAME" == "${{ vars.CI_DEPLOY_BRANCH || 'main' }}" && "${{ vars.CI_ENABLE_STAGING }}" == true ]]; then tier=full; fi
+          if [[ "$EVENT" == push && "$REF_NAME" == production ]]; then tier=full; fi
           if [[ "$EVENT" == schedule || "$EVENT" == release || "$EVENT" == workflow_dispatch ]]; then tier=full; fi
           echo "tier=$tier" >> "$GITHUB_OUTPUT"
           node scripts/ci/run-regression.cjs "$tier" 2>&1 | tee "$RUNNER_TEMP/regression.log"
@@ -175,7 +177,7 @@ jobs:
 
   production-release-gate:
     name: 'Production release / Full regression required'
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main') && vars.CI_ENABLE_STAGING == 'true')
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_name == 'production' && vars.CI_DEPLOY_BRANCH == 'production' && vars.CI_ENABLE_STAGING == 'true')
     needs: [build, lint, test, security]
     runs-on: ubuntu-latest
     steps:
@@ -207,7 +209,7 @@ jobs:
         shell: bash
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Login to GHCR on trusted branch only
-        if: github.event_name == 'push' && github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main')
+        if: github.event_name == 'push' && github.ref_name == 'production'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
@@ -221,7 +223,7 @@ jobs:
           file: apps/${{ matrix.app }}/Dockerfile
           build-args: |
             VITE_API_URL=${{ vars.CI_PUBLIC_API_URL }}
-          push: ${{ github.event_name == 'push' && github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main') }}
+          push: ${{ github.event_name == 'push' && github.ref_name == 'production' }}
           tags: ghcr.io/${{ steps.image.outputs.owner }}/cafe-${{ matrix.app }}:${{ github.sha }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -231,7 +233,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
       - name: Record published image digest
-        if: github.event_name == 'push' && github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main')
+        if: github.event_name == 'push' && github.ref_name == 'production'
         shell: bash
         env:
           IMAGE: ghcr.io/${{ steps.image.outputs.owner }}/cafe-${{ matrix.app }}
@@ -248,7 +250,8 @@ jobs:
     needs: [build, lint, test, security, docker, production-release-gate]
     if: >-
       github.event_name == 'push' &&
-      github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main') &&
+      github.ref_name == 'production' &&
+      vars.CI_DEPLOY_BRANCH == 'production' &&
       vars.CI_ENABLE_STAGING == 'true'
     runs-on: ubuntu-latest
     environment: production
@@ -268,6 +271,6 @@ jobs:
           RENDER_AGENT_SERVICE_ID: ${{ vars.RENDER_AGENT_SERVICE_ID }}
           RENDER_WEB_SERVICE_ID: ${{ vars.RENDER_WEB_SERVICE_ID }}
           CI_PUBLIC_API_URL: ${{ vars.CI_PUBLIC_API_URL }}
-          CI_DEPLOY_BRANCH: ${{ vars.CI_DEPLOY_BRANCH || 'main' }}
+          CI_DEPLOY_BRANCH: ${{ vars.CI_DEPLOY_BRANCH }}
           GH_TOKEN: ${{ github.token }}
         run: python3 deploy/deploy-render.py
