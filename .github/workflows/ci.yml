@@ -20,7 +20,7 @@ permissions:
 
 concurrency:
   group: cafe-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !(github.event_name == 'push' && github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main') && vars.CI_ENABLE_STAGING == 'true') }}
 
 env:
   CI: 'true'
@@ -121,6 +121,7 @@ jobs:
           tier=smoke
           if [[ "$EVENT" == pull_request ]]; then tier=pr; fi
           if [[ "$REF_NAME" == main && "$EVENT" == push ]]; then tier=core; fi
+          if [[ "$EVENT" == push && "$REF_NAME" == "${{ vars.CI_DEPLOY_BRANCH || 'main' }}" && "${{ vars.CI_ENABLE_STAGING }}" == true ]]; then tier=full; fi
           if [[ "$EVENT" == schedule || "$EVENT" == release || "$EVENT" == workflow_dispatch ]]; then tier=full; fi
           echo "tier=$tier" >> "$GITHUB_OUTPUT"
           node scripts/ci/run-regression.cjs "$tier" 2>&1 | tee "$RUNNER_TEMP/regression.log"
@@ -180,7 +181,7 @@ jobs:
 
   production-release-gate:
     name: 'Production release / Full regression required'
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main') && vars.CI_ENABLE_STAGING == 'true')
     needs: [build, lint, test, security]
     runs-on: ubuntu-latest
     steps:
@@ -278,86 +279,31 @@ jobs:
           }
           printf 'Published image `%s@%s` for source commit `%s`.\n' "$IMAGE" "$DIGEST" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
 
-  # Rubric stage 6: disabled until staging env/secrets are configured.
-  staging:
-    name: '06 / Staging deploy + smoke + rollback'
-    needs: docker
+  render-deploy:
+    name: '06 / Render deploy + smoke + rollback'
+    needs: [build, lint, test, security, docker, production-release-gate]
     if: >-
       github.event_name == 'push' &&
       github.ref_name == (vars.CI_DEPLOY_BRANCH || 'main') &&
       vars.CI_ENABLE_STAGING == 'true'
     runs-on: ubuntu-latest
-    environment: staging
+    environment: production
     concurrency:
-      group: cafe-staging
+      group: cafe-render-production
       cancel-in-progress: false
-    timeout-minutes: 20
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - name: Check staging configuration
-        shell: bash
+          fetch-depth: 0
+      - name: Deploy verified source to production Render services
         env:
-          PUBLIC_API_URL: ${{ vars.CI_PUBLIC_API_URL }}
-          HOST: ${{ secrets.STAGING_HOST }}
-          USER: ${{ secrets.STAGING_USER }}
-          KEY: ${{ secrets.STAGING_SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
-        run: |
-          for key in HOST USER KEY KNOWN_HOSTS; do
-            if [[ -z "${!key}" ]]; then
-              echo "::error::Missing staging configuration: $key"
-              exit 2
-            fi
-          done
-          if [[ "$PUBLIC_API_URL" != https://* ||
-                "$PUBLIC_API_URL" == *localhost* ||
-                "$PUBLIC_API_URL" == *.invalid* ]]; then
-            echo "::error::CI_PUBLIC_API_URL must be the real HTTPS staging API URL"
-            exit 2
-          fi
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
-          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
-      - name: Deploy commit-tagged images
-        shell: bash
-        env:
-          HOST: ${{ secrets.STAGING_HOST }}
-          USER: ${{ secrets.STAGING_USER }}
-          IMAGE_OWNER: ${{ github.repository_owner }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          IMAGE_OWNER="${IMAGE_OWNER,,}"
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$USER@$HOST" \
-            'mkdir -p /opt/cafe/staging'
-          scp -o BatchMode=yes -o StrictHostKeyChecking=yes \
-            deploy/compose.staging.yml deploy/deploy-staging.sh \
-            "$USER@$HOST:/opt/cafe/staging/"
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$USER@$HOST" \
-            "bash /opt/cafe/staging/deploy-staging.sh '$IMAGE_OWNER' '$IMAGE_TAG'"
-      - name: Record measured commit-to-staging latency for rubric
-        shell: bash
-        run: |
-          set -euo pipefail
-          commit_epoch="$(git show -s --format=%ct HEAD)"
-          deployed_epoch="$(date -u +%s)"
-          seconds="$((deployed_epoch - commit_epoch))"
-          if [[ "$seconds" -lt 0 ]]; then
-            echo "::error::Commit timestamp is newer than deployment clock"
-            exit 1
-          fi
-          {
-            echo "### TC2.6 staging deployment evidence"
-            echo "- Commit: $GITHUB_SHA"
-            echo "- Deployment UTC: $(date -u -d "@$deployed_epoch" +%FT%TZ)"
-            echo "- Commit to healthy staging: $seconds seconds"
-            echo "- Target: 900 seconds (15 minutes)"
-            echo "- Verified: API + Agent + Web health and exact Git SHA images"
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$seconds" -gt 900 ]]; then
-            echo "::warning::Commit-to-staging exceeded rubric 15-minute target"
-          fi
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_API_SERVICE_ID: ${{ vars.RENDER_API_SERVICE_ID }}
+          RENDER_AGENT_SERVICE_ID: ${{ vars.RENDER_AGENT_SERVICE_ID }}
+          RENDER_WEB_SERVICE_ID: ${{ vars.RENDER_WEB_SERVICE_ID }}
+          CI_PUBLIC_API_URL: ${{ vars.CI_PUBLIC_API_URL }}
+          CI_DEPLOY_BRANCH: ${{ vars.CI_DEPLOY_BRANCH || 'main' }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 deploy/deploy-render.py
