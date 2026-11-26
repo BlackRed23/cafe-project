@@ -29,7 +29,6 @@
     },
     "dependencies": {
         "@cafe-project/database": "*",
-        "@google/generative-ai": "^0.24.1",
         "@langchain/langgraph": "^1.7.5",
         "dotenv": "^16.4.5",
         "node-cron": "^4.4.1",

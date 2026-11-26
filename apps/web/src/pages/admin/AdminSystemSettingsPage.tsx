@@ -32,7 +32,7 @@ const SECTIONS: SettingSection[] = [
       { key: "ai.enabled", label: "Bật AI Agent", type: "boolean" },
       { key: "ai.slogan", label: "Mô tả ngắn AI Agent", placeholder: "Ví dụ: Trợ lý AI quản lý tồn kho thông minh", helper: "Mô tả ngắn hiển thị ở giao diện AI Agent." },
       { key: "ai.scanCron", label: "Thời gian quét tồn kho tự động hằng ngày", helper: "Chọn thời điểm hệ thống tự quét tồn kho mỗi ngày. Sau khi đổi cần restart Agent worker để áp dụng lịch mới.", type: "time" },
-      { key: "ai.promptPrefix", label: "Prompt nền cho Gemini", placeholder: "Ví dụ: Hãy giải thích ngắn gọn, bám sát dữ liệu tồn kho và không tự suy đoán ngoài dữ liệu hệ thống.", multiline: true },
+      { key: "ai.promptPrefix", label: "Prompt nền cho AI Agent", placeholder: "Ví dụ: Hãy giải thích ngắn gọn, bám sát dữ liệu tồn kho và không tự suy đoán ngoài dữ liệu hệ thống.", multiline: true },
     ],
   },
   {
@@ -154,7 +154,7 @@ export const AdminSystemSettingsPage: React.FC = () => {
       case "ai.scanCron":
         return "Đã lưu lịch quét tồn kho tự động. Cần restart Agent worker để áp dụng lịch mới.";
       case "ai.promptPrefix":
-        return "Đã lưu prompt nền AI. Thiết lập sẽ áp dụng cho lần tạo đề xuất Gemini tiếp theo.";
+        return "Đã lưu prompt nền AI. Thiết lập sẽ áp dụng cho lần tạo đề xuất AI tiếp theo.";
       case "inventory.defaultMinThreshold":
         return "Đã lưu ngưỡng tồn kho mặc định. Thiết lập áp dụng cho tồn kho mới.";
       default:

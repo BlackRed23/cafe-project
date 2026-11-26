@@ -1,5 +1,5 @@
 import { agentRepository, type AgentInventoryRecord, type AgentIngredientRecord } from '../repositories/agent.repository';
-import { geminiService } from './gemini.service';
+import { llmRecommendationService } from './llm-recommendation.service';
 import { calculateReorderPoint, DELAY_BUFFER_DAYS, SAFETY_BUFFER_DAYS } from '../utils/inventory.utils';
 import { SYSTEM_PROMPT_TEMPLATE, INGREDIENT_SYSTEM_PROMPT_TEMPLATE } from '../config/system-prompt';
 import { replenishmentPlan } from '../workflows/replenishment';
@@ -253,33 +253,33 @@ export const recommendationService = {
         const storeNameSetting = await agentRepository.getSettingValue('store.name');
         const storeName = storeNameSetting || 'Cafe Admin';
 
-        if (process.env.AGENT_RECOMMENDATION_MODE === 'gemini' && process.env.GEMINI_API_KEY) {
+        if (process.env.LLM_PROVIDER && process.env.LLM_API_KEY && process.env.LLM_MODEL) {
             try {
                 const prompt = SYSTEM_PROMPT_TEMPLATE(storeName, product, inventory, sales, suppliers);
-                const geminiResult = await geminiService.getRecommendation(prompt);
+                const llmResult = await llmRecommendationService.getRecommendation(prompt);
 
-                const supplierExists = suppliers.some((s) => s.supplierId === geminiResult.recommendedSupplierId);
-                const quantityValid = geminiResult.recommendedQuantity > 0 && geminiResult.recommendedQuantity < 1000;
-                const confidenceValid = geminiResult.confidence >= 0 && geminiResult.confidence <= 1;
-                const reasoningValid = geminiResult.reasoning.trim().length > 0;
+                const supplierExists = suppliers.some((s) => s.supplierId === llmResult.recommendedSupplierId);
+                const quantityValid = llmResult.recommendedQuantity > 0 && llmResult.recommendedQuantity < 1000;
+                const confidenceValid = llmResult.confidence >= 0 && llmResult.confidence <= 1;
+                const reasoningValid = llmResult.reasoning.trim().length > 0;
 
                 if (supplierExists && quantityValid && confidenceValid && reasoningValid) {
-                    aiRecommendation = geminiResult;
+                    aiRecommendation = llmResult;
                 } else {
                     let failReason = '';
-                    if (!supplierExists) failReason += `Supplier ID ${geminiResult.recommendedSupplierId} does not exist. `;
-                    if (!quantityValid) failReason += `Quantity ${geminiResult.recommendedQuantity} is invalid. `;
-                    if (!confidenceValid) failReason += `Confidence ${geminiResult.confidence} out of bounds. `;
+                    if (!supplierExists) failReason += `Supplier ID ${llmResult.recommendedSupplierId} does not exist. `;
+                    if (!quantityValid) failReason += `Quantity ${llmResult.recommendedQuantity} is invalid. `;
+                    if (!confidenceValid) failReason += `Confidence ${llmResult.confidence} out of bounds. `;
                     if (!reasoningValid) failReason += 'Reasoning is empty. ';
-                    throw new Error(`Gemini validation failed: ${failReason}`);
+                    throw new Error(`LLM validation failed: ${failReason}`);
                 }
             } catch (err) {
                 fallbackUsed = true;
-                errorMessage = err instanceof Error ? err.message : 'Unknown Gemini error';
+                errorMessage = err instanceof Error ? err.message : 'Unknown LLM error';
             }
         } else {
             fallbackUsed = true;
-            errorMessage = 'Rule-based recommendation mode is active. Gemini was not called.';
+            errorMessage = 'LLM is not configured. Rule-based recommendation mode is active.';
         }
 
         if (fallbackUsed || !aiRecommendation) {
@@ -530,7 +530,7 @@ export const recommendationService = {
         let fallbackUsed = false;
         let errorMessage: string | null = null;
 
-        if (process.env.AGENT_RECOMMENDATION_MODE === 'gemini' && process.env.GEMINI_API_KEY) {
+        if (process.env.LLM_PROVIDER && process.env.LLM_API_KEY && process.env.LLM_MODEL) {
             try {
                 const prompt = INGREDIENT_SYSTEM_PROMPT_TEMPLATE(
                     storeName,
@@ -547,30 +547,30 @@ export const recommendationService = {
                     consumption,
                     suppliers
                 );
-                const geminiResult = await geminiService.getRecommendation(prompt);
-                const matchedSupplier = suppliers.find((s) => s.supplierId === geminiResult.recommendedSupplierId);
+                const llmResult = await llmRecommendationService.getRecommendation(prompt);
+                const matchedSupplier = suppliers.find((s) => s.supplierId === llmResult.recommendedSupplierId);
                 const minBaseRequired = matchedSupplier
                     ? matchedSupplier.minOrderQuantity * matchedSupplier.conversionQuantity
                     : 1;
                 const quantityValid =
-                    geminiResult.recommendedQuantity > 0 &&
-                    geminiResult.recommendedQuantity <= 1_000_000 &&
-                    geminiResult.recommendedQuantity >= minBaseRequired * 0.1;
-                const confidenceValid = geminiResult.confidence >= 0 && geminiResult.confidence <= 1;
-                const reasoningValid = geminiResult.reasoning.trim().length > 0;
+                    llmResult.recommendedQuantity > 0 &&
+                    llmResult.recommendedQuantity <= 1_000_000 &&
+                    llmResult.recommendedQuantity >= minBaseRequired * 0.1;
+                const confidenceValid = llmResult.confidence >= 0 && llmResult.confidence <= 1;
+                const reasoningValid = llmResult.reasoning.trim().length > 0;
 
                 if (matchedSupplier && quantityValid && confidenceValid && reasoningValid) {
-                    aiRecommendation = geminiResult;
+                    aiRecommendation = llmResult;
                 } else {
-                    throw new Error('Gemini ingredient recommendation failed validation.');
+                    throw new Error('LLM ingredient recommendation failed validation.');
                 }
             } catch (err) {
                 fallbackUsed = true;
-                errorMessage = err instanceof Error ? err.message : 'Unknown Gemini error';
+                errorMessage = err instanceof Error ? err.message : 'Unknown LLM error';
             }
         } else {
             fallbackUsed = true;
-            errorMessage = 'Rule-based recommendation mode is active. Gemini was not called.';
+            errorMessage = 'LLM is not configured. Rule-based recommendation mode is active.';
         }
 
         const ruleBased = this.calculateIngredientRuleBased(

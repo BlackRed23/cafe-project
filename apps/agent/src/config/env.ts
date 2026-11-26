@@ -6,12 +6,11 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: false });
 
 export const env = {
     DATABASE_URL: process.env.DATABASE_URL as string,
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY as string,
-    GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-    GEMINI_TIMEOUT_MS: Number(process.env.GEMINI_TIMEOUT_MS) > 0 ? Number(process.env.GEMINI_TIMEOUT_MS) : 10000,
-    GEMINI_INPUT_PRICE_PER_1M_USD: process.env.GEMINI_INPUT_PRICE_PER_1M_USD ? Number(process.env.GEMINI_INPUT_PRICE_PER_1M_USD) : undefined,
-    GEMINI_OUTPUT_PRICE_PER_1M_USD: process.env.GEMINI_OUTPUT_PRICE_PER_1M_USD ? Number(process.env.GEMINI_OUTPUT_PRICE_PER_1M_USD) : undefined,
-    AGENT_RECOMMENDATION_MODE: process.env.AGENT_RECOMMENDATION_MODE || 'gemini',
+    LLM_PROVIDER: process.env.LLM_PROVIDER,
+    LLM_API_KEY: process.env.LLM_API_KEY,
+    LLM_BASE_URL: process.env.LLM_BASE_URL,
+    LLM_MODEL: process.env.LLM_MODEL,
+    LLM_TIMEOUT_MS: Number(process.env.LLM_TIMEOUT_MS) > 0 ? Number(process.env.LLM_TIMEOUT_MS) : 30000,
     AGENT_SCAN_CRON: process.env.AGENT_SCAN_CRON || '*/10 * * * *',
     RUN_ON_START: process.env.RUN_ON_START === 'true',
     DEBUG_MODE: process.env.DEBUG_MODE === 'true',
@@ -19,8 +18,4 @@ export const env = {
 
 if (!env.DATABASE_URL) {
     console.error('❌ Missing DATABASE_URL in environment variables.');
-}
-
-if (env.AGENT_RECOMMENDATION_MODE === 'gemini' && !env.GEMINI_API_KEY) {
-    console.warn('⚠️ [agent-config] AGENT_RECOMMENDATION_MODE="gemini" but GEMINI_API_KEY is empty — Agent will use deterministic rule-based fallback.');
 }

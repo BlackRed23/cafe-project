@@ -1,7 +1,7 @@
 {
-  "version": "2026.11.26.1",
-  "tag": "regression-v2026.11.26.1",
-  "asset": "cafe-regression-2026.11.26.1.zip",
-  "sha256": "3ac6e7826ecee114eaa55ed360ed9624f0da35424bf3f73dc5769c6017ddf407",
-  "files": 276
+  "version": "2026.11.26.3",
+  "tag": "regression-v2026.11.26.3",
+  "asset": "cafe-regression-2026.11.26.3.zip",
+  "sha256": "12224029a1124989cce9dda22c8ddedc3e0aa530a272b0c4e7e8b3aab62f35c6",
+  "files": 275
 }

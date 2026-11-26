@@ -13,7 +13,7 @@ const rules = {
   inventory: /inventory|stock|lot|fefo|expiry|ingredient/,
   sales: /order|payment|sales|storefront|mock-phase3|mock-workflows|mock-http|mock-recovery/,
   purchasing: /purchas|supplier|replenish|reorder|receipt|mock-phase3/,
-  agent: /agent|planning|perception|observation|anomaly|explain|tool|act-|memory|session|llm|gemini|ai-|d4-/,
+  agent: /agent|planning|perception|observation|anomaly|explain|tool|act-|memory|session|llm|ai-|d4-/,
   recovery: /recovery|retry|checkpoint|replay|idempoten|after-commit|mock-phase3|mock-workflows|mock-http/,
   ui: /apps\/web\//,
 };
@@ -46,7 +46,7 @@ for (const app of ['api','agent','web']) {
       reason: (core ? 'Critical boundary: ' : 'Affected-module coverage: ') + modules.join(', ') + '. Preserve complete setup and all listed assertions.', cases});
   }
 }
-const result = {version:'2026.11.26.1', policy:'Overlapping cumulative tiers; suite-level execution; no assertion edits. Static declarations are not runtime case counts.', suites};
+const result = {version:'2026.11.26.3', policy:'Overlapping cumulative tiers; suite-level execution; no assertion edits. Static declarations are not runtime case counts.', suites};
 fs.mkdirSync(path.join(root,'manifests'),{recursive:true});
 fs.writeFileSync(path.join(root,'manifests/regression.json'),JSON.stringify(result,null,2)+'\n');
 console.log(JSON.stringify({suites:suites.length, declarations:suites.reduce((n,s)=>n+s.cases.length,0), dynamic:suites.flatMap(s=>s.cases).filter(c=>c.dynamic).length}));

@@ -1,33 +1,45 @@
 import '../config/env';
 import { generateNativeToolPlan } from './native-tool-planner.service';
-import { geminiService } from './gemini.service';
 import { validateDynamicPlan, type DynamicToolName, type DynamicToolPlan, type ToolChoicePolicy } from '../workflows/dynamic-plan';
 import { TOOL_CONTRACTS } from '../workflows/tool-contracts';
 import { z } from 'zod';
 
 type Config = Record<string, string | undefined>;
 type PlannerTool = { name: DynamicToolName; purpose: string };
-export type LlmProviderName = 'gemini' | 'openai' | 'anthropic' | 'openai-compatible';
+export type LlmProviderName = 'openai' | 'anthropic' | 'openai-compatible';
+
+export function validateLlmPlannerProposal(raw: unknown, allowedTools: readonly PlannerTool[]): DynamicToolPlan {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('INVALID_DYNAMIC_PLAN');
+    const data = raw as Record<string, unknown>;
+    if (Object.keys(data).length === 1 && data.error === 'INSUFFICIENT_CONTEXT') {
+        throw new Error('INSUFFICIENT_CONTEXT');
+    }
+    try {
+        const proposal = data as DynamicToolPlan;
+        validateDynamicPlan(proposal);
+        if (proposal.steps.some(step => !allowedTools.some(tool => tool.name === step.tool)
+            || !Object.prototype.hasOwnProperty.call(TOOL_CONTRACTS, step.tool)
+            || !['READ', 'CALCULATION'].includes(TOOL_CONTRACTS[step.tool].category))) {
+            throw new Error('INVALID_DYNAMIC_PLAN');
+        }
+        return proposal;
+    } catch {
+        throw new Error('INVALID_DYNAMIC_PLAN');
+    }
+}
 
 /** A single .env API key and model select a supported provider; ambiguous models need LLM_PROVIDER. */
 export function resolveLlmPlannerConfig(config: Config = process.env): {
     provider: LlmProviderName; key: string; model: string; baseUrl?: string;
 } {
-    const model = (config.LLM_MODEL || config.GEMINI_MODEL || '').trim();
-    const requested = (config.LLM_PROVIDER || (config.LLM_MODEL ? 'auto' : config.AGENT_PLANNER_PROVIDER) || 'auto').trim().toLowerCase();
+    const model = (config.LLM_MODEL || '').trim();
+    const requested = (config.LLM_PROVIDER || '').trim().toLowerCase();
     if (!model) throw new Error('LLM_MODEL_MISSING');
-    const provider = requested === 'auto' || !requested
-        ? /^(gemini-|models\/gemini-)/i.test(model) ? 'gemini'
-            : /^(claude-)/i.test(model) ? 'anthropic'
-                : /^(gpt-|o[1-9](?:-|$)|chatgpt-|text-)/i.test(model) ? 'openai'
-                    : config.LLM_BASE_URL ? 'openai-compatible' : null
-        : requested === 'chatgpt' ? 'openai' : requested;
-    if (!provider || !['gemini', 'openai', 'anthropic', 'openai-compatible'].includes(provider)) {
+    const provider = requested === 'chatgpt' ? 'openai' : requested;
+    if (!['openai', 'anthropic', 'openai-compatible'].includes(provider)) {
         throw new Error('LLM_PROVIDER_REQUIRED');
     }
-    const key = (config.LLM_API_KEY || (provider === 'gemini' ? config.GEMINI_API_KEY : undefined) ||
-        (provider === 'openai' ? config.OPENAI_API_KEY : undefined) ||
-        (provider === 'anthropic' ? config.ANTHROPIC_API_KEY : undefined) || '').trim();
+    const key = (config.LLM_API_KEY || '').trim();
     if (!key) throw new Error('LLM_API_KEY_MISSING');
     // Honor an explicitly configured endpoint even with an OpenAI-prefixed
     // model. Gate the URL through native-tool-planner HTTPS validation.
@@ -91,11 +103,6 @@ async function generateAnthropicPlan(prompt: string, tools: PlannerTool[], key: 
 export async function generateConfiguredLlmPlan(prompt: string, tools: PlannerTool[],
     config: Config = process.env, policy: ToolChoicePolicy = 'REQUIRES_TOOL'): Promise<DynamicToolPlan> {
     const resolved = resolveLlmPlannerConfig(config);
-    if (resolved.provider === 'gemini') {
-        return geminiService.generateDynamicPlan(prompt, tools, {
-            key: resolved.key, model: resolved.model
-        });
-    }
     if (resolved.provider === 'anthropic') {
         return generateAnthropicPlan(prompt, tools, resolved.key, resolved.model, config, policy);
     }
