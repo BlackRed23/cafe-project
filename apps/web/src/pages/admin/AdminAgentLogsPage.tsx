@@ -1,5 +1,3 @@
-import { mockEnabled } from '../../mock/config';
-import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle, Clock, Eye, Info, PauseCircle } from "lucide-react";
@@ -329,7 +327,7 @@ const isInventoryScanLog = (log: AgentLog) => {
   return false;
 };
 
-export const AdminAgentLogsPage: React.FC = () => mockEnabled ? <MockWorkspace area="agent" /> : <LegacyAdminAgentLogsPage />;
+export const AdminAgentLogsPage: React.FC = () => <LegacyAdminAgentLogsPage />;
 
 const LegacyAdminAgentLogsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();

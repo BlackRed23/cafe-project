@@ -16,7 +16,7 @@ export function resolveLlmPlannerConfig(config: Config = process.env): {
     const model = (config.LLM_MODEL || config.GEMINI_MODEL || '').trim();
     const requested = (config.LLM_PROVIDER || (config.LLM_MODEL ? 'auto' : config.AGENT_PLANNER_PROVIDER) || 'auto').trim().toLowerCase();
     if (!model) throw new Error('LLM_MODEL_MISSING');
-    const provider = requested === 'auto' || requested === 'mock' || !requested
+    const provider = requested === 'auto' || !requested
         ? /^(gemini-|models\/gemini-)/i.test(model) ? 'gemini'
             : /^(claude-)/i.test(model) ? 'anthropic'
                 : /^(gpt-|o[1-9](?:-|$)|chatgpt-|text-)/i.test(model) ? 'openai'

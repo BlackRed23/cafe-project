@@ -1,8 +1,6 @@
 import { schedulePageLoad } from "../../utils/schedulePageLoad";
 type SuggestedSupplier = { supplierId: string; supplierName?: string; isPreferred?: boolean; leadTimeDays?: number; moq?: number; purchasePrice?: number };
 
-import { mockEnabled } from '../../mock/config';
-import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, Ban, CheckCircle, Mail, Sparkles, PackageCheck, Send, X } from "lucide-react";
@@ -107,7 +105,7 @@ Trân trọng,
 ${storeName}`;
 };
 
-export const AdminPurchaseRequestDetailPage: React.FC = () => mockEnabled ? <MockWorkspace area="purchases" /> : <LegacyAdminPurchaseRequestDetailPage />;
+export const AdminPurchaseRequestDetailPage: React.FC = () => <LegacyAdminPurchaseRequestDetailPage />;
 
 const LegacyAdminPurchaseRequestDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -1210,6 +1208,3 @@ const EmailField: React.FC<{ label: string; value: string }> = ({ label, value }
     <span className="break-words font-semibold text-slate-800">{value}</span>
   </div>
 );
-
-
-

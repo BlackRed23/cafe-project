@@ -38,7 +38,7 @@ export async function recordBackendDenial(
     // Explicit deployment/isolated-acceptance opt-in avoids accidental writes
     // by contract/unit tests that import the real middleware and inherit a
     // developer DATABASE_URL. Never let merely importing a route enable writes.
-    if (process.env.SECURITY_DENIAL_AUDIT_ENABLED !== 'YES' || process.env.DATA_PROVIDER === 'mock') {
+    if (process.env.SECURITY_DENIAL_AUDIT_ENABLED !== 'YES') {
         return { persisted: false, correlationId };
     }
     const timestamp = new Date().toISOString();

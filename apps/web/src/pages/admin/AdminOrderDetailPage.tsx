@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { mockEnabled } from "../../mock/config";
-import { MockWorkspace } from "../../mock/MockWorkspace";
 import { ordersApi } from "../../api/orders.api";
 import { paymentsApi } from "../../api/payments.api";
 import type { Order } from "../../types/order.types";
@@ -27,7 +25,7 @@ import { SalesOperations } from "./SalesOperations";
 import "./sales.css";
 
 export const AdminOrderDetailPage = () =>
-  mockEnabled ? <MockWorkspace area="orders" /> : <SalesDetail />;
+  <SalesDetail />;
 type Action = {
   kind: "status" | "payment" | "refund";
   label: string;

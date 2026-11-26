@@ -57,8 +57,8 @@ const retryable = (error: unknown) => {
 /** PostgreSQL serializes all snapshots with a real row lock in one transaction.
  *
  * No actor permissions are preseeded: a verified Backend identity/role adapter
- * must grant them deliberately. The factory createAgentRuntime still rejects
- * DATA_PROVIDER=postgres. Cross-database BusinessPort atomic/onCommit is
+ * must grant them deliberately. Production composition must reject
+ * unverified database adapters. Cross-database BusinessPort atomic/onCommit is
  * unsupported until its transaction ownership has been verified.
  */
 export class PostgresAgentRepository implements AgentRepository {

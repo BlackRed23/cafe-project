@@ -1,6 +1,4 @@
 import { schedulePageLoad } from "../../utils/schedulePageLoad";
-import { mockEnabled } from '../../mock/config';
-import { MockWorkspace } from '../../mock/MockWorkspace';
 import { AdjustmentBatchSelect } from "../../components/admin/AdjustmentBatchSelect";
 import { eligibleAdjustmentBatches } from "../../components/admin/eligibleAdjustmentBatches";
 import React, { useState, useEffect } from "react";
@@ -25,7 +23,7 @@ import { useToast } from "../../contexts/ToastContext";
 
 type InventoryTab = "ALL" | "LOW_STOCK" | "WARNING" | "EXPIRING_SOON";
 
-export const AdminInventoryPage: React.FC = () => mockEnabled ? <MockWorkspace area="inventory" /> : <LegacyAdminInventoryPage />;
+export const AdminInventoryPage: React.FC = () => <LegacyAdminInventoryPage />;
 
 const LegacyAdminInventoryPage: React.FC = () => {
   const navigate = useNavigate();

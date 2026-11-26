@@ -30,7 +30,6 @@ export type RecommendReorderInput = {
 
 export type AgentLogStatus = 'SUCCESS' | 'SKIPPED' | 'FAILED' | 'RUNNING';
 
-type AgentDemoFailureMode = 'SCAN_THROW' | 'DATABASE_READ_FAIL' | 'MISSING_ENV' | 'IMPORT_FAIL_SIMULATED';
 type ReorderPlanningPeriod = 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
 
 export type AgentLogQuery = {
@@ -92,41 +91,6 @@ const safeJsonParse = (value?: string | null): unknown => {
 
 const asString = (value: unknown): string | undefined =>
     typeof value === 'string' && value.trim() ? value.trim() : undefined;
-
-const isAgentDemoFailureMode = (value: unknown): value is AgentDemoFailureMode =>
-    value === 'SCAN_THROW' ||
-    value === 'DATABASE_READ_FAIL' ||
-    value === 'MISSING_ENV' ||
-    value === 'IMPORT_FAIL_SIMULATED';
-
-const getAgentDemoFailureMode = (): AgentDemoFailureMode | undefined => {
-    if (process.env.NODE_ENV === 'production') return undefined;
-    const mode = process.env.AGENT_DEMO_FAILURE_MODE;
-    return isAgentDemoFailureMode(mode) ? mode : undefined;
-};
-
-const AGENT_DEMO_FAILURE_META: Record<AgentDemoFailureMode, { reason: string; message: string; errorMessage: string }> = {
-    SCAN_THROW: {
-        reason: 'AGENT_LOGIC_ERROR',
-        message: 'AI Agent gặp lỗi nội bộ khi kiểm tra tồn kho.',
-        errorMessage: 'Demo failure: scan inventory logic threw an error.'
-    },
-    DATABASE_READ_FAIL: {
-        reason: 'DATABASE_ERROR',
-        message: 'AI Agent không thể đọc dữ liệu tồn kho từ hệ thống.',
-        errorMessage: 'Demo failure: inventory database read failed.'
-    },
-    MISSING_ENV: {
-        reason: 'AGENT_CONFIG_ERROR',
-        message: 'AI Agent thiếu cấu hình cần thiết để xử lý.',
-        errorMessage: 'Demo failure: required Agent environment configuration is missing.'
-    },
-    IMPORT_FAIL_SIMULATED: {
-        reason: 'AGENT_IMPORT_ERROR',
-        message: 'Backend không thể nạp module AI Agent.',
-        errorMessage: 'Demo failure: backend could not import the AI Agent module.'
-    }
-};
 
 const normalizePage = (value: unknown): number => {
     const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -429,53 +393,6 @@ const notificationForAgentFailed = (): AgentNotification => ({
     actionUrl: '/admin/agent-logs'
 });
 
-const notificationForDemoFailure = (description: string): AgentNotification => ({
-    type: 'error',
-    title: 'AI Agent service không khả dụng',
-    description,
-    actionLabel: 'Xem nhật ký Agent',
-    actionUrl: '/admin/agent-logs'
-});
-
-const createDemoFailureLog = async (
-    mode: AgentDemoFailureMode,
-    input: ScanInventoryInput,
-    triggerType: string,
-    userId?: string
-) => {
-    const meta = AGENT_DEMO_FAILURE_META[mode];
-    const failureInput = {
-        triggerType,
-        productIds: input.productIds,
-        sourceType: input.sourceType,
-        sourceId: input.sourceId,
-        note: input.note,
-        demoFailureMode: mode
-    };
-    const failureOutput = {
-        failed: true,
-        demoFailureMode: mode,
-        reason: meta.reason,
-        message: meta.message,
-        errorMessage: meta.errorMessage,
-        notification: notificationForDemoFailure(meta.message)
-    };
-
-    const log = await agentRepository.createLog({
-        action: 'SCAN_INVENTORY_FAILED',
-        input: JSON.stringify(failureInput),
-        output: JSON.stringify(failureOutput),
-        reasoning: `Demo failure mode ${mode} was enabled for non-production Agent testing.`,
-        result: 'FAILED',
-        fallback_used: false,
-        error_message: meta.errorMessage,
-        reference_type: 'AgentDemoFailure',
-        reference_id: mode,
-        creator: userId ? { connect: { id: userId } } : undefined
-    });
-
-    return toLogDto(log);
-};
 
 let activeScanSessionId: string | null = null;
 let activeTriggerType: string | null = null;
@@ -488,12 +405,6 @@ export const agentService = {
     async scanInventory(input: ScanInventoryInput = { triggerType: 'MANUAL_SCAN' }, userId?: string) {
         userId = await requireAgentUser(userId);
         const triggerType = input.triggerType || 'MANUAL_SCAN';
-        const demoFailureMode = getAgentDemoFailureMode();
-        if (demoFailureMode) {
-            const log = await createDemoFailureLog(demoFailureMode, input, triggerType, userId);
-            return { results: [log], createdPurchaseRequests: [] };
-        }
-
         const settings = await getAgentSettings();
 
         if (triggerType === 'MANUAL_ADMIN_SCAN') {

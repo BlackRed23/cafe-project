@@ -1,7 +1,6 @@
 import { schedulePageLoad } from "../utils/schedulePageLoad";
-import { mockEnabled, mockApi, mockTokenKey, mockUserKey } from '../mock/config';
-const tokenStorageKey = mockEnabled ? mockTokenKey : 'access_token';
-const userStorageKey = mockEnabled ? mockUserKey : 'user';
+const tokenStorageKey = 'access_token';
+const userStorageKey = 'user';
 import React, { useState, useEffect, useCallback } from "react";
 import { authApi } from "../api/auth.api";
 import type { User, LoginPayload, RegisterPayload } from "../types/auth.types";
@@ -24,7 +23,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadMe = useCallback(async () => {
     try {
       setLoading(true);
-      const data = mockEnabled ? { user: await mockApi!.request<User>('/session') } : await authApi.getMe();
+      const data = await authApi.getMe();
       if (data.user) {
         setUser(data.user);
         localStorage.setItem(userStorageKey, JSON.stringify(data.user));

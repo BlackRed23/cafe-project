@@ -4,6 +4,11 @@
   "scripts": {
     "test": "node scripts/ci/run-external-tests.cjs normal",
     "test:mock": "node scripts/ci/run-external-tests.cjs mock",
+    "test:smoke": "node scripts/ci/run-regression.cjs smoke",
+    "test:core": "node scripts/ci/run-regression.cjs core",
+    "test:module": "node scripts/ci/run-regression.cjs module",
+    "test:full": "node scripts/ci/run-regression.cjs full",
+    "test:security": "node scripts/ci/run-regression.cjs security",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",

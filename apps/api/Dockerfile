@@ -19,7 +19,8 @@ RUN npm run build -- --filter=@cafe-project/api
 
 FROM node:24-alpine AS runner
 WORKDIR /app
-COPY --from=builder /app /app
+COPY --from=builder --chown=node:node /app /app
+USER node
 
 EXPOSE 5000
 CMD ["sh", "-c", "npx prisma migrate deploy --schema=packages/database/prisma/schema && npm run start -w @cafe-project/api"]

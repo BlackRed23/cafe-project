@@ -9,7 +9,6 @@
 import { prisma, Prisma } from '@cafe-project/database';
 import { requireAgentUser } from '../internal-auth';
 import { createToolRegistry } from './tool-registry';
-import { verifiedIsolatedActFault } from '../services/execution/act-isolated-fault';
 import { createD4LiveToolBindings } from './integration/d4-live-tool-bindings';
 
 const bounded = (value: Prisma.Decimal | number): number => {
@@ -40,26 +39,7 @@ export function createLiveBackendReadRegistry(ingredientIds: readonly string[]) 
         }
         return ingredient;
     };
-    const counts = { availability: 0, batches: 0 };
     const d4Reads = createD4LiveToolBindings(ingredientIds);
-    const fault = async (type: 'availability' | 'batches', id: string) => {
-        const requested = process.env.ACT_E2E_FAULT_CASE;
-        if (!requested || !process.env.ACT_E2E_FAULT_INGREDIENT_ID ||
-            process.env.ACT_E2E_FAULT_INGREDIENT_ID !== id) return false;
-        if (!await verifiedIsolatedActFault(id)) return false;
-        const attempt = ++counts[type];
-        if (requested === 'TIMEOUT' && type === 'availability') {
-            // Registry's REAL 5000ms Promise.race timer, not a synthetic TIMEOUT response.
-            await new Promise(resolve => setTimeout(resolve, 5300));
-        }
-        if (requested === 'TRANSIENT' && type === 'availability' && attempt === 1) {
-            throw Object.assign(new Error('TEST_OWNED_TRANSIENT_SERVICE_FAILURE'), { statusCode: 503 });
-        }
-        if (requested === 'SECOND_STEP_NOT_FOUND' && type === 'batches') {
-            throw Object.assign(new Error('TEST_OWNED_SECOND_STEP_NOT_FOUND'), { statusCode: 404 });
-        }
-        return requested === 'INVALID_OUTPUT' && type === 'availability';
-    };
     return createToolRegistry({
         authorize: async (actorId, permission) => {
             if (!['inventory.read', 'supplier.read', 'purchase.plan', 'purchase.read'].includes(permission)) {
@@ -68,12 +48,6 @@ export function createLiveBackendReadRegistry(ingredientIds: readonly string[]) 
             return requireAgentUser(actorId, ['ADMIN']);
         },
         availability: async id => {
-            if (await fault('availability', id)) {
-                // Test-only contract violation; Registry must reject it before Graph trust.
-                const row = await read(id);
-                return { ingredientId: id, baseUnit: row.baseUnit, quantity: 'INVALID',
-                    reserved: 0, available: 0, active: true, rowVersion: row.rowVersion };
-            }
             const row = await read(id);
             return {
                 ingredientId: id, baseUnit: row.baseUnit, quantity: bounded(row.quantity),
@@ -99,7 +73,6 @@ export function createLiveBackendReadRegistry(ingredientIds: readonly string[]) 
         },
         ...d4Reads,
         batches: async id => {
-            await fault('batches', id);
             const row = await read(id);
             return {
                 ingredientId: id, baseUnit: row.baseUnit,

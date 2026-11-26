@@ -4,11 +4,6 @@
     "private": true,
     "scripts": {
         "lint": "eslint --config ../../packages/eslint-config/node-eslint.config.js .",
-        "dev:mock": "ts-node src/workflows/server.ts",
-        "predev:mock": "npm run build --workspace @cafe-project/agent",
-        "start:mock": "node dist/workflows/server.js",
-        "mock:scan": "node dist/workflows/server.js --scan-once",
-        "mock:token": "node dist/workflows/server.js --token",
         "check-types": "tsc --noEmit",
         "dev": "nodemon src/index.ts",
         "build": "tsc",

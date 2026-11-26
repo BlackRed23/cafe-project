@@ -14,7 +14,6 @@ import {
     reconcilePaymentHandler,
     reconcileRefundHandler,
     requestRefundHandler,
-    simulateMoMoIpnHandler,
     vnpayIpnHandler
 } from './payment.controller';
 import {
@@ -24,7 +23,6 @@ import {
     momoWebhookSchema,
     paymentStatusSchema,
     requestRefundSchema,
-    simulateMoMoIpnSchema
 } from './payment.validator';
 
 const router = Router();
@@ -33,15 +31,6 @@ const router = Router();
 // Placed BEFORE parameterized routes like /:id/status
 router.post('/webhook/momo', validateBody(momoWebhookSchema), asyncHandler(momoWebhookHandler));
 router.get('/webhook/vnpay-ipn', asyncHandler(vnpayIpnHandler));
-
-// Dev-only IPN simulator (returns 404 in production)
-router.post(
-    '/dev/simulate-ipn',
-    authenticate,
-    requireRole(['ADMIN']),
-    validateBody(simulateMoMoIpnSchema),
-    asyncHandler(simulateMoMoIpnHandler)
-);
 
 // Authenticated routes
 router.post('/create-url', authenticate, validateBody(createPaymentUrlSchema), asyncHandler(createPaymentUrlHandler));

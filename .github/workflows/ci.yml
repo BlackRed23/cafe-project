@@ -4,8 +4,16 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-  repository_dispatch:
-    types: [cafe-tests-updated]
+    inputs:
+      production_tag:
+        description: 'Optional production version (v1.2.3); publish only after Full and all quality gates'
+        required: false
+        type: string
+        default: ''
+  schedule:
+    - cron: '0 19 * * 0'
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -62,116 +70,69 @@ jobs:
       - name: ESLint (no auto-fix or suppression)
         run: npm run lint
 
-  # Rubric stage 3: tests. Test-only files remain in an external repository.
-  # No assets => FAIL, never a dummy green job.
+  # Release assets stay in this repository; missing/mismatched bundles fail closed.
   test:
-    name: '03 / Full automated regression'
+    name: '03 / Selected regression'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
-      test_sha: ${{ steps.revisions.outputs.test_sha }}
+      tier: ${{ steps.regression.outputs.tier }}
+      bundle_sha: ${{ steps.bundle.outputs.sha256 }}
     env:
-      NODE_ENV: test
-      DATABASE_URL: postgresql://ci_no_write:ci_no_write@127.0.0.1:1/ci_unreachable
-      AGENT_GRAPH_READONLY: 'YES'
-      CI_TESTS_REPOSITORY: ${{ vars.CI_TESTS_REPOSITORY }}
-      CI_TESTS_SHA: ${{ github.event.client_payload.test_sha || vars.CI_TESTS_SHA }}
-      CI_DISPATCH_REPOSITORY: ${{ github.event.client_payload.test_repository || '' }}
+      # Original artifact-path assertion requires the source/artifacts sibling layout.
+      CAFE_PROJECT_TEST_ROOT: ${{ github.workspace }}/../../cafe-project-artifacts/testing
+      REGRESSION_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - name: Require separately hosted test sources
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "$CI_TESTS_REPOSITORY" ]]; then
-            echo "::error::Set CI_TESTS_REPOSITORY (repository with testing/run-tests.cjs)."
-            echo "::error::No tests means CI fails, not skips."
-            exit 2
-          fi
-          if [[ ! "$CI_TESTS_SHA" =~ ^[a-f0-9]{40}$ ]]; then
-            echo "::error::Set CI_TESTS_SHA to a pinned 40-hex test repository commit, not a mutable branch."
-            exit 2
-          fi
-          if [[ "$GITHUB_EVENT_NAME" == 'repository_dispatch' &&
-                "$CI_DISPATCH_REPOSITORY" != "$CI_TESTS_REPOSITORY" ]]; then
-            echo "::error::Dispatched repository is not the configured test repository."
-            exit 2
-          fi
-      - name: Checkout external test repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          repository: ${{ vars.CI_TESTS_REPOSITORY }}
-          ref: ${{ github.event.client_payload.test_sha || vars.CI_TESTS_SHA }}
-          token: ${{ secrets.CI_TESTS_READ_TOKEN || github.token }}
-          path: .ci-test-assets
-          persist-credentials: false
-      - name: Verify exact external test and fixture bytes
-        working-directory: .ci-test-assets
-        shell: bash
-        run: |
-          test -f MANIFEST.sha256 || {
-            echo "::error::Missing required test bundle SHA256 manifest"
-            exit 2
-          }
-          sha256sum --check --status MANIFEST.sha256 || {
-            echo "::error::Test bundle SHA256 integrity verification failed"
-            exit 2
-          }
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Build dependencies used by relocated test suites
+      - name: Fetch pinned same-repository regression release
+        id: bundle
+        run: python3 scripts/ci/fetch-regression.py --destination ../../cafe-project-artifacts
+      - name: Build dependencies and prepare browser
         run: |
           npm run generate -w @cafe-project/database
           npm run build
-      - name: Prepare Chromium used by UI tests
-        run: npx playwright install --with-deps chromium
-      - name: Reconnect external test workspace to runtime source
-        shell: bash
+          npx playwright install --with-deps chromium
+      - name: Reconnect test workspace
         env:
           CAFE_PROJECT_ROOT: ${{ github.workspace }}
-        run: |
-          test -f .ci-test-assets/testing/run-tests.cjs || {
-            echo "::error::Expected testing/run-tests.cjs in CI_TESTS_REPOSITORY"; exit 2;
-          }
-          bash .ci-test-assets/testing/bootstrap-links.sh
-      - name: Attest exact source and test commits
-        id: revisions
-        shell: bash
-        run: |
-          set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
-          test_sha="$(git -C .ci-test-assets rev-parse HEAD)"
-          if [[ "$source_sha" != "$GITHUB_SHA" || "$test_sha" != "$CI_TESTS_SHA" ]]; then
-            echo "::error::Source or test checkout does not match the expected commit SHA."
-            exit 2
-          fi
-          echo "test_sha=$test_sha" >> "$GITHUB_OUTPUT"
-          {
-            echo "### Reproducible source / test pairing"
-            echo "- Source: $GITHUB_REPOSITORY@$source_sha"
-            echo "- Tests: $CI_TESTS_REPOSITORY@$test_sha"
-            echo "- Test root: .ci-test-assets/testing"
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Run registered suites without a live DB
+        run: bash "$CAFE_PROJECT_TEST_ROOT/bootstrap-links.sh"
+      - name: Verify selection and registry guards
+        env:
+          CAFE_PROJECT_ROOT: ${{ github.workspace }}
+        run: node --test "$CAFE_PROJECT_TEST_ROOT"/ci/*.test.cjs
+      - name: Select and execute required tier
+        id: regression
         shell: bash
         env:
-          CAFE_PROJECT_TEST_ROOT: ${{ github.workspace }}/.ci-test-assets/testing
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          set -o pipefail
-          npm test 2>&1 | tee "$RUNNER_TEMP/ci-full-tests.log"
+          set -euo pipefail
+          tier=smoke
+          if [[ "$EVENT" == pull_request ]]; then tier=pr; fi
+          if [[ "$REF_NAME" == main && "$EVENT" == push ]]; then tier=core; fi
+          if [[ "$EVENT" == schedule || "$EVENT" == release || "$EVENT" == workflow_dispatch ]]; then tier=full; fi
+          echo "tier=$tier" >> "$GITHUB_OUTPUT"
+          node scripts/ci/run-regression.cjs "$tier" 2>&1 | tee "$RUNNER_TEMP/regression.log"
       - name: Upload test execution log
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: full-regression-log
-          path: ${{ runner.temp }}/ci-full-tests.log
-          if-no-files-found: warn
+          name: regression-log
+          path: |
+            ${{ runner.temp }}/regression.log
+            ${{ env.CAFE_PROJECT_TEST_ROOT }}/reports/tier-runs/*.jsonl
+          if-no-files-found: error
           retention-days: 30
 
   # Rubric stage 4: dependency, secret and configuration scanning.
@@ -191,15 +152,62 @@ jobs:
       - run: npm ci
       - name: npm production dependency audit
         run: npm audit --omit=dev --audit-level=high
+      - name: Prepare tracked source scan (exclude installed vendor build recipes)
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/security-source"
+          git ls-files -z | tar --null -T - -cf - | tar -xf - -C "$RUNNER_TEMP/security-source"
       - name: Trivy vulnerability, secret and configuration scan
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
+          version: v0.70.0
           scan-type: fs
-          scan-ref: .
+          scan-ref: ${{ runner.temp }}/security-source
           scanners: vuln,secret,misconfig
           severity: HIGH,CRITICAL
           ignore-unfixed: false
           exit-code: '1'
+
+  production-release-gate:
+    name: 'Production release / Full regression required'
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    needs: [build, lint, test, security]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful Full on this exact source revision
+        env:
+          TIER: ${{ needs.test.outputs.tier }}
+        run: test "$TIER" = full
+
+  publish-production-release:
+    name: 'Production release / Publish verified revision'
+    if: github.event_name == 'workflow_dispatch' && inputs.production_tag != ''
+    needs: production-release-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Publish only the revision that passed Full, build, lint and security
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.production_tag }}
+          TRUSTED_BRANCH: ${{ vars.CI_DEPLOY_BRANCH || 'main' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_TYPE" == branch && "$GITHUB_REF_NAME" == "$TRUSTED_BRANCH" ]]
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          # Atomic tag creation rejects an existing tag instead of trusting its target.
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$GITHUB_SHA"
+          gh release create "$RELEASE_TAG" --verify-tag --target "$GITHUB_SHA" \
+            --title "$RELEASE_TAG" \
+            --notes "Full regression, build, lint and security passed for $GITHUB_SHA in $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
 
   # Rubric stage 5: Docker. Registry publishing gated on successful CI.
   docker:
@@ -243,8 +251,8 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            io.github.cafe-project.tests.repository=${{ vars.CI_TESTS_REPOSITORY }}
-            io.github.cafe-project.tests.revision=${{ needs.test.outputs.test_sha }}
+            io.github.cafe-project.tests.manifest=scripts/ci/regression-release.json
+            io.github.cafe-project.tests.sha256=${{ needs.test.outputs.bundle_sha }}
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
       - name: Record published image digest

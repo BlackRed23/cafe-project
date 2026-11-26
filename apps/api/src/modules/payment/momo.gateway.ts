@@ -177,26 +177,6 @@ export const createMoMoPayUrl = async (input: CreateMoMoPayUrlInput): Promise<Cr
         try {
             responseData = JSON.parse(rawText) as Record<string, unknown>;
         } catch {
-            // Dev/Sandbox fallback if MoMo Sandbox is under maintenance or blocking IP (HTTP 403/503)
-            const allowMockFallback =
-                process.env.NODE_ENV !== 'production' && process.env.MOMO_DEV_FALLBACK === 'true';
-            if (allowMockFallback) {
-                console.warn(
-                    `[PAYMENT][MOMO] Sandbox endpoint (${config.endpoint}) returned non-JSON (HTTP ${response.status}: ${rawText.slice(0, 80).replace(/\s+/g, ' ')}). Using local Dev Sandbox fallback payUrl.`
-                );
-                const fallbackPayUrl = `${config.redirectUrl}?partnerCode=${encodeURIComponent(config.partnerCode)}&orderId=${encodeURIComponent(input.merchantRef)}&requestId=${encodeURIComponent(requestId)}&amount=${encodeURIComponent(amount)}&resultCode=0&momoSandboxFallback=1`;
-                return {
-                    payUrl: fallbackPayUrl,
-                    requestId,
-                    requestPayload: sanitizedRequestPayload,
-                    responsePayload: {
-                        resultCode: 0,
-                        message: 'Dev Sandbox Fallback (MoMo test-payment.momo.vn unreachable/403)',
-                        payUrl: fallbackPayUrl,
-                        upstreamStatus: response.status
-                    }
-                };
-            }
             throw new Error(`HTTP ${response.status}: ${rawText.slice(0, 120)}`);
         }
     } catch (error) {

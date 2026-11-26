@@ -19,7 +19,8 @@ RUN npm run build -- --filter=@cafe-project/agent
 
 FROM node:24-alpine AS runner
 WORKDIR /app
-COPY --from=builder /app /app
+COPY --from=builder --chown=node:node /app /app
+USER node
 
 EXPOSE 5055
 CMD ["npm", "run", "start:server", "-w", "@cafe-project/agent"]

@@ -15,7 +15,7 @@ import { prisma, Prisma } from '@cafe-project/database';
 import { requireAgentUser } from '../internal-auth';
 import { agentRepository } from '../repositories/agent.repository';
 import { AgentWorkflow } from './agent-workflow';
-import { MockAgentRepository } from '../repositories/mock-agent.repository';
+import { ReadOnlySessionRepository } from '../repositories/read-only-session.repository';
 import { PostgresAgentRepository } from '../repositories/postgres-agent.repository';
 import { createLiveBackendReadRegistry } from './agent-live-backend-registry';
 import { readBackendPerceptionRisk } from './agent-backend-demand-risk';
@@ -27,7 +27,6 @@ import type { BusinessPort, LLMProvider } from './workflow-contracts';
 import type { InventoryRow, StockRecommendation } from './replenishment';
 import { analyzeInventoryPerception } from './inventory-perception';
 import { perceptionHoldReason } from './perception-hold-reason';
-import { verifiedIsolatedActFault } from '../services/execution/act-isolated-fault';
 import { createSessionD4LiveAuthority } from './integration/session-d4-live-authority';
 import { readPendingStocktakeScenarioSource } from './integration/stocktake-scenario-live-source';
 import { readD4LivePlanningEvidence } from './integration/d4-live-planning-evidence';
@@ -282,26 +281,6 @@ export async function runLiveReadOnlyGraph(
         actSourceVersion: async (actor, ingredientId) => {
             await port.authorize(actor, 'inventory.read');
             if (!ingredientIds.includes(ingredientId)) throw new Error('FORBIDDEN');
-            // Isolated ACT-07 acceptance only. A loopback owned test service uses
-            // the normal authenticated Backend import API to commit a real
-            // rowVersion/movementCursor change AFTER Perception and BEFORE dispatch.
-            if (process.env.ACT_E2E_FAULT_CASE === 'STALE_VERSION' &&
-                await verifiedIsolatedActFault(ingredientId)) {
-                let hook: URL;
-                try { hook = new URL(process.env.ACT_E2E_STALE_HOOK_URL ?? ''); }
-                catch { throw new Error('ACT_TEST_STALE_HOOK_INVALID'); }
-                if (hook.protocol !== 'http:' || hook.hostname !== '127.0.0.1' ||
-                    hook.pathname !== '/act-stale' || !hook.port) {
-                    throw new Error('ACT_TEST_STALE_HOOK_INVALID');
-                }
-                const reply = await fetch(hook, {
-                    method: 'POST', headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({ ingredientId }),
-                    signal: AbortSignal.timeout(15000)
-                });
-                if (!reply.ok) throw new Error('ACT_TEST_STALE_HOOK_FAILED');
-            }
-            // Separate, authoritative read immediately before EACH dispatch.
             const fresh = await prisma.ingredient.findFirst({
                 where: { id: ingredientId, isActive: true, deletedAt: null },
                 select: { rowVersion: true, movementCursor: true }
@@ -351,7 +330,7 @@ export async function runLiveReadOnlyGraph(
     // Optional namespaced checkpoint for isolated acceptance runs. Namespace
     // validation also lives in the repository and prevents arbitrary DB keys.
     const checkpointKey = process.env.AGENT_GRAPH_PG_CHECKPOINT_KEY || 'agent.workflow.checkpoint.v1';
-    const readStore = durableReadOnly ? new PostgresAgentRepository(prisma, checkpointKey) : new MockAgentRepository();
+    const readStore = durableReadOnly ? new PostgresAgentRepository(prisma, checkpointKey) : new ReadOnlySessionRepository();
     // Principal is already checked against live DB ADMIN above. The ephemeral
     // read-only workflow store must use the same real actor ID (not mock "admin").
     // Grant only read/run, NEVER agent.approve or purchase.write.

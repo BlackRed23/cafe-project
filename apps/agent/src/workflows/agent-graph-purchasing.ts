@@ -12,41 +12,6 @@ import { d4ContextSchema, type D4Context, type D4Recommendation } from
 import type { GraphPurchaseReference } from './agent-langgraph';
 
 const graphIdPattern = /^[0-9a-f]{64}$/;
-/** A real process kill *after* a confirmed Backend HTTP write response, but
- * before the StateGraph checkpoint. Strict isolated E2E only; never callable
- * in production or against the shared cafedb. No effect unless explicitly set. */
-async function isolatedCrashAfterCommit(seam: 'BEFORE_PROPOSAL' | 'PROPOSAL' | 'PR'): Promise<void> {
-    const beforeProposal = seam === 'BEFORE_PROPOSAL' &&
-        process.env.AGENT_GRAPH_E2E_KILL_BEFORE_PROPOSAL === 'YES';
-    if (seam === 'BEFORE_PROPOSAL' ? !beforeProposal :
-        process.env.AGENT_GRAPH_E2E_KILL_AFTER_COMMIT !== seam) return;
-    const expectedName = process.env.AGENT130_GRAPH_PR_DB ?? '';
-    const expectedOid = process.env.AGENT130_GRAPH_PR_OID ?? '';
-    let dbName = '';
-    try { dbName = decodeURIComponent(new URL(process.env.DATABASE_URL ?? '').pathname.slice(1)); }
-    catch { throw new Error('GRAPH_CRASH_TEST_ISOLATION_UNVERIFIED'); }
-    if (process.env.NODE_ENV !== 'test' ||
-        process.env.AGENT130_SEVEN_STRICT !== 'YES' ||
-        process.env.AGENT130_FULL_FLOW_ISOLATED !== 'YES' ||
-        process.env.AGENT130_GRAPH_PR_CONFIRMED !== 'YES' ||
-        !/^agent130_graph_pr_[a-f0-9]{12}$/.test(expectedName) ||
-        dbName !== expectedName || !/^\d+$/.test(expectedOid)) {
-        throw new Error('GRAPH_CRASH_TEST_ISOLATION_UNVERIFIED');
-    }
-    const [identity] = await prisma.$queryRaw<Array<{
-        name: string; oid: string; role: string; owner: string; schema: string
-    }>>`SELECT current_database() AS name,
-        (SELECT oid::text FROM pg_database WHERE datname=current_database()) AS oid,
-        current_user AS role, current_schema() AS schema,
-        (SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database()) AS owner`;
-    if (!identity || identity.name !== expectedName || identity.oid !== expectedOid ||
-        identity.role !== 'agent130_graph_owner' ||
-        identity.owner !== 'agent130_graph_owner' || identity.schema !== 'public') {
-        throw new Error('GRAPH_CRASH_TEST_ISOLATION_UNVERIFIED');
-    }
-    process.kill(process.pid, 'SIGKILL');
-    throw new Error('GRAPH_TEST_PROCESS_KILL_FAILED');
-}
 function enabled(graphId: string) {
     if (process.env.AGENT_GRAPH_PURCHASING !== 'YES' ||
         process.env.AGENT_GRAPH_PG_READONLY !== 'YES' ||
@@ -169,9 +134,7 @@ export async function createVerifiedGraphD4Proposal(actorId: string, graphId: st
     // B: test-only process kill after verified Graph draft-candidate checkpoint
     // but before any Backend proposal POST. The post-commit hooks below are
     // independent; none of these flags is enabled in shared environments.
-    await isolatedCrashAfterCommit('BEFORE_PROPOSAL');
     const result = await submitPurchaseProposal(snapshot, proposalId);
-    await isolatedCrashAfterCommit('PROPOSAL');
     return { proposalId: result.proposalId,
         version: result.version, contentHash: result.contentHash };
 }
@@ -189,7 +152,6 @@ export async function executeVerifiedGraphD4Proposal(actorId: string, graphId: s
     const result = await executeApprovedPurchaseProposal(reference.proposalId,
         { version: reference.version, contentHash: reference.contentHash },
         'graph-pr-' + graphId);
-    await isolatedCrashAfterCommit('PR');
     const prId = result.purchaseRequest?.id;
     if (!result.verified || typeof prId !== 'string' || !prId) {
         throw new Error('PURCHASE_RESULT_UNVERIFIED');

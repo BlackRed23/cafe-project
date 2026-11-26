@@ -1,5 +1,3 @@
-import { mockEnabled } from '../../mock/config';
-import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { RecipeManager } from "../../features/recipes/RecipeManager";
@@ -26,7 +24,7 @@ import {
 import { ALLOWED_PRODUCT_UNITS, isAllowedProductUnit } from "../../constants/units";
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
-export const AdminProductFormPage: React.FC = () => mockEnabled ? <MockWorkspace area="menu" /> : <LegacyAdminProductFormPage />;
+export const AdminProductFormPage: React.FC = () => <LegacyAdminProductFormPage />;
 
 const LegacyAdminProductFormPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();

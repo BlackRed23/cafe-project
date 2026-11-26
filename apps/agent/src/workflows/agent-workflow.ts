@@ -35,10 +35,6 @@ export type { DynamicToolName, DynamicPlanStep, DynamicToolPlan } from './dynami
 
 import type { BusinessPort, Plan, LegacyStep, ToolName, PurchaseCommand, PurchaseResult, MemoryEvidence, PlanningContext, LLMProvider, MemoryAttribution, Execution, Approval, Memory, AgentState, AgentRepository, AgentApprovalRepository, MemoryLearning } from './workflow-contracts';
 export type { BusinessPort, Plan, ToolName, MemoryEvidence, PlanningContext, LLMProvider, Execution, Approval, Memory, AgentState, AgentExecutionRepository, AgentApprovalRepository, MemoryLearning, AgentRepository } from './workflow-contracts';
-import { MockLLMProvider, mockDecision } from './testing/mock-llm-provider';
-export { MockLLMProvider } from './testing/mock-llm-provider';
-import { MockAgentRepository } from '../repositories/mock-agent.repository';
-export { MockAgentRepository } from '../repositories/mock-agent.repository';
 import { compileAgentLangGraph, graphResult, type AgentGraphInput, type AgentGraphResult } from './agent-langgraph';
 export type { AgentGraphInput, AgentGraphResult, AgentGraphEvent, AgentGraphStatus } from './agent-langgraph';
 
@@ -282,9 +278,9 @@ function validJointReadIdentity(execution: Execution | undefined, actorId: strin
 }
 /** Planner/Executor/Verifier; purchasing and stock rules belong exclusively to BusinessPort. */
 export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
-    private readonly allowlist: readonly ToolName[];
+    protected readonly allowlist: readonly ToolName[];
     /** D-only verified Backend source ports. Absence is HOLD, not inferred authority. */
-    constructor(private readonly repository: AgentRepository | null, private readonly readBusiness: Pick<BusinessPort, 'authorize' | 'toolRegistry'> & Partial<BusinessPort>, private readonly llm: LLMProvider, allowlist: readonly ToolName[] = allowed, private readonly clock = () => new Date(), private readonly readOnlyGraphExecution = false,
+    constructor(private readonly repository: AgentRepository | null, private readonly readBusiness: Pick<BusinessPort, 'authorize' | 'toolRegistry'> & Partial<BusinessPort>, protected readonly llm: LLMProvider, allowlist: readonly ToolName[] = allowed, protected readonly clock = () => new Date(), private readonly readOnlyGraphExecution = false,
         private readonly sessionDSource?: Pick<DurableObsAnmPorts, 'loadPersistedSource' | 'anomalyAuthority'> &
             Pick<DurableAnmRepPorts, 'loadPersistedReplanInput' | 'replanAuthority'> &
             { verifyFixedReadIdentity?: (scope: HandoffScope) => Promise<{
@@ -1208,7 +1204,7 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
                 },
             };
             const before = structuredClone(state); let response: { status: number; body: unknown };
-            try { response = { status: 200, body: (await work(new AgentWorkflow(scopedStore, business, this.llm, this.allowlist, this.clock), payload)) ?? null }; }
+            try { response = { status: 200, body: (await work(this.scopedWorkflow(scopedStore, business), payload)) ?? null }; }
             catch (error) {
                 const code = error instanceof Error ? error.message : '';
                 const businessError = error as { status?: number; code?: string };
@@ -1240,6 +1236,16 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
             return { execution, approvals: Object.values(s.approvals).filter(a => a.executionId === id), toolCalls: Object.values(s.toolCalls).filter(c => c.executionId === id), evaluations: s.evaluations.filter(e => e.executionId === id), audit: s.audit.filter(a => a.executionId === id) };
         }, commit, finish));
     }
+    protected scopedWorkflow(store: AgentRepository, business: BusinessPort): AgentWorkflow {
+        return new AgentWorkflow(store, business, this.llm, this.allowlist, this.clock);
+    }
+
+    protected async plannerDecision(prompt: string, context: PlanningContext): Promise<{
+        plan: Plan; traced?: boolean; influence?: { memoryId: string; proof: NonNullable<MemoryAttribution['proof']> }
+    }> {
+        return { plan: await this.llm.plan(prompt, context) };
+    }
+
     async plan(actorId: string, prompt: string, budget: number, replenishment?: ReplenishmentInput,
         graphContext?: { graphId: string; inputHash: string; invocationId: string }): Promise<Execution> {
         const requestedPlan = replenishment === undefined ? undefined : replenishmentPlan(replenishment);
@@ -1249,15 +1255,15 @@ export class AgentWorkflow implements AgentApprovalRepository, MemoryLearning {
         let memoryAllowed = true;
         try { await this.business.authorize(actorId, 'memory'); } catch { memoryAllowed = false; }
         const context = await this.store.atomic(s => memoryAllowed ? planningContext(s, actorId, prompt, this.clock().getTime()) : { trust: 'untrusted-evidence-only' as const, evidence: [], maxTokens: 2048 as const });
-        const mock = this.llm instanceof MockLLMProvider && this.llm.plan === MockLLMProvider.prototype.plan &&
-            this.llm[mockDecision] === MockLLMProvider.prototype[mockDecision] ? this.llm : undefined;
-        const traced = requestedPlan ? undefined : mock?.[mockDecision](prompt, context);
-        const plan = requestedPlan ?? traced?.plan ?? structuredClone(await this.llm.plan(prompt, structuredClone(context)));
+        const decision = requestedPlan ? undefined : await this.plannerDecision(prompt, structuredClone(context));
+        const plan = requestedPlan ?? structuredClone(decision!.plan);
         validatePlan(plan, this.allowlist);
         if (graphContext) validateGraphPlan(plan, this.allowlist, budget);
         const attribution: MemoryAttribution[] = context.evidence.map(({ memoryId }) => {
-            if (traced?.influence?.memoryId === memoryId) return { memoryId, presented: true, status: 'USED', proof: traced.influence.proof };
-            return { memoryId, presented: !requestedPlan, status: requestedPlan || traced ? 'UNUSED' : 'UNKNOWN' };
+            if (decision?.influence?.memoryId === memoryId) {
+                return { memoryId, presented: true, status: 'USED', proof: decision.influence.proof };
+            }
+            return { memoryId, presented: !requestedPlan, status: requestedPlan || decision?.traced ? 'UNUSED' : 'UNKNOWN' };
         });
         if (plan.reduce((n, step) => n + TOOL_REGISTRY[step.tool].cost, 0) > budget) throw new Error('BUDGET_EXCEEDED');
         const workflow = isReplenishment(plan);
@@ -1665,93 +1671,4 @@ export function createReadOnlyAgentRuntime(
             return generateConfiguredLlmPlan(prompt, tools, config, context?.toolChoicePolicy);
         },
     });
-}
-
-export function createGeminiPlanner(
-    legacy: LLMProvider = new MockLLMProvider()
-): LLMProvider {
-    return {
-        plan: (prompt, context) =>
-            legacy.plan(prompt, context),
-
-        planDynamic: async (prompt, tools) => {
-            const { geminiService } = await import(
-                '../services/gemini.service'
-            );
-
-            return geminiService.generateDynamicPlan(prompt, tools);
-        }
-    };
-}
-
-/** Independent Agent composition boundary; no implicit production mock or Prisma import. */
-
-export function createAgentRuntime(
-    business: BusinessPort,
-    runtimeEnv: Record<string, string | undefined> = process.env,
-    llm?: LLMProvider
-): AgentWorkflow {
-    const config = {
-        ...runtimeEnv
-    };
-
-    // Keep existing production and database safety gates.
-    if (config.NODE_ENV === 'production' && !config.DATA_PROVIDER) {
-        throw new Error('Production requires explicit DATA_PROVIDER');
-    }
-
-    if (config.DATA_PROVIDER === 'postgres') {
-        throw new Error(
-            'POSTGRES_NOT_VERIFIED: Agent approval/memory adapter unavailable'
-        );
-    }
-
-    if (
-        config.NODE_ENV === 'production' ||
-        (config.DATA_PROVIDER !== undefined &&
-         config.DATA_PROVIDER !== 'mock')
-    ) {
-        throw new Error('Invalid Agent provider');
-    }
-
-    const requestedProvider = (
-        config.AGENT_PLANNER_PROVIDER || 'mock'
-    ).trim().toLowerCase();
-
-    // "chatgpt" is an alias of the OpenAI API provider.
-    const providerName =
-        requestedProvider === 'chatgpt'
-            ? 'openai'
-            : requestedProvider;
-
-    if (!['mock', 'gemini', 'openai', 'anthropic', 'openai-compatible'].includes(providerName)) {
-        throw new Error('INVALID_LLM_PROVIDER');
-    }
-
-    const provider: LLMProvider = llm ?? {
-        // Preserve existing legacy planning behavior.
-        plan: (prompt, context) =>
-            new MockLLMProvider().plan(prompt, context),
-
-        planDynamic: async (prompt, tools, context) => {
-            if (providerName === 'mock' && !config.LLM_MODEL && !config.LLM_PROVIDER) {
-                throw new Error('DYNAMIC_PLANNER_NOT_CONFIGURED');
-            }
-
-            // Preserve historical Gemini configuration while unified LLM_MODEL is unset.
-            if (providerName === 'gemini' && !config.LLM_MODEL && !config.GEMINI_MODEL) {
-                const { geminiService } = await import('../services/gemini.service');
-                return geminiService.generateDynamicPlan(prompt, tools);
-            }
-
-            const { generateConfiguredLlmPlan } = await import('../services/llm-planner.service');
-            return generateConfiguredLlmPlan(prompt, tools, config, context?.toolChoicePolicy);
-        }
-    };
-
-    return new AgentWorkflow(
-        new MockAgentRepository(),
-        business,
-        provider
-    );
 }

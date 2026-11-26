@@ -1,7 +1,5 @@
 import { schedulePageLoad } from "../../utils/schedulePageLoad";
 import { isAxiosError } from "axios";
-import { mockEnabled } from '../../mock/config';
-import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, FileSpreadsheet, MailWarning, Plus, X } from "lucide-react";
@@ -32,7 +30,7 @@ const FILTER_OPTIONS = [
   { label: "Đã từ chối", value: "REJECTED" },
 ];
 
-export const AdminPurchaseRequestsPage: React.FC = () => mockEnabled ? <MockWorkspace area="purchases" /> : <LegacyAdminPurchaseRequestsPage />;
+export const AdminPurchaseRequestsPage: React.FC = () => <LegacyAdminPurchaseRequestsPage />;
 
 const LegacyAdminPurchaseRequestsPage: React.FC = () => {
   const navigate = useNavigate();

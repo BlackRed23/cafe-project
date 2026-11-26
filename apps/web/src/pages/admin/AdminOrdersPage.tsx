@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { mockEnabled } from "../../mock/config";
-import { MockWorkspace } from "../../mock/MockWorkspace";
 import { ordersApi } from "../../api/orders.api";
 import type { Order } from "../../types/order.types";
 import { formatCurrency } from "../../utils/formatCurrency";
@@ -19,7 +17,7 @@ import {
 import "./sales.css";
 
 export const AdminOrdersPage = () =>
-  mockEnabled ? <MockWorkspace area="orders" /> : <SalesOrders />;
+  <SalesOrders />;
 function SalesOrders() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);

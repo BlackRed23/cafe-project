@@ -26,8 +26,8 @@ try {
 }
 if (mode === 'verify') process.exit(0);
 
-const entry = path.join(testRoot, 'run-tests.cjs');
-const result = spawnSync(process.execPath, [entry, mode], {
+const entry = mode === 'normal' ? path.join(__dirname, 'run-regression.cjs') : path.join(testRoot, 'run-tests.cjs');
+const result = spawnSync(process.execPath, [entry, mode === 'normal' ? 'full' : mode], {
   cwd: sourceRoot,
   env: { ...process.env, CAFE_PROJECT_ROOT: sourceRoot },
   stdio: 'inherit',

@@ -11,7 +11,6 @@ import { createAgentLogViaAgentService } from '../agent/agent.client';
 import type { JwtUserPayload } from '../auth/auth.service';
 import {
     createMoMoPayUrl,
-    signMoMoIpnPayload,
     verifyMoMoSignature,
     type MoMoIpnPayload
 } from './momo.gateway';
@@ -22,7 +21,6 @@ import type {
     CreatePaymentUrlInput,
     MarkRefundedInput,
     PaymentStatusInput,
-    SimulateMoMoIpnInput
 } from './payment.validator';
 
 export type PaymentDto = ReturnType<typeof toPaymentDto>;
@@ -643,45 +641,4 @@ export const processVNPayIpn = async (
         });
         return { RspCode: '99', Message: 'Unknown error' };
     }
-};
-
-/**
- * BUG-7: Giả lập IPN MoMo cho môi trường Dev khi Sandbox không truy cập được
- */
-export const simulateDevMoMoIpn = async (
-    input: SimulateMoMoIpnInput
-): Promise<{ status: 'APPLIED' | 'ALREADY_PROCESSED' | 'FAILED'; payment: PaymentDto }> => {
-    if (process.env.NODE_ENV === 'production' || process.env.PAYMENT_DEV_SIMULATOR_ENABLED !== 'true') {
-        throw new HttpError(404, 'Not found.');
-    }
-
-    const payment = await ensurePayment(await paymentRepository.findById(input.paymentId));
-    const config = getMoMoConfig();
-    const merchantRef = payment.merchantRef ?? `${payment.orderId}_${payment.attemptNo}`;
-    const transId = `${Date.now()}`;
-
-    const unsignedPayload: MoMoIpnPayload = {
-        partnerCode: config.partnerCode,
-        orderId: merchantRef,
-        requestId: `${merchantRef}_sim_${transId}`,
-        amount: Math.round(Number(payment.amount)),
-        orderInfo: `Thanh toan don hang ${payment.orderId}`,
-        orderType: 'momo_wallet',
-        transId,
-        resultCode: input.success ? 0 : 1006,
-        message: input.success ? 'Giao dịch thành công (Dev Simulated)' : 'Giao dịch bị hủy (Dev Simulated)',
-        payType: 'qr',
-        responseTime: Date.now(),
-        extraData: '',
-        signature: ''
-    };
-
-    unsignedPayload.signature = signMoMoIpnPayload(unsignedPayload, config.accessKey, config.secretKey);
-    const result = await processMoMoWebhook(unsignedPayload, { 'x-dev-simulated-ipn': '1' });
-    const updated = await ensurePayment(await paymentRepository.findById(payment.id));
-
-    return {
-        status: result.status,
-        payment: toPaymentDto(updated)
-    };
 };

@@ -1,6 +1,4 @@
 import { schedulePageLoad } from "../../utils/schedulePageLoad";
-import { mockEnabled } from '../../mock/config';
-import { MockWorkspace } from '../../mock/MockWorkspace';
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { productsApi } from "../../api/products.api";
@@ -22,7 +20,7 @@ import { DataTable } from "../../components/admin/DataTable";
 import { useAuth } from "../../contexts/AuthContext";
 import { Plus, Edit2, Trash2, Coffee, RefreshCw, Pause } from "lucide-react";
 
-export const AdminProductsPage: React.FC = () => mockEnabled ? <MockWorkspace area="menu" /> : <LegacyAdminProductsPage />;
+export const AdminProductsPage: React.FC = () => <LegacyAdminProductsPage />;
 
 const LegacyAdminProductsPage: React.FC = () => {
   const navigate = useNavigate();

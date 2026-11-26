@@ -1,5 +1,3 @@
-import { mockEnabled } from '../mock/config';
-import { MockWorkspace, MockLayout, MockLogin } from '../mock/MockWorkspace';
 import React, { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { CustomerLayout } from "../layouts/CustomerLayout";
@@ -29,8 +27,6 @@ import { AdminProductsPage } from "../pages/admin/AdminProductsPage";
 import { AdminProductFormPage } from "../pages/admin/AdminProductFormPage";
 import { AdminIngredientsPage } from "../pages/admin/AdminIngredientsPage";
 import { AdminIngredientDetailPage } from "../pages/admin/AdminIngredientDetailPage";
-import { AdminInventoryPage } from "../pages/admin/AdminInventoryPage";
-import { AdminInventoryDetailPage } from "../pages/admin/AdminInventoryDetailPage";
 import { AdminInventoryTransactionsPage } from "../pages/admin/AdminInventoryTransactionsPage";
 import { AdminSuppliersPage } from "../pages/admin/AdminSuppliersPage";
 import { AdminOrdersPage } from "../pages/admin/AdminOrdersPage";
@@ -61,7 +57,6 @@ const ScrollToTop: React.FC = () => {
 };
 
 export const AppRoutes: React.FC = () => {
-  if (mockEnabled) return <MockRoutes />;
   return (
     <BrowserRouter>
       <ScrollToTop />
@@ -169,29 +164,3 @@ export const AppRoutes: React.FC = () => {
     </BrowserRouter>
   );
 };
-
-function MockRoutes() {
-  return <BrowserRouter><Routes>
-    <Route path="/login" element={<MockLogin />} />
-    <Route path="/admin" element={<AdminRoute><MockLayout /></AdminRoute>}>
-      <Route index element={<Navigate to="/admin/dashboard" replace />} />
-      <Route path="dashboard" element={<AdminDashboardPage />} />
-      <Route path="products" element={<AdminProductsPage />} />
-      <Route path="products/create" element={<AdminOnlyRoute><AdminProductFormPage /></AdminOnlyRoute>} />
-      <Route path="products/:id/edit" element={<AdminOnlyRoute><AdminProductFormPage /></AdminOnlyRoute>} />
-      <Route path="inventory" element={<AdminInventoryPage />} />
-      <Route path="inventory/transactions" element={<AdminInventoryTransactionsPage />} />
-      <Route path="inventory/:inventoryId" element={<AdminInventoryDetailPage />} />
-      <Route path="orders" element={<AdminOrdersPage />} />
-      <Route path="orders/:id" element={<AdminOrderDetailPage />} />
-      <Route path="purchase-requests" element={<AdminPurchaseRequestsPage />} />
-      <Route path="purchase-requests/:id" element={<AdminPurchaseRequestDetailPage />} />
-      <Route path="agent-logs" element={<AdminAgentLogsPage />} />
-      <Route path="stock-counts" element={<MockWorkspace key="counts" area="counts" />} />
-      <Route path="payments" element={<MockWorkspace key="payments" area="payments" />} />
-      <Route path="*" element={<p role="alert">This page has no mock workflow. Use business navigation above.</p>} />
-    </Route>
-    <Route path="/products" element={<p role="alert">Unauthorized: customer fixture has no mock business permissions. <a href="/login">Sign in</a></p>} />
-    <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
-  </Routes></BrowserRouter>;
-}

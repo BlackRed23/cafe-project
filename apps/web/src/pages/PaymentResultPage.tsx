@@ -6,7 +6,6 @@ import type { PaymentAttempt } from "../types/order.types";
 import { extractOrderIdFromMerchantRef, getPaymentMethodLabel } from "../utils/payment";
 import { formatCurrency } from "../utils/formatCurrency";
 import { Button } from "../components/common/Button";
-import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import {
   CheckCircle2,
@@ -14,7 +13,6 @@ import {
   Clock,
   RefreshCw,
   ShoppingBag,
-  Terminal,
   CreditCard,
 } from "lucide-react";
 
@@ -23,7 +21,6 @@ const MAX_POLL_DURATION_MS = 30000;
 
 export const PaymentResultPage: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const { isAdmin, isStaff } = useAuth();
   const toast = useToast();
 
   // MoMo sends orderId=<merchantRef>, VNPay sends vnp_TxnRef=<merchantRef>
@@ -34,8 +31,6 @@ export const PaymentResultPage: React.FC = () => {
     "";
   const orderId = extractOrderIdFromMerchantRef(rawRef);
 
-  const isMoMoSandboxFallback = searchParams.get("momoSandboxFallback") === "1";
-  const canSimulateDevIpn = isMoMoSandboxFallback && isAdmin && !isStaff;
 
   const [payment, setPayment] = useState<PaymentAttempt | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -123,24 +118,6 @@ export const PaymentResultPage: React.FC = () => {
       toast.error(
         getOrderErrorMessage(err, "Không thể tạo lại liên kết thanh toán. Vui lòng thử lại.")
       );
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleDevSimulateIpn = async (success: boolean) => {
-    if (!payment?.id || actionLoading) return;
-    setActionLoading(true);
-    try {
-      const res = await paymentsApi.simulateDevMoMoIpn(payment.id, success);
-      setPayment(res.payment);
-      toast.success(
-        success
-          ? "Đã giả lập IPN MoMo thành công (PAID)."
-          : "Đã giả lập IPN MoMo thất bại (FAILED)."
-      );
-    } catch (err) {
-      toast.error(getOrderErrorMessage(err, "Không thể giả lập IPN MoMo."));
     } finally {
       setActionLoading(false);
     }
@@ -252,36 +229,6 @@ export const PaymentResultPage: React.FC = () => {
           </div>
         )}
 
-        {/* BUG-7: Dev Sandbox Fallback IPN Simulator (Admin only) */}
-        {canSimulateDevIpn && payment && isPending && (
-          <div className="p-4 bg-violet-50 border border-violet-200 rounded-2xl text-left space-y-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-violet-900">
-              <Terminal size={14} /> Chế độ Dev Sandbox Fallback (Chỉ Admin)
-            </div>
-            <p className="text-[11px] text-violet-700 leading-relaxed">
-              Cổng MoMo Sandbox đang trả về fallback. Bạn có thể giả lập callback IPN có chữ ký HMAC-SHA256 hợp lệ để kiểm thử:
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                disabled={actionLoading}
-                onClick={() => handleDevSimulateIpn(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-              >
-                Giả lập thanh toán thành công
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={actionLoading}
-                onClick={() => handleDevSimulateIpn(false)}
-                className="border-rose-300 text-rose-700 hover:bg-rose-50 text-xs"
-              >
-                Giả lập thanh toán thất bại
-              </Button>
-            </div>
-          </div>
-        )}
 
         {/* Actions */}
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">

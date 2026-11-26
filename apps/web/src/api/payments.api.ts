@@ -28,15 +28,4 @@ export const paymentsApi = {
     });
     return unwrapApiField<PaymentAttempt>(response.data, "payment");
   },
-
-  simulateDevMoMoIpn: async (
-    paymentId: string,
-    success: boolean
-  ): Promise<{ status: string; payment: PaymentAttempt }> => {
-    const response = await apiClient.post("/payments/dev/simulate-ipn", {
-      paymentId,
-      success,
-    });
-    return unwrapApiData<{ status: string; payment: PaymentAttempt }>(response.data);
-  },
 };
