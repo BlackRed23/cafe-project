@@ -23,4 +23,5 @@ COPY --from=builder --chown=node:node /app /app
 USER node
 
 EXPOSE 5000
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=packages/database/prisma/schema && npm run start -w @cafe-project/api"]
+
+CMD ["sh", "-c", "node packages/database/prisma/deploy.mjs && exec npm run start -w @cafe-project/api"]
