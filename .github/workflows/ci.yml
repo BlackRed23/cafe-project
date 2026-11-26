@@ -4,12 +4,6 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-    inputs:
-      production_tag:
-        description: 'Optional production version (v1.2.3); publish only after Full and all quality gates'
-        required: false
-        type: string
-        default: ''
   schedule:
     - cron: '0 19 * * 0'
   release:
@@ -189,36 +183,6 @@ jobs:
         env:
           TIER: ${{ needs.test.outputs.tier }}
         run: test "$TIER" = full
-
-  publish-production-release:
-    name: 'Production release / Publish verified revision'
-    if: github.event_name == 'workflow_dispatch' && inputs.production_tag != ''
-    needs: production-release-gate
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Publish only the revision that passed Full, build, lint and security
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.production_tag }}
-          TRUSTED_BRANCH: ${{ vars.CI_DEPLOY_BRANCH || 'main' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$GITHUB_REF_TYPE" == branch && "$GITHUB_REF_NAME" == "$TRUSTED_BRANCH" ]]
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
-          # Atomic tag creation rejects an existing tag instead of trusting its target.
-          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-            -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$GITHUB_SHA"
-          gh release create "$RELEASE_TAG" --verify-tag --target "$GITHUB_SHA" \
-            --title "$RELEASE_TAG" \
-            --notes "Full regression, build, lint and security passed for $GITHUB_SHA in $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
 
   # Rubric stage 5: Docker. Registry publishing gated on successful CI.
   docker:
