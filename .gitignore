@@ -94,3 +94,5 @@ _archive/
 *.p12
 *.pfx
 *.dump
+
+__pycache__/
